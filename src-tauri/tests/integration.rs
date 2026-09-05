@@ -5,7 +5,7 @@
 use lark_reader_lib::{env, extract, lark, markdown, models};
 
 #[test]
-fn test_01_check_env_after_logout() {
+fn test_01_check_env_matches_identity() {
     let status = env::check_env();
     println!("=== 环境检测结果 ===");
     println!(
@@ -29,10 +29,9 @@ fn test_01_check_env_after_logout() {
         "飞书应用应该已配置（config show 应该能返回 appId）"
     );
 
-    // 退出登录后应该显示未登录（identity=bot, tokenStatus=ready，但 logged_in 应为 false）
-    println!("\n=== 退出登录后状态 ===");
-    println!("logged_in = {} (预期 false)", status.logged_in);
-    assert!(!status.logged_in, "退出登录后 logged_in 应该为 false");
+    let identity = lark::whoami().expect("whoami 应该成功");
+    let expected = identity.0 == "user" && (identity.1 == "ready" || identity.1 == "needs_refresh");
+    assert_eq!(status.logged_in, expected, "环境检测应与真实身份一致");
 }
 
 #[test]

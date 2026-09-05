@@ -406,7 +406,7 @@ pub struct WhoamiResponse {
     pub token_status: Option<String>,
     #[serde(default)]
     pub available: Option<bool>,
-    #[serde(default)]
+    #[serde(rename = "onBehalfOf", default)]
     pub on_behalf_of: Option<OnBehalfOf>,
 }
 
