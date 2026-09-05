@@ -83,7 +83,9 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 |---|---|---|---|
 | `check_env` | — | `EnvStatus` | 检测运行环境、配置和登录 |
 | `setup_lark_cli` | — | `String` | 安装固定版本 CLI 并返回版本 |
-| `init_app` | `brand`, `lang` | `String` | 初始化飞书应用配置 |
+| `init_app` | `brand`, `lang` | `String` | 初始化飞书应用配置（同步阻塞版，勿 UI 直调） |
+| `start_app_init` | `brand`, `lang` | `AppInitStatus` | 后台流式启动创建向导（`config init --new`），立即返回 |
+| `get_app_init_status` | — | `AppInitStatus` | 轮询创建向导状态：running / url / stage / error |
 | `start_login` | — | `DeviceInfo` | 发起设备码登录 |
 | `complete_login` | `device_code` | `LoginResult` | 完成设备码登录 |
 | `login_feishu_blocking` | — | `LoginResult` | 阻塞式登录回退 |
@@ -103,12 +105,20 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 | `dismiss_task_result` | `task_id` | — | 删除指定完成结果 |
 | `list_task_history` | — | `Vec<WikiTaskResult>` | 查询最近任务历史 |
 
-> **`init_app` 现状**：该命令是同步命令，UI 直调会占住 IPC 直至 600s 超时且无法实时回传
-> 浏览器创建向导 URL，因此**未接入前端流程**。前端「飞书应用配置」未配置时的修复入口
-> （Onboarding 第 1 步 /「飞书终端」环境卡 →「去创建」→ `AppConfigGuide` 引导面板）改用等价
-> 手动命令 `lark-cli config init --new --brand feishu --lang zh`：复制命令 → 用户在自己终端运行
-> （阻塞式浏览器创建向导）→ 创建完成回应用点「重新检测」闭环。一键自动创建
-> （后台任务化 `init_app` + URL 实时回传）为后续演进，未排期。
+> **`config init --new`（创建/配置飞书自建应用）的调用分工**
+>
+> 该命令是**阻塞式浏览器向导**：lark-cli 打印创建向导 URL 后阻塞等待用户在浏览器完成
+> 创建，官方对 AI/agent 的用法就是「后台运行、从输出读取验证 URL」。因此：
+>
+> - `init_app`（同步版）：UI 直调会占住 IPC 至 600s 且拿不到 URL，**仅供命令行/测试**，
+>   勿在界面调用。
+> - `start_app_init` + `get_app_init_status`（界面实际使用）：后台线程流式执行同一命令，
+>   逐行回调；`extract_first_url` 从输出行中读取首个 http(s) 链接写入状态。前端
+>   `AppConfigGuide` 面板轮询（700ms），拿到 `url` 即自动打开浏览器并给出
+>   「重新打开链接 / 链接放入剪贴板」兜底，浏览器完成后命令结束，面板自动回抛 recheck
+>   重跑环境体检，全程无需手动输入。单进程同时只允许一个向导（重复发起返回错误）。
+> - URL 提取规则与命令行输出格式解耦（兼容 ANSI 着色、中文前缀、大小写），只认 http(s)
+>   头；后端单测 `url_tests` 覆盖各类行形态。
 
 所有命令错误统一序列化为：
 

@@ -234,6 +234,15 @@ export interface LogFileMeta {
   modified_at: string | null;
 }
 
+/** 飞书应用创建向导实时状态（start_app_init / get_app_init_status） */
+export interface AppInitStatus {
+  running: boolean;
+  stage: string;
+  url: string | null;
+  message: string | null;
+  error: string | null;
+}
+
 export interface LogFileContent {
   name: string;
   content: string;

@@ -527,6 +527,24 @@ pub struct LoginResult {
     pub error: Option<String>,
 }
 
+/// 飞书应用创建向导实时状态（start_app_init / get_app_init_status）
+///
+/// `config init --new` 是阻塞式浏览器向导：命令在后台运行并输出验证 URL，
+/// 前端轮询本状态，抓到 `url` 后自动打开浏览器让用户完成创建。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AppInitStatus {
+    /// 是否仍在运行中
+    pub running: bool,
+    /// 当前阶段文案（给用户看的简短中文）
+    pub stage: String,
+    /// 捕获到的浏览器创建向导 URL（出现后前端应自动打开）
+    pub url: Option<String>,
+    /// 最近一行过程信息（原始输出的裁剪/截断）
+    pub message: Option<String>,
+    /// 失败原因（running=false 且 error 有值时表示失败）
+    pub error: Option<String>,
+}
+
 // ============================================================================
 // 运行日志
 // ============================================================================

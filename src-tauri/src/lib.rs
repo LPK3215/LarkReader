@@ -52,12 +52,15 @@ pub fn run() {
             tasks: Arc::new(Mutex::new(HashMap::new())),
             completed_tasks: Arc::new(Mutex::new(completed_tasks)),
             settings_warning: Mutex::new(settings_warning),
+            app_init: Arc::new(Mutex::new(models::AppInitStatus::default())),
         })
         .invoke_handler(tauri::generate_handler![
             // P0 命令
             commands::check_env,
             commands::setup_lark_cli,
             commands::init_app,
+            commands::start_app_init,
+            commands::get_app_init_status,
             commands::start_login,
             commands::complete_login,
             commands::login_feishu_blocking,

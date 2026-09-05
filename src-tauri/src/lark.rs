@@ -4,10 +4,11 @@
 //! subprocess.run → json.loads → 检查 ok → 取 data
 //! 不加多余的 --format json，不加 --overwrite，简单直接。
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use wait_timeout::ChildExt;
@@ -45,6 +46,68 @@ fn extract_json(stdout: &str) -> &str {
         return &trimmed[pos..];
     }
     trimmed
+}
+
+/// 从一行输出中提取第一个 http(s) 链接（大小写不敏感）。
+///
+/// 用于提取 `config init --new` 打印的浏览器创建向导 URL。输出可能带 ANSI
+/// 颜色码与行尾标点，因此只截取 URL 合法字符段，并在结尾去掉可能混入的标点。
+pub fn extract_first_url(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut lower = bytes.to_vec();
+    for b in lower.iter_mut() {
+        b.make_ascii_lowercase();
+    }
+    let mut i = 0;
+    while i < lower.len() {
+        let scheme_len = if lower[i..].starts_with(b"https://") {
+            8
+        } else if lower[i..].starts_with(b"http://") {
+            7
+        } else {
+            i += 1;
+            continue;
+        };
+        let start = i;
+        let mut end = start + scheme_len;
+        while end < bytes.len() {
+            let c = bytes[end];
+            // 只收 URL 合法字符；遇到引号/括号/空白/ANSI 转义等即停
+            let ok = c.is_ascii_graphic()
+                && !matches!(
+                    c,
+                    b'"' | b'\''
+                        | b'`'
+                        | b'<'
+                        | b'>'
+                        | b'\\'
+                        | b'('
+                        | b')'
+                        | b'['
+                        | b']'
+                        | b'{'
+                        | b'}'
+                        | b','
+                        | b';'
+                );
+            if !ok {
+                break;
+            }
+            end += 1;
+        }
+        // 去掉结尾常见的标点/斜杠
+        let mut trimmed_end = end;
+        while trimmed_end > start + scheme_len
+            && matches!(bytes[trimmed_end - 1], b'.' | b'/' | b'?' | b'#' | b':')
+        {
+            trimmed_end -= 1;
+        }
+        if trimmed_end > start + scheme_len {
+            return Some(text[start..trimmed_end].to_string());
+        }
+        i = end;
+    }
+    None
 }
 
 /// 执行 lark-cli 命令，返回 stdout 字符串
@@ -325,6 +388,104 @@ pub fn config_show() -> AppResult<Option<(String, String)>> {
 /// 执行 `lark-cli config init --new --brand feishu --lang zh`
 pub fn config_init(brand: &str, lang: &str) -> AppResult<String> {
     run_lark_interactive(&["config", "init", "--new", "--brand", brand, "--lang", lang])
+}
+
+/// 后台流式执行 `config init --new`（阻塞式浏览器创建向导）。
+///
+/// 与同步版 `config_init` 不同：本函数把每一行 stdout/stderr 实时交给 `on_line`，
+/// 供调用方在向导阻塞期间提取验证 URL 并持续更新进度。命令最长运行 600 秒，
+/// 超时/异常退出均返回 Err，正常退出返回最后一行 stdout（去空行）。
+pub fn config_init_stream(
+    brand: &str,
+    lang: &str,
+    on_line: Arc<dyn Fn(&str) + Send + Sync>,
+) -> AppResult<String> {
+    let args = [
+        "config".to_string(),
+        "init".to_string(),
+        "--new".to_string(),
+        "--brand".to_string(),
+        brand.to_string(),
+        "--lang".to_string(),
+        lang.to_string(),
+    ];
+    let mut command = build_command();
+    let mut child = command
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::LarkCliNotFound(e.to_string()))?;
+    let stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Other("无法读取 lark-cli stdout".to_string()))?;
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::Other("无法读取 lark-cli stderr".to_string()))?;
+
+    let cb_out = on_line.clone();
+    let out_reader = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout_pipe);
+        let mut last = String::new();
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            cb_out(&line);
+            if !line.trim().is_empty() {
+                last = line;
+            }
+        }
+        last
+    });
+    let cb_err = on_line.clone();
+    let err_reader = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr_pipe);
+        let mut last = String::new();
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            cb_err(&line);
+            if !line.trim().is_empty() {
+                last = line;
+            }
+        }
+        last
+    });
+
+    const TIMEOUT_SECS: u64 = 600;
+    let started = Instant::now();
+    let status: ExitStatus = loop {
+        if let Some(status) = child
+            .wait_timeout(Duration::from_millis(200))
+            .map_err(AppError::Io)?
+        {
+            break status;
+        }
+        if started.elapsed() >= Duration::from_secs(TIMEOUT_SECS) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = out_reader.join();
+            let _ = err_reader.join();
+            return Err(AppError::CommandTimeout(TIMEOUT_SECS));
+        }
+    };
+    let out_last = out_reader
+        .join()
+        .map_err(|_| AppError::Other("读取 stdout 的线程异常退出".to_string()))?;
+    let err_last = err_reader
+        .join()
+        .map_err(|_| AppError::Other("读取 stderr 的线程异常退出".to_string()))?;
+
+    if status.success() {
+        Ok(out_last)
+    } else {
+        let msg = if !err_last.trim().is_empty() {
+            err_last
+        } else {
+            out_last
+        };
+        Err(AppError::LarkCliError(msg.trim().to_string()))
+    }
 }
 
 /// 执行 `lark-cli auth login --domain docs --domain drive --domain wiki`（阻塞模式）
@@ -671,4 +832,48 @@ pub fn lark_cli_exists() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::extract_first_url;
+
+    #[test]
+    fn extracts_plain_https() {
+        assert_eq!(
+            extract_first_url("Go to https://open.feishu.cn/app/new"),
+            Some("https://open.feishu.cn/app/new".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_ansi_and_trailing_punctuation() {
+        assert_eq!(
+            extract_first_url("\u{1b}[36mhttps://example.com/a?b=1&c=2\u{1b}[0m，请打开"),
+            Some("https://example.com/a?b=1&c=2".to_string())
+        );
+    }
+
+    #[test]
+    fn http_and_uppercase() {
+        assert_eq!(
+            extract_first_url("HTTP://A.B/x"),
+            Some("HTTP://A.B/x".to_string())
+        );
+    }
+
+    #[test]
+    fn none_when_no_link() {
+        assert_eq!(extract_first_url("正在等待创建…"), None);
+    }
+
+    #[test]
+    fn url_after_chinese_text() {
+        assert_eq!(
+            extract_first_url(
+                "请在浏览器中打开以下链接：https://open.feishu.cn/app/create，完成创建"
+            ),
+            Some("https://open.feishu.cn/app/create".to_string())
+        );
+    }
 }

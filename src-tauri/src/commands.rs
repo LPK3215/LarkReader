@@ -13,10 +13,11 @@ use tauri::State;
 use crate::env;
 use crate::error::AppError;
 use crate::extract;
+use crate::lark;
 use crate::models::{
-    DeviceInfo, EnvStatus, ExtractResult, ExtractStatus, LogFileContent, LogFileMeta, LoginResult,
-    OutputPreflight, PreviewResult, Progress, Settings, SettingsStatus, TaskPhase, TaskStatus,
-    WikiExtractResult, WikiNode, WikiTaskResult,
+    AppInitStatus, DeviceInfo, EnvStatus, ExtractResult, ExtractStatus, LogFileContent,
+    LogFileMeta, LoginResult, OutputPreflight, PreviewResult, Progress, Settings, SettingsStatus,
+    TaskPhase, TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -26,6 +27,8 @@ pub struct AppState {
     pub tasks: Arc<Mutex<HashMap<String, TaskControl>>>,
     pub completed_tasks: Arc<Mutex<HashMap<String, WikiTaskResult>>>,
     pub settings_warning: Mutex<Option<String>>,
+    /// 飞书应用创建向导状态（start_app_init / get_app_init_status）
+    pub app_init: Arc<Mutex<AppInitStatus>>,
 }
 
 pub struct TaskControl {
@@ -178,9 +181,121 @@ pub fn setup_lark_cli() -> Result<String, AppError> {
 }
 
 /// 初始化飞书应用配置（阻塞模式，会打开浏览器）
+///
+/// 注意：同步版，调用期间会占住 IPC 队列最长 600 秒，且无法把创建向导 URL
+/// 实时回传给前端。新界面请用 `start_app_init` + `get_app_init_status`。
 #[tauri::command]
 pub fn init_app(brand: String, lang: String) -> Result<String, AppError> {
     env::init_app_config(&brand, &lang)
+}
+
+/// 在后台启动飞书应用创建向导（`config init --new`）并立即返回。
+///
+/// lark-cli 的 `config init --new` 是阻塞式浏览器向导：命令在后台运行，逐行打印
+/// 输出（含验证 URL）。本命令把 stdout/stderr 逐行流式转发到 `app_init` 状态，
+/// 前端通过轮询 `get_app_init_status` 拿到 `url` 后自动打开浏览器。
+///
+/// 不能并发发起两个向导（lark-cli 每次只支持一个待完成的创建流程）。
+#[tauri::command]
+pub async fn start_app_init(
+    state: State<'_, AppState>,
+    brand: String,
+    lang: String,
+) -> Result<AppInitStatus, AppError> {
+    let status = state.app_init.clone();
+    {
+        let cur = status
+            .lock()
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+        if cur.running {
+            return Err(AppError::Other(
+                "已有应用创建流程正在运行，请先在浏览器完成或稍后重试".to_string(),
+            ));
+        }
+    }
+    {
+        let mut s = status
+            .lock()
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+        *s = AppInitStatus {
+            running: true,
+            stage: "正在启动飞书应用创建向导…".to_string(),
+            url: None,
+            message: Some("正在调用 lark-cli…".to_string()),
+            error: None,
+        };
+    }
+    crate::logger::info(format!(
+        "开始飞书应用创建向导（config init --new，brand={brand}，lang={lang}）"
+    ));
+
+    let cb_status = status.clone();
+    let on_line: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |line: &str| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if let Ok(mut s) = cb_status.lock() {
+            // 裁剪到 300 字，避免把超长行整个塞进状态
+            let clipped: String = trimmed.chars().take(300).collect();
+            s.message = Some(clipped);
+            if s.url.is_none() {
+                if let Some(url) = lark::extract_first_url(trimmed) {
+                    s.url = Some(url);
+                    s.stage = "授权链接已生成，正在自动打开浏览器…".to_string();
+                }
+            }
+        }
+    });
+
+    let run_status = status.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            lark::config_init_stream(&brand, &lang, on_line)
+        })
+        .await;
+        if let Ok(mut s) = run_status.lock() {
+            s.running = false;
+            match result {
+                Ok(Ok(last_line)) => {
+                    s.stage = "已完成".to_string();
+                    let tail = last_line.trim();
+                    s.message = Some(if tail.is_empty() {
+                        "应用创建成功，配置已写入 lark-cli".to_string()
+                    } else {
+                        format!("应用创建成功：{tail}")
+                    });
+                    crate::logger::info("飞书应用创建向导完成");
+                }
+                Ok(Err(err)) => {
+                    s.stage = "失败".to_string();
+                    s.error = Some(err.to_string());
+                    crate::logger::error(format!("飞书应用创建失败：{err}"));
+                }
+                Err(err) => {
+                    s.stage = "失败".to_string();
+                    s.error = Some(format!("创建向导后台任务异常：{err}"));
+                    crate::logger::error(format!("飞书应用创建向导异常：{err}"));
+                }
+            }
+        }
+    });
+
+    let snapshot = status
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?
+        .clone();
+    Ok(snapshot)
+}
+
+/// 查询飞书应用创建向导的实时状态（轮询用）
+#[tauri::command]
+pub fn get_app_init_status(state: State<'_, AppState>) -> Result<AppInitStatus, AppError> {
+    let s = state
+        .app_init
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    Ok(s.clone())
 }
 
 /// 发起飞书登录（非阻塞模式）
