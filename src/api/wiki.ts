@@ -10,7 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ExportableCount, WikiNode } from "./types";
 
-/** 扫描模式：auto=A模式（只导出传入节点子树），full_space=C模式（整库展开） */
+/** 扫描模式：auto=只导出传入节点子树，full_space=整库展开 */
 export type ScanMode = "auto" | "full_space";
 
 /**

@@ -1,4 +1,4 @@
-# 扫描模式对比：A 模式（Auto）vs C 模式（FullSpace）
+# 扫描模式对比：Auto vs FullSpace
 
 ## 背景
 
@@ -6,8 +6,8 @@
 
 知识库的首页节点（即空间入口页）本身是一个普通 Doc，通常 `has_child=false`，子文档是通过 space 级别独立挂载的。这导致：
 
-- **A 模式（Auto）**：递归扫描目标节点及其子树。如果目标节点 `has_child=false`，只能扫描到该节点本身。
-- **C 模式（FullSpace）**：当目标节点 `has_child=false` 时，自动 fallback 到 `wiki +node-list --space-id`（不带 parent token），获取该空间下全部顶层节点，然后递归展开各自的子树。
+- **Auto 模式**：递归扫描目标节点及其子树。如果目标节点 `has_child=false`，只能扫描到该节点本身。
+- **FullSpace 模式**：当目标节点 `has_child=false` 时，自动 fallback 到 `wiki +node-list --space-id`（不带 parent token），获取该空间下全部顶层节点，然后递归展开各自的子树。
 
 ## 测试案例
 
@@ -17,7 +17,7 @@
 
 ## 扫描结果对比
 
-### A 模式（Auto）
+### Auto 模式
 
 ```
 [0] LarkReader-E2E-测试库 (obj_type=Doc, has_child=false, children=0, depth=0)
@@ -32,7 +32,7 @@
 | File | 0 |
 | **扫描总数** | **1** |
 
-### C 模式（FullSpace）
+### FullSpace 模式
 
 ```
 [0] LarkReader-E2E-测试库 (obj_type=Folder, has_child=true, children=8, depth=0)
@@ -87,7 +87,7 @@
 
 ## 下载结果对比
 
-| | A 模式 | C 模式 |
+| | Auto 模式 | FullSpace 模式 |
 |---|---|---|
 | 成功下载 | 1 项 | 38 项 |
 | 失败 | 0 | 0 |
@@ -95,7 +95,7 @@
 
 ## 输出目录结构对比
 
-### A 模式输出
+### Auto 模式输出
 
 ```
 LarkReader-E2E-测试库/
@@ -104,7 +104,7 @@ LarkReader-E2E-测试库/
 
 仅下载了首页这一个文档。
 
-### C 模式输出
+### FullSpace 模式输出
 
 ```
 LarkReader-E2E-测试库/
@@ -159,13 +159,13 @@ LarkReader-E2E-测试库/
 
 ## 总结
 
-| 维度 | A 模式（Auto） | C 模式（FullSpace） |
+| 维度 | Auto 模式 | FullSpace 模式 |
 |------|----------------|----------------------|
 | 扫描范围 | 目标节点及子树 | 整个知识库空间 |
 | 扫描节点数 | 1 | 38 |
 | 下载项数 | 1 | 38 |
 | 适用场景 | 已知目标节点有子文档时，精准导出子树 | 知识库首页无子文档时，整库导出 |
 | 副作用 | 无 | 无 |
-| 兼容性 | 现有行为不变 | 新增能力，不影响 A 模式 |
+| 兼容性 | 现有行为不变 | 新增能力，不影响 Auto 模式 |
 
-**核心结论**：C 模式能获取到 A 模式获取不到的全部文档，两种模式完全兼容，互不影响。
+**核心结论**：FullSpace 模式能获取到 Auto 模式获取不到的全部文档，两种模式完全兼容，互不影响。

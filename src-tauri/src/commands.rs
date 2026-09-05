@@ -12,13 +12,11 @@ use tauri::State;
 
 use crate::env;
 use crate::error::AppError;
-use crate::extract;
 use crate::lark;
 use crate::models::{
-    AppInitStatus, DeviceInfo, EnvStatus, ExportableCount, ExtractResult, ExtractStatus,
-    LogFileContent, LogFileMeta, LoginResult, OutputPreflight, PreviewResult, Progress,
-    ReaderBinary, ReaderEntry, Settings, SettingsStatus, TaskPhase, TaskStatus, WikiExtractResult,
-    WikiNode, WikiTaskResult,
+    AppInitStatus, DeviceInfo, EnvStatus, ExportableCount, LogFileContent, LogFileMeta,
+    LoginResult, OutputPreflight, Progress, ReaderBinary, ReaderEntry, Settings, SettingsStatus,
+    TaskPhase, TaskStatus, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -147,15 +145,6 @@ fn log_login_result(result: &LoginResult) {
             "飞书登录失败：{}",
             result.error.as_deref().unwrap_or("未知错误")
         ));
-    }
-}
-
-/// 提取状态的中文描述（仅用于日志）
-fn extract_status_label(status: &ExtractStatus) -> &'static str {
-    match status {
-        ExtractStatus::Success => "成功",
-        ExtractStatus::Partial => "部分成功",
-        ExtractStatus::Failed => "失败",
     }
 }
 
@@ -341,47 +330,6 @@ pub async fn logout() -> Result<String, AppError> {
     Ok(result)
 }
 
-/// 预览文档：获取 Markdown 正文（不下载图片）
-#[tauri::command]
-pub async fn preview_doc(url: String) -> Result<PreviewResult, AppError> {
-    tauri::async_runtime::spawn_blocking(move || extract::preview_doc(&url))
-        .await
-        .map_err(|e| AppError::Other(format!("文档预览任务异常: {e}")))?
-}
-
-/// 提取单篇文档（正文 + 图片下载 + 保存 .md）
-#[tauri::command]
-pub async fn extract_doc(
-    url: String,
-    output_dir: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<ExtractResult, AppError> {
-    let settings = read_settings(&state)?;
-    let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
-    crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
-        .map_err(AppError::InvalidSetting)?;
-    let result = extract::extract_doc_async(&url, &dir, &settings).await;
-    match &result {
-        Ok(r) => crate::logger::info(format!(
-            "单篇导出「{}」：{} 字符，图片 {}/{} 成功，状态 {}，保存到 {}",
-            r.title,
-            r.char_count,
-            r.images_downloaded,
-            r.image_count,
-            extract_status_label(&r.status),
-            r.filepath
-        )),
-        Err(error) => crate::logger::warn(format!("单篇导出失败：{error}")),
-    }
-    result
-}
-
-/// 获取当前设置
-#[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, AppError> {
-    read_settings(&state)
-}
-
 /// 保存设置
 #[tauri::command]
 pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), AppError> {
@@ -450,8 +398,8 @@ pub fn open_output_dir(path: String) -> Result<(), AppError> {
 /// 扫描结果会缓存到 `AppState.last_tree`，供后续 `count_exportable` 与
 /// `start_extract_wiki` 复用，避免同一棵树被扫描两次。
 ///
-/// `scan_mode`：可选，默认 `auto`（A 模式，只导出传入节点及其子树）。
-/// 传 `full_space`（C 模式）时，如果传入节点无子节点，自动展开整个
+/// `scan_mode`：可选，默认 `auto`（Auto 模式，只导出传入节点及其子树）。
+/// 传 `full_space`（FullSpace 模式）时，如果传入节点无子节点，自动展开整个
 /// 知识库（列出 space 下全部顶层节点）。不传或传 `auto` 时行为不变。
 #[tauri::command]
 pub async fn get_wiki_tree(
@@ -500,25 +448,6 @@ pub fn count_exportable(
         tree,
         selected_tokens.as_deref(),
     ))
-}
-
-/// 批量提取知识库
-///
-/// - `wiki_url`: 知识库根节点链接
-/// - `output_dir`: 输出目录（None 用默认）
-/// - `selected_tokens`: 选中的节点 token 列表（None 表示全部提取）
-#[tauri::command]
-pub async fn extract_wiki(
-    wiki_url: String,
-    output_dir: Option<String>,
-    selected_tokens: Option<Vec<String>>,
-    state: State<'_, AppState>,
-) -> Result<WikiExtractResult, AppError> {
-    let settings = read_settings(&state)?;
-    let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
-    crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
-        .map_err(AppError::InvalidSetting)?;
-    wiki::extract_wiki(&wiki_url, &dir, &settings, selected_tokens.as_deref()).await
 }
 
 #[tauri::command]

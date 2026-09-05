@@ -55,10 +55,10 @@ fn retry_backoff_ms(attempt: usize) -> u64 {
 
 /// 扫描模式
 ///
-/// - `Auto`（A 模式）：只导出传入 URL 对应的节点及其子树。默认行为，不变。
-/// - `FullSpace`（C 模式）：如果传入节点没有子节点，自动展开整个知识库
-///   （列出 space 下全部顶层节点，逐个递归）。A 模式的超集——A 能拿到的
-///   C 全能拿到，A 拿不到的兄弟节点 C 也能拿到。
+/// - `Auto`：只导出传入 URL 对应的节点及其子树。默认行为，不变。
+/// - `FullSpace`：如果传入节点没有子节点，自动展开整个知识库
+///   （列出 space 下全部顶层节点，逐个递归）。Auto 的超集——Auto 能拿到的
+///   FullSpace 全能拿到，Auto 拿不到的兄弟节点 FullSpace 也能拿到。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScanMode {
@@ -67,7 +67,7 @@ pub enum ScanMode {
     FullSpace,
 }
 
-/// 获取 Wiki 节点树（A 模式，只导出传入节点及其子树）
+/// 获取 Wiki 节点树（Auto 模式，只导出传入节点及其子树）
 ///
 /// 流程：
 /// 1. 调 wiki +node-get 获取根节点信息（space_id、has_child）
@@ -80,11 +80,11 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
 /// 获取 Wiki 节点树（支持扫描模式选择）
 ///
 /// - `ScanMode::Auto`：等同 `get_wiki_tree`，只导出传入节点及其子树
-/// - `ScanMode::FullSpace`：A 模式超集。先走 A 逻辑，如果传入节点
+/// - `ScanMode::FullSpace`：Auto 模式超集。先走 Auto 逻辑，如果传入节点
 ///   `has_child=false`（无子树），额外调 `wiki +node-list --space-id`（不带
 ///   parent）列出 space 下全部顶层节点，构造虚拟 Folder 根逐个递归。
-///   虚拟根 obj_type=Folder 不会被收集为文档；space 顶层节点按 A 模式同款
-///   depth=1 挂到虚拟根下，目录结构与 A 模式一致。
+///   虚拟根 obj_type=Folder 不会被收集为文档；space 顶层节点按 Auto 模式同款
+///   depth=1 挂到虚拟根下，目录结构与 Auto 模式一致。
 pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<WikiNode> {
     let node_token = extract::parse_node_token(wiki_url);
     if node_token.is_empty() {
@@ -118,14 +118,14 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
         children: vec![],
     };
 
-    // A 模式或 C 模式且有子节点：走原有递归逻辑
+    // Auto 或 FullSpace 模式且有子节点：走原有递归逻辑
     if has_child {
         let mut ancestors = HashSet::from([node_token.clone()]);
         let mut node_count = 1usize;
         root.children =
             traverse_children(&space_id, &node_token, 1, &mut ancestors, &mut node_count)?;
     } else if mode == ScanMode::FullSpace {
-        // C 模式 fallback：传入节点无子树，展开整个 space
+        // FullSpace fallback：传入节点无子树，展开整个 space
         let space_roots = lark::wiki_space_roots(&space_id)?;
         if !space_roots.is_empty() {
             // 构造虚拟 Folder 根：obj_type=Folder 不会被收集为文档，
@@ -164,7 +164,7 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
                         .position
                         .and_then(|p| usize::try_from(p).ok())
                         .unwrap_or(0),
-                    // depth=1：与 A 模式的顶层节点对齐。collect_docs_recursive
+                    // depth=1：与 Auto 模式的顶层节点对齐。collect_docs_recursive
                     // 用“父节点 depth != 0”来决定是否为其子节点创建目录层；
                     // 若这里填 0，顶层文件夹本身不会生成目录，其下文档会整体
                     // 塌陷到知识库根目录，两个文件夹里的同名文档可能互相覆盖。
@@ -185,7 +185,7 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
                         &space_id,
                         &child_token,
                         // space 顶层节点 depth=1，其子节点自然从 depth=2 开始，
-                        // 与 A 模式（根 depth0 -> 顶层 depth1 -> 更深递增）严格一致。
+                        // 与 Auto 模式（根 depth0 -> 顶层 depth1 -> 更深递增）严格一致。
                         2,
                         &mut ancestors,
                         &mut node_count,
@@ -1149,7 +1149,7 @@ mod tests {
 
     #[test]
     fn full_space_top_level_folder_keeps_directory_layer() {
-        // 复现 C 模式（整库展开）缺陷：space 顶层节点若被误设成 depth=0，
+        // 复现 FullSpace 模式（整库展开）缺陷：space 顶层节点若被误设成 depth=0，
         // collect_docs_recursive 就不会为顶层文件夹创建目录层，其下文档会
         // 全部塌陷到知识库根目录，两个文件夹里的同名文档可能互相覆盖。
         let top_folder = WikiNode {

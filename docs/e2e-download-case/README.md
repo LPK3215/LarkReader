@@ -134,15 +134,15 @@ e2e-download-case/
 | `e2e_download_tmp/` | **测试工作目录**：回归跑批临时输出，每次测试前清空 |
 | `docs/e2e-download-case/`（本目录） | **下载结果案例**：E2E 测试库全量下载的稳定快照，长期留档 |
 
-> 复现方式：`e2e_download_tmp` 的回归测试 `cargo test --test z_tmp_full_download download_everything`
-> 下载同一批内容的 7 个根节点；本目录额外含第 8 根（06_附件下载）。附件断言用例
-> `download_attachments` 可单独复跑验证 18 附件。
+> 本目录是使用 **FullSpace 扫描模式**手动全量下载后长期留档的稳定快照。
+> 现存真实下载自动化回归见 `tests/z_tmp_big_download.rs`（针对“实测大型知识库（A）”，
+> 可 `cd src-tauri && cargo test --test z_tmp_big_download` 复跑）。
 
 ## 扫描模式说明
 
 本案例使用 **FullSpace 扫描模式**导出整库。LarkReader 内置两种扫描模式：
 
-- **A 模式（Auto）**：仅导出目标节点及其子树。适合已知"目标节点就是一个含子文档的父节点"的场景。
-- **C 模式（FullSpace）**：当目标节点 `has_child=false` 时自动 fallback 到 `wiki +node-list --space-id` 抓取空间全部顶层节点，再递归各自的子树。适合"知识库首页本身只是个入口页、子文档都挂在 space 级别"的场景——本案例就属于这一种。
+- **Auto 模式**：仅导出目标节点及其子树。适合已知"目标节点就是一个含子文档的父节点"的场景。
+- **FullSpace 模式**：当目标节点 `has_child=false` 时自动 fallback 到 `wiki +node-list --space-id` 抓取空间全部顶层节点，再递归各自的子树。适合"知识库首页本身只是个入口页、子文档都挂在 space 级别"的场景——本案例就属于这一种。
 
-本案例 A 模式仅能扫到 1 项（首页正文），C 模式扫到 38 项（整库）。两种模式完全兼容，按需切换。原理与差异详见 [docs/scan-mode-comparison.md](../scan-mode-comparison.md)。
+本案例 Auto 模式仅能扫到 1 项（首页正文），FullSpace 模式扫到 38 项（整库）。两种模式完全兼容，按需切换。原理与差异详见 [docs/scan-mode-comparison.md](../scan-mode-comparison.md)。

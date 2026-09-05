@@ -214,8 +214,8 @@
 
           <div class="case-mode-row">
             <span class="case-mode-row-label">扫描模式对比</span>
-            <span class="case-mode-row-a"><strong>A 模式</strong>（仅导出本节点）：<strong>1 项</strong></span>
-            <span class="case-mode-row-c"><strong>C 模式</strong>（展开整个知识库）：<strong>38 项</strong> ← 本案例</span>
+            <span class="case-mode-row-a"><strong>Auto 模式</strong>（仅导出本节点）：<strong>1 项</strong></span>
+            <span class="case-mode-row-c"><strong>FullSpace 模式</strong>（展开整个知识库）：<strong>38 项</strong> ← 本案例</span>
             <a class="case-mode-row-link" href="https://github.com/LPK3215/LarkReader/blob/main/docs/scan-mode-comparison.md" target="_blank" rel="noopener">原理 ↗</a>
           </div>
 
@@ -459,6 +459,49 @@
             </svg>
           </div>
         </article>
+
+        <article class="feature feature-wide">
+          <div class="feature-text">
+            <div class="feature-tag">应用内更新</div>
+            <h3>新版本一键跟上</h3>
+            <p>设置页一键「检查更新」；下载进度可见、公钥签名校验；Windows 装好自动接管、macOS/Linux 装好自动重启。启动时也会静默提示一次，不打扰。</p>
+            <ul class="feature-list">
+              <li>设置页「检查更新」入口 + 当前版本展示</li>
+              <li>进度条 + 已下载字节数，可随时取消</li>
+              <li>GitHub Releases 端点 + 内嵌公钥签名校验</li>
+            </ul>
+          </div>
+          <div class="feature-art feature-art-small">
+            <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="200" rx="12" fill="rgba(99,153,34,.08)"/>
+              <g font-family="Inter, sans-serif" font-size="11">
+                <!-- 左侧：当前版本 -->
+                <rect x="14" y="22" width="138" height="156" rx="8" fill="#171a30" stroke="#262a4a"/>
+                <text x="83" y="42" fill="#a0a8c8" text-anchor="middle" font-size="10">当前版本</text>
+                <text x="83" y="76" fill="#cdd6f4" text-anchor="middle" font-size="22" font-weight="700">v0.1.0</text>
+                <text x="83" y="100" fill="#639922" text-anchor="middle" font-size="11">运行中</text>
+                <line x1="34" y1="116" x2="132" y2="116" stroke="#262a4a"/>
+                <rect x="34" y="132" width="98" height="22" rx="6" fill="#262a4a"/>
+                <text x="83" y="148" fill="#cdd6f4" text-anchor="middle" font-size="11">检查更新</text>
+
+                <!-- 右侧：新版本可用 -->
+                <rect x="168" y="22" width="138" height="156" rx="8" fill="#171a30" stroke="#639922" stroke-width="1.5"/>
+                <circle cx="184" cy="38" r="4" fill="#639922"/>
+                <text x="196" y="42" fill="#639922" font-size="10" font-weight="600">NEW</text>
+                <text x="237" y="62" fill="#a0a8c8" text-anchor="middle" font-size="10">新版本</text>
+                <text x="237" y="92" fill="#cdd6f4" text-anchor="middle" font-size="22" font-weight="700">v0.2.0</text>
+
+                <!-- 进度条 -->
+                <text x="178" y="118" fill="#a0a8c8" font-size="10">下载中 28 / 49 MB</text>
+                <rect x="178" y="124" width="118" height="6" rx="3" fill="#1f2540"/>
+                <rect x="178" y="124" width="66" height="6" rx="3" fill="#639922"/>
+
+                <rect x="178" y="148" width="118" height="22" rx="6" fill="#639922"/>
+                <text x="237" y="163" fill="#fff" text-anchor="middle" font-size="11" font-weight="600">下载并安装</text>
+              </g>
+            </svg>
+          </div>
+        </article>
       </div>
     </div>
   </section>
@@ -642,6 +685,10 @@ npm run tauri build</code></pre>
         <details class="faq-item">
           <summary>登录态会自动续期吗？</summary>
           <p>会的。LarkReader 自动管理 user_access_token，过期前自动用 refresh_token 续命，不需要你每次扫码。</p>
+        </details>
+        <details class="faq-item">
+          <summary>有新版本会自动提醒我吗？</summary>
+          <p>会。每次启动会静默检查一次 GitHub Releases，发现新版就在顶部提示一次（每进程只提示一次，避免打扰）；想立刻检查也可以在「设置 → 软件更新」一键启动，下载进度可见，装好后 Windows 自动接管、macOS / Linux 自动重启。</p>
         </details>
         <details class="faq-item">
           <summary>怎么反馈 bug / 提需求 / 贡献代码？</summary>
