@@ -178,6 +178,12 @@ src-tauri/src/
 | `get_wiki_tree` | `{ wiki_url }` | `WikiNode { node_token, title, has_child, children }` | 获取知识库目录树（供前端展示） |
 | `preview_doc` | `{ url }` | `PreviewResult { title, content_markdown }` | 获取文档正文用于前端预览（不下载图片） |
 | `get_progress` | `{ task_id }` | `Progress { total, done, current, errors }` | 查询批量提取进度 |
+| `start_extract_wiki` | `{ wiki_url, output_dir?, selected_tokens? }` | `String` | 立即返回任务 ID，在后台扫描和导出 |
+| `get_task_result` | `{ task_id }` | `WikiTaskResult` | 非破坏性查询任务结果，可重复读取 |
+| `dismiss_task_result` | `{ task_id }` | `()` | 主动删除已完成任务结果 |
+| `list_task_history` | — | `Vec<WikiTaskResult>` | 查询持久化的最近任务历史 |
+| `preflight_output_dir` | `{ path }` | `OutputPreflight` | 检查目录可写性与磁盘剩余空间 |
+| `open_output_dir` | `{ path }` | `()` | 验证绝对目录后使用系统文件管理器打开 |
 
 ---
 
@@ -241,8 +247,18 @@ pub struct Progress {
     pub success_count: usize,
     pub failed_count: usize,
     pub errors: Vec<String>,
+    pub status: TaskStatus,
+    pub phase: TaskPhase,
+    pub current_item_type: Option<WikiNodeType>,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub elapsed_seconds: u64,
+    pub estimated_remaining_seconds: Option<u64>,
 }
 ```
+
+后台 Wiki 任务分为扫描、文档导出、Sheet 导出、Bitable 导出、收尾等阶段。完成结果保留 24 小时且最多 100 条，按完成时间淘汰最旧记录；查询结果不会自动删除。
 
 ---
 

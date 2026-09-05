@@ -201,6 +201,8 @@ impl WikiNode {
 pub struct WikiExtractResult {
     /// 知识库名称
     pub wiki_name: String,
+    /// 本次知识库导出的根目录
+    pub output_root: String,
     /// 总文档数
     pub total: usize,
     /// 成功数
@@ -219,6 +221,33 @@ pub struct WikiExtractResult {
     pub skipped: Vec<SkippedNode>,
     /// Sheet/Bitable 等特殊资源的成功导出结果
     pub exports: Vec<SpecialExport>,
+    /// 特殊资源导出失败记录（与“不支持而跳过”分开）
+    pub export_failures: Vec<SpecialExportFailure>,
+    /// 是否由用户取消；为 true 时结果可能是部分结果
+    pub cancelled: bool,
+    /// 实际已处理的项目数
+    pub completed_count: usize,
+    /// 统一的项目结果，调用方无需分别拼接文档、表格、失败和跳过列表
+    pub items: Vec<ExportItemResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportItemResult {
+    pub title: String,
+    pub node_token: Option<String>,
+    pub obj_type: WikiNodeType,
+    pub status: ExportItemStatus,
+    pub paths: Vec<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportItemStatus {
+    Success,
+    Partial,
+    Failed,
+    Skipped,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +256,14 @@ pub struct SpecialExport {
     pub node_token: String,
     pub obj_type: WikiNodeType,
     pub paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecialExportFailure {
+    pub title: String,
+    pub node_token: String,
+    pub obj_type: WikiNodeType,
+    pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,6 +310,18 @@ pub struct Progress {
     pub errors: Vec<String>,
     /// 任务当前状态
     pub status: TaskStatus,
+    /// 当前业务阶段，供调用方展示更准确的反馈
+    pub phase: TaskPhase,
+    /// 当前项目类型（doc/sheet/bitable）
+    pub current_item_type: Option<WikiNodeType>,
+    /// ISO 8601 时间
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    /// 已运行秒数
+    pub elapsed_seconds: u64,
+    /// 根据当前平均速度估算的剩余秒数；样本不足时为空
+    pub estimated_remaining_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,6 +330,19 @@ pub struct WikiTaskResult {
     pub progress: Progress,
     pub result: Option<WikiExtractResult>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskPhase {
+    Queued,
+    CheckingOutput,
+    ScanningWiki,
+    ExportingDocument,
+    ExportingSheet,
+    ExportingBitable,
+    Finalizing,
+    Finished,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -295,6 +357,7 @@ pub enum TaskStatus {
 
 impl Progress {
     pub fn new(task_id: String, total: usize) -> Self {
+        let now = chrono::Utc::now().to_rfc3339();
         Self {
             task_id,
             total,
@@ -305,7 +368,55 @@ impl Progress {
             failed_count: 0,
             errors: vec![],
             status: TaskStatus::Pending,
+            phase: TaskPhase::Queued,
+            current_item_type: None,
+            created_at: now,
+            started_at: None,
+            finished_at: None,
+            elapsed_seconds: 0,
+            estimated_remaining_seconds: None,
         }
+    }
+
+    pub fn start_phase(&mut self, phase: TaskPhase) {
+        if self.started_at.is_none() {
+            self.started_at = Some(chrono::Utc::now().to_rfc3339());
+        }
+        self.status = TaskStatus::Running;
+        self.phase = phase;
+        self.refresh_timing();
+    }
+
+    pub fn refresh_timing(&mut self) {
+        let Some(started) = self.started_at.as_deref() else {
+            return;
+        };
+        let Ok(started) = chrono::DateTime::parse_from_rfc3339(started) else {
+            return;
+        };
+        self.elapsed_seconds = (chrono::Utc::now() - started.with_timezone(&chrono::Utc))
+            .num_seconds()
+            .max(0) as u64;
+        self.estimated_remaining_seconds = if self.done > 0 && self.total > self.done {
+            Some(
+                self.elapsed_seconds
+                    .saturating_mul((self.total - self.done) as u64)
+                    / self.done as u64,
+            )
+        } else {
+            None
+        };
+    }
+
+    pub fn finish(&mut self, status: TaskStatus) {
+        self.refresh_timing();
+        self.status = status;
+        self.phase = TaskPhase::Finished;
+        self.current_doc = None;
+        self.current_path = None;
+        self.current_item_type = None;
+        self.finished_at = Some(chrono::Utc::now().to_rfc3339());
+        self.estimated_remaining_seconds = Some(0);
     }
 }
 
@@ -324,6 +435,19 @@ pub struct Settings {
     pub download_images: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputPreflight {
+    pub path: String,
+    pub writable: bool,
+    pub available_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsStatus {
+    pub settings: Settings,
+    pub warning: Option<String>,
+}
+
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
         if self.output_dir.trim().is_empty() {
@@ -338,12 +462,30 @@ impl Settings {
         }
         Ok(())
     }
+
+    pub fn validate_writable(&self) -> Result<(), String> {
+        self.validate()?;
+        validate_output_directory_writable(std::path::Path::new(&self.output_dir))
+    }
+}
+
+pub fn validate_output_directory_writable(path: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|e| format!("无法创建输出目录: {e}"))?;
+    let probe = tempfile::Builder::new()
+        .prefix(".larkreader-write-test-")
+        .tempfile_in(path)
+        .map_err(|e| format!("输出目录不可写: {e}"))?;
+    probe
+        .close()
+        .map_err(|e| format!("输出目录写入探测清理失败: {e}"))
 }
 
 impl Default for Settings {
     fn default() -> Self {
         let output_dir = dirs::document_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+            .or_else(dirs::home_dir)
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(std::env::temp_dir)
             .join("LarkReader")
             .to_string_lossy()
             .to_string();

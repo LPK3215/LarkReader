@@ -295,6 +295,9 @@ pub struct WikiNode {
 | `extract_doc` | `{ url, output_dir? }` | `ExtractResult` | 提取单篇文档（正文 + 图片下载 + 保存 .md） |
 | `get_settings` | — | `Settings` | 获取当前设置 |
 | `set_settings` | `Settings` | `Result<(), AppError>` | 保存设置 |
+| `get_settings_status` | — | `SettingsStatus` | 获取设置及配置损坏恢复警告 |
+| `preflight_output_dir` | `{ path }` | `OutputPreflight` | 验证目录可写并返回剩余空间 |
+| `open_output_dir` | `{ path }` | `Result<(), AppError>` | 验证并打开导出目录 |
 
 ### P1 接口（第二版）
 
@@ -303,6 +306,10 @@ pub struct WikiNode {
 | `get_wiki_tree` | `{ wiki_url }` | `WikiNode` | 获取知识库目录树 |
 | `extract_wiki` | `{ wiki_url, output_dir?, node_tokens? }` | `WikiExtractResult` | 批量提取（node_tokens 为空则全部提取，非空则只提取指定节点） |
 | `get_progress` | `{ task_id }` | `Progress` | 查询批量提取进度 |
+| `start_extract_wiki` | `{ wiki_url, output_dir?, selected_tokens? }` | `task_id` | 立即创建后台任务，目录扫描也在后台执行 |
+| `get_task_result` | `{ task_id }` | `WikiTaskResult` | 可重复读取完整任务结果 |
+| `dismiss_task_result` | `{ task_id }` | — | 主动清理已完成结果 |
+| `list_task_history` | — | `Vec<WikiTaskResult>` | 获取最近 24 小时、最多 100 条任务历史 |
 
 ---
 

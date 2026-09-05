@@ -14,8 +14,8 @@ use crate::env;
 use crate::error::AppError;
 use crate::extract;
 use crate::models::{
-    DeviceInfo, EnvStatus, ExtractResult, LoginResult, PreviewResult, Progress, Settings,
-    TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
+    DeviceInfo, EnvStatus, ExtractResult, LoginResult, OutputPreflight, PreviewResult, Progress,
+    Settings, SettingsStatus, TaskPhase, TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -24,6 +24,7 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     pub tasks: Arc<Mutex<HashMap<String, TaskControl>>>,
     pub completed_tasks: Arc<Mutex<HashMap<String, WikiTaskResult>>>,
+    pub settings_warning: Mutex<Option<String>>,
 }
 
 pub struct TaskControl {
@@ -32,12 +33,61 @@ pub struct TaskControl {
 }
 
 /// 配置文件路径
-fn config_path() -> std::path::PathBuf {
+pub(crate) fn config_path() -> std::path::PathBuf {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
         .join("LarkReader");
     std::fs::create_dir_all(&dir).ok();
     dir.join("settings.json")
+}
+
+pub(crate) fn history_path() -> std::path::PathBuf {
+    config_path().with_file_name("task_history.json")
+}
+
+fn persist_task_history(tasks: &HashMap<String, WikiTaskResult>) {
+    if let Ok(content) = serde_json::to_vec_pretty(tasks) {
+        let path = history_path();
+        let temp = path.with_extension("json.tmp");
+        if std::fs::write(&temp, content).is_ok() {
+            let backup = path.with_extension("json.bak");
+            let had_existing = path.exists();
+            if had_existing {
+                let _ = std::fs::remove_file(&backup);
+                if std::fs::rename(&path, &backup).is_err() {
+                    let _ = std::fs::remove_file(&temp);
+                    return;
+                }
+            }
+            if std::fs::rename(&temp, &path).is_err() && had_existing {
+                let _ = std::fs::rename(&backup, &path);
+            } else {
+                let _ = std::fs::remove_file(backup);
+            }
+        }
+    }
+}
+
+pub(crate) fn clean_completed_tasks(tasks: &mut HashMap<String, WikiTaskResult>) {
+    let now = chrono::Utc::now();
+    tasks.retain(|_, task| {
+        task.progress
+            .finished_at
+            .as_deref()
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .is_some_and(|finished| (now - finished.with_timezone(&chrono::Utc)).num_hours() < 24)
+    });
+    while tasks.len() >= 100 {
+        let oldest = tasks
+            .iter()
+            .min_by_key(|(_, task)| task.progress.finished_at.clone())
+            .map(|(id, _)| id.clone());
+        if let Some(id) = oldest {
+            tasks.remove(&id);
+        } else {
+            break;
+        }
+    }
 }
 
 /// 保存设置到本地文件
@@ -162,7 +212,8 @@ pub async fn extract_doc(
 ) -> Result<ExtractResult, AppError> {
     let settings = read_settings(&state)?;
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
-    std::fs::create_dir_all(&dir)?;
+    crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
+        .map_err(AppError::InvalidSetting)?;
     extract::extract_doc_async(&url, &dir, &settings).await
 }
 
@@ -175,13 +226,56 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, AppError> {
 /// 保存设置
 #[tauri::command]
 pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), AppError> {
+    settings
+        .validate_writable()
+        .map_err(AppError::InvalidSetting)?;
     save_settings(&settings)?;
     let mut current = state
         .settings
         .lock()
         .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
     *current = settings;
+    *state
+        .settings_warning
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))? = None;
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_settings_status(state: State<'_, AppState>) -> Result<SettingsStatus, AppError> {
+    Ok(SettingsStatus {
+        settings: read_settings(&state)?,
+        warning: state
+            .settings_warning
+            .lock()
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?
+            .clone(),
+    })
+}
+
+#[tauri::command]
+pub fn preflight_output_dir(path: String) -> Result<OutputPreflight, AppError> {
+    let path = std::path::PathBuf::from(path);
+    crate::models::validate_output_directory_writable(&path).map_err(AppError::InvalidSetting)?;
+    let available_bytes = fs2::available_space(&path)?;
+    Ok(OutputPreflight {
+        path: path.to_string_lossy().to_string(),
+        writable: true,
+        available_bytes,
+    })
+}
+
+#[tauri::command]
+pub fn open_output_dir(path: String) -> Result<(), AppError> {
+    let path = std::path::PathBuf::from(path);
+    if !path.is_absolute() || !path.is_dir() {
+        return Err(AppError::InvalidInput(
+            "输出目录不存在或不是绝对目录".to_string(),
+        ));
+    }
+    tauri_plugin_opener::open_path(path, None::<&str>)
+        .map_err(|e| AppError::Other(format!("打开输出目录失败: {e}")))
 }
 
 // ============================================================================
@@ -208,7 +302,8 @@ pub async fn extract_wiki(
 ) -> Result<WikiExtractResult, AppError> {
     let settings = read_settings(&state)?;
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
-    std::fs::create_dir_all(&dir)?;
+    crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
+        .map_err(AppError::InvalidSetting)?;
     wiki::extract_wiki(&wiki_url, &dir, &settings, selected_tokens.as_deref()).await
 }
 
@@ -220,11 +315,13 @@ pub fn get_progress(task_id: String, state: State<'_, AppState>) -> Result<Progr
         .map_err(|e| AppError::StateUnavailable(e.to_string()))?
         .get(&task_id)
     {
-        return task
+        let mut progress = task
             .progress
             .lock()
             .map(|p| p.clone())
-            .map_err(|e| AppError::StateUnavailable(e.to_string()));
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+        progress.refresh_timing();
+        return Ok(progress);
     }
     state
         .completed_tasks
@@ -240,13 +337,38 @@ pub fn get_task_result(
     task_id: String,
     state: State<'_, AppState>,
 ) -> Result<WikiTaskResult, AppError> {
+    let completed = state
+        .completed_tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    completed
+        .get(&task_id)
+        .cloned()
+        .ok_or_else(|| AppError::InvalidInput("任务尚未完成或不存在".to_string()))
+}
+
+#[tauri::command]
+pub fn dismiss_task_result(task_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let mut completed = state
         .completed_tasks
         .lock()
         .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
     completed
         .remove(&task_id)
-        .ok_or_else(|| AppError::InvalidInput("任务尚未完成、已领取或不存在".to_string()))
+        .ok_or_else(|| AppError::InvalidInput("任务结果不存在".to_string()))?;
+    persist_task_history(&completed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_task_history(state: State<'_, AppState>) -> Result<Vec<WikiTaskResult>, AppError> {
+    let completed = state
+        .completed_tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    let mut values: Vec<_> = completed.values().cloned().collect();
+    values.sort_by(|a, b| b.progress.finished_at.cmp(&a.progress.finished_at));
+    Ok(values)
 }
 
 #[tauri::command]
@@ -271,11 +393,10 @@ pub async fn start_extract_wiki(
 ) -> Result<String, AppError> {
     let settings = read_settings(&state)?;
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
-    std::fs::create_dir_all(&dir)?;
+    crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
+        .map_err(AppError::InvalidSetting)?;
     let task_id = Uuid::new_v4().to_string();
-    let tree = wiki::get_wiki_tree(&wiki_url)?;
-    let total = wiki::count_selected_exportable_nodes(&tree, selected_tokens.as_deref());
-    let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), total)));
+    let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), 0)));
     let cancelled = Arc::new(AtomicBool::new(false));
     state
         .tasks
@@ -293,27 +414,40 @@ pub async fn start_extract_wiki(
     let task_id_for_run = task_id.clone();
     tauri::async_runtime::spawn(async move {
         if let Ok(mut p) = progress.lock() {
-            p.status = TaskStatus::Running;
+            p.start_phase(TaskPhase::ScanningWiki);
         }
-        let result = crate::wiki::extract_wiki_tree_controlled(
-            tree,
-            &dir,
-            &settings,
-            selected_tokens.as_deref(),
-            Some(progress.clone()),
-            Some(cancelled.clone()),
-        )
-        .await;
+        let scan_url = wiki_url.clone();
+        let tree_result =
+            tauri::async_runtime::spawn_blocking(move || wiki::get_wiki_tree(&scan_url)).await;
+        let result = match tree_result {
+            Ok(Ok(tree)) => {
+                if cancelled.load(Ordering::Relaxed) {
+                    Err(AppError::Extract("任务已取消".to_string()))
+                } else {
+                    crate::wiki::extract_wiki_tree_controlled(
+                        tree,
+                        &dir,
+                        &settings,
+                        selected_tokens.as_deref(),
+                        Some(progress.clone()),
+                        Some(cancelled.clone()),
+                    )
+                    .await
+                }
+            }
+            Ok(Err(error)) => Err(error),
+            Err(error) => Err(AppError::Other(format!("知识库扫描任务异常: {error}"))),
+        };
         if let Ok(mut p) = progress.lock() {
             if cancelled.load(Ordering::Relaxed) {
-                p.status = TaskStatus::Cancelled;
+                p.finish(TaskStatus::Cancelled);
             } else if result.is_ok() {
-                p.status = TaskStatus::Completed;
+                p.finish(TaskStatus::Completed);
             } else {
-                p.status = TaskStatus::Failed;
                 if let Err(error) = &result {
                     p.errors.push(error.to_string());
                 }
+                p.finish(TaskStatus::Failed);
             }
         }
         let final_progress = progress
@@ -335,12 +469,9 @@ pub async fn start_extract_wiki(
             },
         };
         if let Ok(mut completed) = completed_tasks.lock() {
-            if completed.len() >= 100 {
-                if let Some(key) = completed.keys().next().cloned() {
-                    completed.remove(&key);
-                }
-            }
+            clean_completed_tasks(&mut completed);
             completed.insert(task_id_for_run.clone(), task_result);
+            persist_task_history(&completed);
         }
         if let Ok(mut tasks) = tasks.lock() {
             tasks.remove(&task_id_for_run);

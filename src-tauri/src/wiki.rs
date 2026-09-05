@@ -16,8 +16,9 @@ use crate::extract;
 use crate::lark;
 use crate::markdown;
 use crate::models::{
-    DocFailure, ExtractStatus, Progress, Settings, SkippedNode, SpecialExport, TaskStatus,
-    WikiExtractResult, WikiNode, WikiNodeType,
+    DocFailure, ExportItemResult, ExportItemStatus, ExtractStatus, Progress, Settings, SkippedNode,
+    SpecialExport, SpecialExportFailure, TaskPhase, TaskStatus, WikiExtractResult, WikiNode,
+    WikiNodeType,
 };
 
 const MAX_WIKI_DEPTH: usize = 64;
@@ -202,6 +203,7 @@ pub async fn extract_wiki_tree_controlled(
     // 创建知识库根目录
     let wiki_dir =
         create_unique_directory(Path::new(output_dir), &markdown::safe_filename(&wiki_name))?;
+    let output_root = wiki_dir.to_string_lossy().to_string();
 
     // 收集所有文档节点（保留目录路径）
     let docs = collect_docs_with_path(&tree, selected_tokens);
@@ -215,7 +217,7 @@ pub async fn extract_wiki_tree_controlled(
             .lock()
             .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
         progress.total = total;
-        progress.status = TaskStatus::Running;
+        progress.start_phase(TaskPhase::ExportingDocument);
     }
     let mut results = Vec::with_capacity(total);
     let mut failures = Vec::new();
@@ -223,6 +225,7 @@ pub async fn extract_wiki_tree_controlled(
     let mut failed_count = 0usize;
     let mut partial_count = 0usize;
     let mut exports = Vec::new();
+    let mut export_failures = Vec::new();
 
     for (node, dir_path) in &docs {
         if cancelled
@@ -252,6 +255,8 @@ pub async fn extract_wiki_tree_controlled(
                 .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
             progress.current_doc = Some(node.title.clone());
             progress.current_path = Some(full_dir.to_string_lossy().to_string());
+            progress.current_item_type = Some(WikiNodeType::Doc);
+            progress.phase = TaskPhase::ExportingDocument;
         }
 
         // 提取文档
@@ -293,6 +298,7 @@ pub async fn extract_wiki_tree_controlled(
                 .iter()
                 .map(|failure| failure.error.clone())
                 .collect();
+            progress.refresh_timing();
         }
     }
 
@@ -309,6 +315,29 @@ pub async fn extract_wiki_tree_controlled(
                 .lock()
                 .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
             progress.current_doc = Some(node.title.clone());
+            progress.current_path = Some(wiki_dir.to_string_lossy().to_string());
+            progress.current_item_type = Some(node.obj_type.clone());
+            progress.phase = match node.obj_type {
+                WikiNodeType::Sheet => TaskPhase::ExportingSheet,
+                WikiNodeType::Bitable => TaskPhase::ExportingBitable,
+                _ => TaskPhase::Finalizing,
+            };
+        }
+        if matches!(node.obj_type, WikiNodeType::Other) {
+            skipped.push(SkippedNode {
+                title: node.title.clone(),
+                node_token: node.node_token.clone(),
+                obj_type: node.obj_type.clone(),
+                reason: "当前版本暂不支持该节点类型".to_string(),
+            });
+            if let Some(progress) = &progress {
+                let mut progress = progress
+                    .lock()
+                    .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+                progress.done += 1;
+                progress.refresh_timing();
+            }
+            continue;
         }
         let result: AppResult<Vec<String>> = match node.obj_type {
             WikiNodeType::Sheet => {
@@ -323,7 +352,7 @@ pub async fn extract_wiki_tree_controlled(
             WikiNodeType::Bitable => {
                 export_bitable(node, &wiki_dir.join(&safe), cancelled.as_deref())
             }
-            _ => Err(AppError::Extract("当前 CLI 不支持该节点类型".to_string())),
+            _ => unreachable!("非特殊节点不会进入特殊导出循环"),
         };
         match result {
             Ok(paths) => {
@@ -337,11 +366,11 @@ pub async fn extract_wiki_tree_controlled(
             }
             Err(error) => {
                 failed_count += 1;
-                skipped.push(SkippedNode {
+                export_failures.push(SpecialExportFailure {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
                     obj_type: node.obj_type.clone(),
-                    reason: error.to_string(),
+                    error: error.to_string(),
                 });
             }
         }
@@ -352,23 +381,68 @@ pub async fn extract_wiki_tree_controlled(
             progress.done += 1;
             progress.success_count = success_count + partial_count;
             progress.failed_count = failed_count;
+            progress.refresh_timing();
         }
     }
     let skipped_count = skipped.len();
+    let completed_count =
+        results.len() + failures.len() + exports.len() + export_failures.len() + skipped.len();
+    let mut items = Vec::with_capacity(completed_count);
+    items.extend(results.iter().map(|result| ExportItemResult {
+        title: result.title.clone(),
+        node_token: None,
+        obj_type: WikiNodeType::Doc,
+        status: match result.status {
+            ExtractStatus::Success => ExportItemStatus::Success,
+            ExtractStatus::Partial => ExportItemStatus::Partial,
+            ExtractStatus::Failed => ExportItemStatus::Failed,
+        },
+        paths: vec![result.filepath.clone()],
+        message: (!result.errors.is_empty()).then(|| result.errors.join("; ")),
+    }));
+    items.extend(failures.iter().map(|failure| ExportItemResult {
+        title: failure.title.clone(),
+        node_token: Some(failure.node_token.clone()),
+        obj_type: WikiNodeType::Doc,
+        status: ExportItemStatus::Failed,
+        paths: vec![],
+        message: Some(failure.error.clone()),
+    }));
+    items.extend(exports.iter().map(|export| ExportItemResult {
+        title: export.title.clone(),
+        node_token: Some(export.node_token.clone()),
+        obj_type: export.obj_type.clone(),
+        status: ExportItemStatus::Success,
+        paths: export.paths.clone(),
+        message: None,
+    }));
+    items.extend(export_failures.iter().map(|failure| ExportItemResult {
+        title: failure.title.clone(),
+        node_token: Some(failure.node_token.clone()),
+        obj_type: failure.obj_type.clone(),
+        status: ExportItemStatus::Failed,
+        paths: vec![],
+        message: Some(failure.error.clone()),
+    }));
+    items.extend(skipped.iter().map(|item| ExportItemResult {
+        title: item.title.clone(),
+        node_token: Some(item.node_token.clone()),
+        obj_type: item.obj_type.clone(),
+        status: ExportItemStatus::Skipped,
+        paths: vec![],
+        message: Some(item.reason.clone()),
+    }));
 
     if let Some(progress) = &progress {
         let mut progress = progress
             .lock()
             .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
-        progress.current_doc = None;
-        progress.current_path = None;
-        if progress.status != TaskStatus::Cancelled {
-            progress.status = TaskStatus::Completed;
-        }
+        progress.phase = TaskPhase::Finalizing;
     }
 
     Ok(WikiExtractResult {
         wiki_name,
+        output_root,
         total,
         success_count,
         failed_count,
@@ -378,6 +452,12 @@ pub async fn extract_wiki_tree_controlled(
         skipped_count,
         skipped,
         exports,
+        export_failures,
+        cancelled: cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed)),
+        completed_count,
+        items,
     })
 }
 

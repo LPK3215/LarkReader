@@ -29,14 +29,16 @@ pub fn run() {
         .ok();
 
     // 加载设置
-    let settings = load_settings_or_default();
+    let (settings, settings_warning) = load_settings_or_default();
+    let completed_tasks = load_task_history();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             settings: Mutex::new(settings),
             tasks: Arc::new(Mutex::new(HashMap::new())),
-            completed_tasks: Arc::new(Mutex::new(HashMap::new())),
+            completed_tasks: Arc::new(Mutex::new(completed_tasks)),
+            settings_warning: Mutex::new(settings_warning),
         })
         .invoke_handler(tauri::generate_handler![
             // P0 命令
@@ -50,6 +52,9 @@ pub fn run() {
             commands::extract_doc,
             commands::get_settings,
             commands::set_settings,
+            commands::get_settings_status,
+            commands::preflight_output_dir,
+            commands::open_output_dir,
             // P1 命令
             commands::get_wiki_tree,
             commands::extract_wiki,
@@ -57,21 +62,51 @@ pub fn run() {
             commands::cancel_task,
             commands::start_extract_wiki,
             commands::get_task_result,
+            commands::dismiss_task_result,
+            commands::list_task_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");
 }
 
 /// 加载设置，如果配置文件不存在则使用默认值
-fn load_settings_or_default() -> models::Settings {
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
-        .join("LarkReader");
-    std::fs::create_dir_all(&config_dir).ok();
-
-    let config_file = config_dir.join("settings.json");
+fn load_settings_or_default() -> (models::Settings, Option<String>) {
+    let config_file = commands::config_path();
     match std::fs::read_to_string(&config_file) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => models::Settings::default(),
+        Ok(content) => match serde_json::from_str::<models::Settings>(&content) {
+            Ok(settings) => (settings, None),
+            Err(error) => {
+                let backup = config_file.with_extension(format!(
+                    "corrupt-{}.json",
+                    chrono::Utc::now().format("%Y%m%d%H%M%S")
+                ));
+                let backup_message = match std::fs::rename(&config_file, &backup) {
+                    Ok(()) => format!("，原文件已备份到 {}", backup.display()),
+                    Err(backup_error) => format!("，且备份失败: {backup_error}"),
+                };
+                (
+                    models::Settings::default(),
+                    Some(format!(
+                        "配置文件损坏，已恢复默认设置: {error}{backup_message}"
+                    )),
+                )
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (models::Settings::default(), None)
+        }
+        Err(error) => (
+            models::Settings::default(),
+            Some(format!("读取配置失败，已使用默认设置: {error}")),
+        ),
     }
+}
+
+fn load_task_history() -> HashMap<String, models::WikiTaskResult> {
+    let mut tasks = std::fs::read_to_string(commands::history_path())
+        .ok()
+        .and_then(|content| serde_json::from_str(&content).ok())
+        .unwrap_or_default();
+    commands::clean_completed_tasks(&mut tasks);
+    tasks
 }

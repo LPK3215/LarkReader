@@ -97,8 +97,21 @@ pub fn check_env() -> EnvStatus {
         return status;
     }
 
-    // 检测飞书应用配置
-    match lark::config_show() {
+    // 配置与登录互不依赖，并行执行可减少环境页等待时间。
+    let (config_result, login_result) = std::thread::scope(|scope| {
+        let config = scope.spawn(lark::config_show);
+        let login = scope.spawn(lark::whoami);
+        (
+            config
+                .join()
+                .unwrap_or_else(|_| Err(AppError::Other("配置检测线程异常".to_string()))),
+            login
+                .join()
+                .unwrap_or_else(|_| Err(AppError::Other("登录检测线程异常".to_string()))),
+        )
+    });
+
+    match config_result {
         Ok(Some((app_id, _brand))) => {
             status.app_configured = true;
             status.app_id = Some(app_id);
@@ -111,7 +124,7 @@ pub fn check_env() -> EnvStatus {
     }
 
     // 检测用户登录状态
-    match lark::whoami() {
+    match login_result {
         Ok((identity, token_status, user_name)) if !identity.is_empty() => {
             status.logged_in =
                 identity == "user" && (token_status == "ready" || token_status == "needs_refresh");
