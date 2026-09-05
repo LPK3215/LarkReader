@@ -158,7 +158,7 @@ cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
 cargo test --lib                           11 项通过
 cargo build                                通过
-pnpm build                                 通过
+npm run build                              通过
 ```
 
 仓库内的集成测试套件需要已登录的真实 lark-cli 环境才能完整运行：
@@ -195,13 +195,13 @@ cargo test --all-targets
 cargo build
 
 cd ..
-pnpm build
+npm run build
 ```
 
 开发启动：
 
 ```powershell
-pnpm tauri dev
+npm run tauri dev
 ```
 
 ## 8. 后续增强边界

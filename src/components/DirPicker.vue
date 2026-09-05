@@ -5,8 +5,8 @@
 // 流程：dialog.open({ directory: true }) 选目录 -> preflight_output_dir 校验
 //      可写性与磁盘空间 -> 展示 OutputPreflight（不可写时给出错误态）
 //
-// 环境降级：在纯浏览器（pnpm dev 且非 Tauri 窗口）里 dialog 不可用，
-//          捕获异常后保留手动输入，不阻塞开发与视觉验证。
+// 环境降级：在纯浏览器（npm run dev 且非 Tauri 窗口）里 dialog 不可用，
+//          捕获异常后保留手动输入（真机验收请用 npm run tauri dev）。
 // ============================================================================
 
 import { ref } from "vue";
