@@ -3,17 +3,25 @@
 // HistoryView —— 任务历史页
 //
 // 数据：stores/history.ts records（list_task_history 结果）
-// 操作：刷新、打开产物目录、删除单条
+// 操作：刷新、打开产物目录、在应用内阅读（直达 /reader 渲染第一篇）、
+//       查看导出失败/部分成功明细、删除单条
 //
 // 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useHistoryStore } from "../stores/history";
-import type { TaskStatus } from "../api/types";
+import type {
+  ExportItemResult,
+  ExportItemStatus,
+  TaskStatus,
+  WikiTaskResult,
+} from "../api/types";
 import AppIcon from "../components/AppIcon.vue";
 
 const history = useHistoryStore();
+const router = useRouter();
 
 const STATUS_TEXT: Record<TaskStatus, string> = {
   pending: "等待中",
@@ -30,6 +38,40 @@ const STATUS_CLASS: Record<TaskStatus, string> = {
   failed: "lr-badge--danger",
   cancelled: "lr-badge--warning",
 };
+
+const ITEM_STATUS_TEXT: Record<ExportItemStatus, string> = {
+  success: "成功",
+  partial: "部分成功",
+  failed: "失败",
+  skipped: "跳过",
+};
+
+const ITEM_STATUS_CLASS: Record<ExportItemStatus, string> = {
+  success: "lr-badge--success",
+  partial: "lr-badge--warning",
+  failed: "lr-badge--danger",
+  skipped: "lr-badge",
+};
+
+/** 当前展开明细的历史记录 task_id */
+const expandedId = ref<string | null>(null);
+
+/** 该次导出中「非成功」的条目（失败/部分成功/跳过），是用户需要知道原因的部分 */
+function problemItems(record: WikiTaskResult): ExportItemResult[] {
+  return (record.result?.items ?? []).filter((item) => item.status !== "success");
+}
+
+function toggleDetail(taskId: string) {
+  expandedId.value = expandedId.value === taskId ? null : taskId;
+}
+
+/** 在应用内阅读：跳本地阅读页并自动渲染该产物目录的第一篇文档 */
+function openInReader(record: WikiTaskResult) {
+  const dir = record.result?.output_root;
+  if (dir) {
+    void router.push({ path: "/reader", query: { dir } });
+  }
+}
 
 function formatTime(iso: string | null) {
   if (!iso) return "—";
@@ -134,12 +176,30 @@ onMounted(async () => {
             <div class="lr-history__ops">
               <button
                 v-if="record.result?.output_root"
+                class="lr-btn lr-btn--primary"
+                title="在应用内阅读这份导出（自动打开第一篇）"
+                @click="openInReader(record)"
+              >
+                <AppIcon name="book" :size="14" />
+                阅读
+              </button>
+              <button
+                v-if="problemItems(record).length"
+                class="lr-btn lr-btn--ghost"
+                title="查看失败 / 部分成功 / 跳过的明细与原因"
+                @click="toggleDetail(record.task_id)"
+              >
+                <AppIcon name="doc" :size="14" />
+                {{ expandedId === record.task_id ? "收起" : "明细" }}
+              </button>
+              <button
+                v-if="record.result?.output_root"
                 class="lr-btn lr-btn--secondary"
-                title="打开产物目录"
+                title="在文件管理器中打开产物目录"
                 @click="onOpenDir(record)"
               >
                 <AppIcon name="folder-open" :size="14" />
-                打开
+                目录
               </button>
               <button
                 class="lr-btn lr-btn--ghost"
@@ -148,6 +208,31 @@ onMounted(async () => {
               >
                 <AppIcon name="trash" :size="14" />
               </button>
+            </div>
+
+            <div
+              v-if="expandedId === record.task_id && problemItems(record).length"
+              class="lr-history__detail"
+            >
+              <ul class="lr-history__detail-list">
+                <li
+                  v-for="item in problemItems(record)"
+                  :key="item.node_token ?? item.title"
+                  class="lr-history__detail-row"
+                >
+                  <span class="lr-badge" :class="ITEM_STATUS_CLASS[item.status]">
+                    {{ ITEM_STATUS_TEXT[item.status] }}
+                  </span>
+                  <div class="lr-history__detail-main">
+                    <span class="lr-history__detail-title lr-selectable" :title="item.title">
+                      {{ item.title }}
+                    </span>
+                    <span v-if="item.message" class="lr-history__detail-msg lr-selectable">
+                      {{ item.message }}
+                    </span>
+                  </div>
+                </li>
+              </ul>
             </div>
           </li>
         </ul>
@@ -190,8 +275,9 @@ onMounted(async () => {
 
 .lr-history__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: var(--lr-space-4);
+  gap: var(--lr-space-2) var(--lr-space-4);
   padding: var(--lr-space-3) var(--lr-space-4);
   border-bottom: 0.5px solid var(--lr-border);
   transition: background 0.15s;
@@ -259,5 +345,58 @@ onMounted(async () => {
   flex: none;
   display: flex;
   gap: var(--lr-space-2);
+}
+
+/* 失败 / 部分成功 / 跳过明细 */
+.lr-history__detail {
+  flex: 0 0 100%;
+  margin-top: var(--lr-space-1);
+  border-top: 1px dashed var(--lr-border);
+  padding-top: var(--lr-space-2);
+  min-width: 0;
+}
+
+.lr-history__detail-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-2);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.lr-history__detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lr-space-2);
+  min-width: 0;
+}
+
+.lr-history__detail-row .lr-badge {
+  flex: none;
+  margin-top: 1px;
+}
+
+.lr-history__detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lr-history__detail-title {
+  font-size: var(--lr-fs-body);
+  color: var(--lr-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lr-history__detail-msg {
+  font-size: var(--lr-fs-secondary);
+  line-height: 1.5;
+  color: var(--lr-text-tertiary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

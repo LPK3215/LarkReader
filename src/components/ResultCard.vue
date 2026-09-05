@@ -114,8 +114,14 @@ const showProblems = ref(false);
           <span class="lr-badge" :class="STATUS_CLASS[item.status]">
             {{ STATUS_TEXT[item.status] }}
           </span>
-          <span class="lr-result__rowtitle lr-selectable" :title="item.title">{{ item.title }}</span>
-          <span v-if="item.message" class="lr-result__msg lr-selectable">{{ item.message }}</span>
+          <div class="lr-result__rowmain">
+            <span class="lr-result__rowtitle lr-selectable" :title="item.title">
+              {{ item.title }}
+            </span>
+            <span v-if="item.message" class="lr-result__msg lr-selectable">
+              {{ item.message }}
+            </span>
+          </div>
         </li>
       </ul>
     </div>
@@ -242,25 +248,34 @@ const showProblems = ref(false);
 
 .lr-result__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--lr-space-2);
   font-size: var(--lr-fs-secondary);
 }
 
-.lr-result__rowtitle {
-  flex: 1;
+.lr-result__row > .lr-badge {
+  flex: none;
+  margin-top: 1px;
+}
+
+.lr-result__rowmain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+  flex: 1;
+}
+
+.lr-result__rowtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .lr-result__msg {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
   color: var(--lr-text-tertiary);
 }
 </style>
