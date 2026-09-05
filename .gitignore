@@ -68,6 +68,7 @@ Desktop.ini
 
 # AI assistant local state (session memory, automations, logs — not source)
 .codebuddy/
+.workbuddy/
 
 # E2E download working directory (cleared before each test run;
 # the persisted case snapshot lives in docs/e2e-download-case/)
