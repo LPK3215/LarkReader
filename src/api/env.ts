@@ -1,13 +1,38 @@
 // ============================================================================
-// src/api/env.ts —— 环境体检 / 初始化命令封装（结构占位）
+// src/api/env.ts —— 环境体检 / 初始化 / 飞书登录相关 IPC
 //
-// 对应后端命令（src-tauri/src/commands.rs）：
-//   check_env()            -> EnvStatus（node / lark_cli / app_configured / 登录态）
-//   setup_lark_cli()       -> Result<String, AppError>   自动安装 lark-cli
-//   init_app(brand, lang)  -> Result<String, AppError>   初始化飞书应用（阻塞，开浏览器）
-//
-// 填充时机：M1（引导页）时实现；出参类型见 ./types.ts。
-// 约定：invoke 入参统一 camelCase（initApp / ...），错误统一走 normalizeError。
+// 对应后端命令：
+//   check_env()                  -> EnvStatus
+//   setup_lark_cli()             -> string（消息）
+//   init_app(brand, lang)        -> string（消息）
+//   start_login()                -> DeviceInfo（非阻塞，返回后前端打开浏览器）
+//   complete_login(deviceCode)   -> LoginResult
+//   login_feishu_blocking()      -> LoginResult（一步到位，Onboarding 用）
 // ============================================================================
 
-export {};
+import { invoke } from "@tauri-apps/api/core";
+import type { DeviceInfo, EnvStatus, LoginResult } from "./types";
+
+export async function checkEnv(): Promise<EnvStatus> {
+  return invoke<EnvStatus>("check_env");
+}
+
+export async function setupLarkCli(): Promise<string> {
+  return invoke<string>("setup_lark_cli");
+}
+
+export async function initApp(brand: string, lang: string): Promise<string> {
+  return invoke<string>("init_app", { brand, lang });
+}
+
+export async function startLogin(): Promise<DeviceInfo> {
+  return invoke<DeviceInfo>("start_login");
+}
+
+export async function completeLogin(deviceCode: string): Promise<LoginResult> {
+  return invoke<LoginResult>("complete_login", { deviceCode });
+}
+
+export async function loginFeishuBlocking(): Promise<LoginResult> {
+  return invoke<LoginResult>("login_feishu_blocking");
+}

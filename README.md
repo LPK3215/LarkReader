@@ -11,11 +11,12 @@ LarkReader 是一个基于 Tauri 2、Rust 和 Vue 的飞书文档本地导出工
 ## 开发与验证
 
 ```powershell
-pnpm install
-pnpm tauri dev
+npm install
+npm run tauri dev        # 带 Rust 后端的桌面开发窗口
+npm run verify           # 发布门禁：fmt / clippy / 单测 / 前端构建
 ```
 
-完整验证命令见后端维护手册。
+完整验证命令见后端维护手册；仓库常用操作脚本见 [scripts/README.md](scripts/README.md)。
 
 ## 体验链接 / 测试链接
 
@@ -37,3 +38,7 @@ pnpm tauri dev
 | `docs/e2e-download-case/` | **下载结果案例**：E2E 测试库 8 个顶层节点全量下载的稳定快照（42 文件、18 种扩展名、38 项成功），含 `README.md` 说明，可作离线样例查看导出结构与命名规则 |
 
 > 该库为测试专用，可随时删除，不影响任何正式资料。如需改空间名，请在飞书网页端操作（lark-cli 暂不提供 space 重命名命令）。
+
+## 许可
+
+本项目以 **GPL-3.0** 授权。贡献与协作请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题通过 [SECURITY.md](SECURITY.md) 说明的私密渠道报告。

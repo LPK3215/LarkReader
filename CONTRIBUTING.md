@@ -8,7 +8,7 @@ LarkReader 是一个**纯本地**的飞书文档阅读与导出桌面工具：�
 
 ## 开发环境
 
-- Node.js 22+，包管理器 `pnpm`
+- Node.js 22+，包管理器 `npm`（勿再切换 pnpm，`pnpm tauri add` 会破坏 node_modules 结构）
 - Rust stable（建议通过 `rustup` 安装）
 - 前端：`src/`（Vue 3 + Vite + Pinia）
 - 后端：`src-tauri/`（Tauri 2）
@@ -17,13 +17,19 @@ LarkReader 是一个**纯本地**的飞书文档阅读与导出桌面工具：�
 
 ```bash
 # 安装依赖（前端 + 后端构建工具）
-pnpm install
+npm install
 
 # 本地开发（带热更新的桌面窗口）
-pnpm tauri dev
+npm run tauri dev
 
 # 只跑前端网页模式（无 Rust 后端时部分页面可用 mock 数据）
-pnpm dev
+npm run dev
+
+# 发布门禁：fmt / clippy / lib 单测 + 前端 vue-tsc / vite build
+npm run verify
+
+# 清空 E2E 下载回归输出目录（每次真实下载测试前执行）
+npm run clean:e2e
 
 # 后端单元/集成测试（真实网络相关的测试已用 mock fixture，可离线跑）
 cd src-tauri && cargo test
@@ -42,7 +48,7 @@ cd src-tauri && cargo test
 
 - 提交信息建议遵循约定式：`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` 等。
 - 一个提交只做一件事，别混入无关格式化。
-- 提交前跑一遍 `pnpm build`（含 `vue-tsc` 类型检查）和 `cargo test`。
+- 提交前跑一遍 `npm run verify`（含 fmt / clippy / 单测 / `vue-tsc` / `vite build`），真实下载类集成测试按 `scripts/README.md` 手动跑。
 
 ## 许可
 

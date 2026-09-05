@@ -1,14 +1,55 @@
 // ============================================================================
-// src/router/index.ts —— 视图路由表（结构占位）
+// src/router/index.ts —— 视图路由表
 //
-// 计划路由（M0 安装 vue-router 后填充）：
-//   /onboarding  -> views/OnboardingView.vue  环境体检 / 登录 / 默认输出目录
-//   /workspace   -> views/WorkspaceView.vue   贴链接 -> 扫树勾选 -> 下载（主工作台）
-//   /history     -> views/HistoryView.vue     任务历史 + 打开产物目录
-//   /settings    -> views/SettingsView.vue    设置
+//   /onboarding  环境体检 / 登录 / 默认输出目录引导，全屏无壳（meta.bare）
+//   /workspace   主工作台：贴链接 -> 扫树勾选 -> 下载
+//   /history     任务历史 + 打开产物目录
+//   /settings    设置
 //
-// 说明：main.ts 尚未挂载 router（避免未装依赖破基线）；M0 装 vue-router 后
-//       在此填 routes、在 main.ts 用 createRouter(...) 接入、App.vue 换成壳布局。
+// 说明：Tauri 是本地桌面应用，用 createWebHashHistory 而非 history 模式，
+//       避免 file:// 或 tauri:// 协议下刷新路由失效。
 // ============================================================================
 
-export {};
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: "/",
+    redirect: "/workspace",
+  },
+  {
+    path: "/onboarding",
+    name: "onboarding",
+    component: () => import("../views/OnboardingView.vue"),
+    meta: { bare: true, title: "开始使用" },
+  },
+  {
+    path: "/workspace",
+    name: "workspace",
+    component: () => import("../views/WorkspaceView.vue"),
+    meta: { title: "工作台" },
+  },
+  {
+    path: "/history",
+    name: "history",
+    component: () => import("../views/HistoryView.vue"),
+    meta: { title: "任务历史" },
+  },
+  {
+    path: "/settings",
+    name: "settings",
+    component: () => import("../views/SettingsView.vue"),
+    meta: { title: "设置" },
+  },
+  {
+    path: "/:pathMatch(.*)*",
+    redirect: "/workspace",
+  },
+];
+
+export const router = createRouter({
+  history: createWebHashHistory(),
+  routes,
+});
+
+export default router;

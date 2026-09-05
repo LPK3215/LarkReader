@@ -33,6 +33,7 @@ pub fn run() {
     let completed_tasks = load_task_history();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             settings: Mutex::new(settings),

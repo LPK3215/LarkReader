@@ -1,15 +1,21 @@
 // ============================================================================
-// src/api/wiki.ts —— 知识库结构扫描命令封装（结构占位）
+// src/api/wiki.ts —— 知识库结构相关 IPC
 //
-// 对应后端命令：
-//   get_wiki_tree(wiki_url) -> WikiNode  只扫结构不拉正文（预览/勾选用）
+// 全部是 Tauri command 的薄包装，不含业务逻辑。
+//   getWikiTree(wikiUrl) → WikiNode（树根，children 是折叠展开的）
 //
-// 入参：wikiUrl（camelCase）；出参：WikiNode（字段 snake_case）——
-//   node_token / title / obj_type / has_child / obj_token / position / depth ...
-//   （obj_type 为枚举的 snake_case 字符串，如 doc/sheet/bitable/file/folder）
-//
-// 填充时机：M2（工作台「粘贴链接 -> 扫树」）实现。
-// 约定：树数据直接交付给 components/NodeTree.vue 渲染，不在此做业务处理。
+// 前端 store 只调这里，不直接调 invoke()。
 // ============================================================================
 
-export {};
+import { invoke } from "@tauri-apps/api/core";
+import type { WikiNode } from "./types";
+
+/**
+ * 拉取知识库目录树（只摸结构，不拉正文）。
+ * 后端走飞书 lark-cli 完成。
+ *
+ * @throws AppError(InvalidInput | Extract | Other) 来自后端
+ */
+export async function getWikiTree(wikiUrl: string): Promise<WikiNode> {
+  return invoke<WikiNode>("get_wiki_tree", { wikiUrl });
+}

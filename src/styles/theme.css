@@ -1,10 +1,211 @@
 /* ============================================================================
-   src/styles/theme.css —— 全局主题与变量层（结构占位）
+   src/styles/theme.css —— 设计 token 与全局基础层
 
-   职责：集中管理设计 token，支撑深浅色切换，避免样式散落各处。
-   填充时机：M1 视觉壳定稿后。
-   规划内容：
-     - CSS 变量：色板（主色/背景/文字/边框/危险...）、圆角、间距、字号；
-     - 深浅色：建议走 <html data-theme="dark|light"> 或系统 prefers-color-scheme；
-     - 引入方式：由 App.vue 或 main.ts import（当前不引，避免影响基线样式）。
+   结构：变量（色板 / 排版 / 圆角 / 间距 / 阴影 / 层级） -> reset -> 基础元素。
+   主题：首版只交付浅色（:root）。深色按同构变量预留（html[data-theme="dark"]），
+        日后补齐只需填一套值，无需改任何组件样式。
+
+   使用约定：
+     - 组件里禁止写死颜色 / 字号 / 圆角，一律 var(--lr-*)；
+     - 边框统一 0.5px，分隔线用 --lr-border（15%），悬停用 --lr-border-hover（30%）；
+     - 间距一律取 4 的倍数：4 / 8 / 12 / 16 / 24 / 32。
    ========================================================================== */
+
+:root {
+  /* ---- 主色（飞书蓝）---- */
+  --lr-primary: #3370ff;
+  --lr-primary-hover: #5b8dff;
+  --lr-primary-active: #245bdb;
+  --lr-primary-soft: #e6f1fb;
+  --lr-primary-border: rgba(51, 112, 255, 0.3);
+  --lr-on-primary: #ffffff;
+
+  /* ---- 中性色 ---- */
+  --lr-bg-app: #f5f6f8;
+  --lr-bg-surface: #ffffff;
+  --lr-bg-raised: #ffffff;
+  --lr-bg-subtle: #f7f8fa;
+  --lr-bg-hover: #f0f2f5;
+  --lr-bg-active: #e8eaed;
+  --lr-bg-disabled: #f5f6f8;
+
+  --lr-text: #1f2329;
+  --lr-text-secondary: #646a73;
+  --lr-text-tertiary: #8f959e;
+  --lr-text-disabled: #bbbfc4;
+  --lr-text-inverse: #ffffff;
+
+  --lr-border: rgba(31, 35, 41, 0.15);
+  --lr-border-hover: rgba(31, 35, 41, 0.3);
+  --lr-border-strong: rgba(31, 35, 41, 0.4);
+
+  /* ---- 语义色 ---- */
+  --lr-success: #34a853;
+  --lr-success-soft: #eaf6ec;
+  --lr-success-border: rgba(52, 168, 83, 0.3);
+
+  --lr-warning: #d9821b;
+  --lr-warning-soft: #fdf3e7;
+  --lr-warning-border: rgba(217, 130, 27, 0.3);
+
+  --lr-danger: #e24b4a;
+  --lr-danger-soft: #fdecec;
+  --lr-danger-border: rgba(226, 75, 74, 0.3);
+
+  --lr-info: #378add;
+  --lr-info-soft: #e6f1fb;
+  --lr-info-border: rgba(55, 138, 221, 0.3);
+
+  /* ---- 节点类型色（对应 WikiNodeType 六个变体）---- */
+  --lr-type-doc: #3370ff;
+  --lr-type-sheet: #34a853;
+  --lr-type-bitable: #7f77dd;
+  --lr-type-file: #d9821b;
+  --lr-type-folder: #8f959e;
+  --lr-type-other: #bbbfc4;
+
+  /* ---- 排版 ---- */
+  --lr-font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  --lr-font-mono: "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Menlo,
+    Consolas, monospace;
+
+  --lr-fs-title: 16px;
+  --lr-fs-section: 14px;
+  --lr-fs-body: 13px;
+  --lr-fs-secondary: 12px;
+  --lr-fs-mono: 11px;
+
+  --lr-lh-tight: 1.4;
+  --lr-lh-body: 1.6;
+
+  --lr-fw-regular: 400;
+  --lr-fw-medium: 500;
+
+  /* ---- 圆角 ---- */
+  --lr-radius-sm: 4px;
+  --lr-radius-md: 6px;
+  --lr-radius-lg: 8px;
+  --lr-radius-xl: 12px;
+
+  /* ---- 间距 ---- */
+  --lr-space-1: 4px;
+  --lr-space-2: 8px;
+  --lr-space-3: 12px;
+  --lr-space-4: 16px;
+  --lr-space-5: 24px;
+  --lr-space-6: 32px;
+
+  /* ---- 尺寸（布局骨架）---- */
+  --lr-header-h: 44px;
+  --lr-nav-w: 52px;
+  --lr-taskbar-h: 40px;
+
+  /* ---- 层级 ---- */
+  --lr-z-taskbar: 10;
+  --lr-z-dropdown: 100;
+  --lr-z-modal: 200;
+  --lr-z-toast: 300;
+}
+
+/* 深色主题：结构已预留，值待补齐。
+   启用方式：<html data-theme="dark"> */
+html[data-theme="dark"] {
+  --lr-bg-app: #1b1d21;
+  --lr-bg-surface: #23262b;
+  --lr-bg-subtle: #2a2e34;
+  --lr-text: #e6e8eb;
+  --lr-text-secondary: #a8adb5;
+  --lr-text-tertiary: #7c8189;
+}
+
+/* ============================================================================
+   Reset
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--lr-font-sans);
+  font-size: var(--lr-fs-body);
+  line-height: var(--lr-lh-body);
+  font-weight: var(--lr-fw-regular);
+  color: var(--lr-text);
+  background: var(--lr-bg-app);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+code,
+pre,
+.lr-mono {
+  font-family: var(--lr-font-mono);
+  font-size: var(--lr-fs-mono);
+}
+
+/* 桌面端禁用文本选中（路径、日志等需要选中的地方单独开启） */
+body {
+  user-select: none;
+}
+
+.lr-selectable {
+  user-select: text;
+  cursor: text;
+}
+
+/* 滚动条：贴合整体视觉，不做浮夸效果 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--lr-border-hover);
+  border-radius: var(--lr-radius-sm);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--lr-border-strong);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
