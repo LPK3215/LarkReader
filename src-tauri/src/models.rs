@@ -205,6 +205,18 @@ pub struct WikiExtractResult {
     pub results: Vec<ExtractResult>,
     /// 失败的文档列表
     pub failures: Vec<DocFailure>,
+    /// 因类型暂不支持而跳过的节点数
+    pub skipped_count: usize,
+    /// 被跳过的节点及原因
+    pub skipped: Vec<SkippedNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedNode {
+    pub title: String,
+    pub node_token: String,
+    pub obj_type: WikiNodeType,
+    pub reason: String,
 }
 
 /// 文档提取失败记录
@@ -241,6 +253,18 @@ pub struct Progress {
     pub failed_count: usize,
     /// 错误列表
     pub errors: Vec<String>,
+    /// 任务当前状态
+    pub status: TaskStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
 }
 
 impl Progress {
@@ -254,6 +278,7 @@ impl Progress {
             success_count: 0,
             failed_count: 0,
             errors: vec![],
+            status: TaskStatus::Pending,
         }
     }
 }

@@ -11,6 +11,8 @@ pub mod markdown;
 pub mod models;
 pub mod wiki;
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use commands::AppState;
@@ -33,6 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             settings: Mutex::new(settings),
+            tasks: Arc::new(Mutex::new(HashMap::new())),
         })
         .invoke_handler(tauri::generate_handler![
             // P0 命令
@@ -49,6 +52,9 @@ pub fn run() {
             // P1 命令
             commands::get_wiki_tree,
             commands::extract_wiki,
+            commands::get_progress,
+            commands::cancel_task,
+            commands::start_extract_wiki,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");

@@ -8,13 +8,16 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use crate::error::{AppError, AppResult};
 use crate::extract;
 use crate::lark;
 use crate::markdown;
 use crate::models::{
-    DocFailure, ExtractStatus, Settings, WikiExtractResult, WikiNode, WikiNodeType,
+    DocFailure, ExtractStatus, Progress, Settings, SkippedNode, TaskStatus, WikiExtractResult,
+    WikiNode, WikiNodeType,
 };
 
 const MAX_WIKI_DEPTH: usize = 64;
@@ -156,18 +159,38 @@ pub async fn extract_wiki(
     settings: &Settings,
     selected_tokens: Option<&[String]>,
 ) -> AppResult<WikiExtractResult> {
+    extract_wiki_controlled(wiki_url, output_dir, settings, selected_tokens, None, None).await
+}
+
+pub async fn extract_wiki_controlled(
+    wiki_url: &str,
+    output_dir: &str,
+    settings: &Settings,
+    selected_tokens: Option<&[String]>,
+    progress: Option<Arc<Mutex<Progress>>>,
+    cancelled: Option<Arc<AtomicBool>>,
+) -> AppResult<WikiExtractResult> {
     // 获取目录树
     let tree = get_wiki_tree(wiki_url)?;
     let wiki_name = tree.title.clone();
 
     // 创建知识库根目录
-    let wiki_dir = Path::new(output_dir).join(markdown::safe_filename(&wiki_name));
+    let wiki_dir = unique_directory(Path::new(output_dir), &markdown::safe_filename(&wiki_name));
     std::fs::create_dir_all(&wiki_dir)?;
 
     // 收集所有文档节点（保留目录路径）
     let docs = collect_docs_with_path(&tree, selected_tokens);
+    let skipped = collect_skipped_nodes(&tree, selected_tokens);
+    let skipped_count = skipped.len();
 
     let total = docs.len();
+    if let Some(progress) = &progress {
+        let mut progress = progress
+            .lock()
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+        progress.total = total;
+        progress.status = TaskStatus::Running;
+    }
     let mut results = Vec::with_capacity(total);
     let mut failures = Vec::new();
     let mut success_count = 0usize;
@@ -175,6 +198,18 @@ pub async fn extract_wiki(
     let mut partial_count = 0usize;
 
     for (node, dir_path) in &docs {
+        if cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            if let Some(progress) = &progress {
+                progress
+                    .lock()
+                    .map_err(|e| AppError::StateUnavailable(e.to_string()))?
+                    .status = TaskStatus::Cancelled;
+            }
+            break;
+        }
         // 构建文档 URL
         let doc_url = extract::build_wiki_url(&node.node_token);
 
@@ -184,6 +219,13 @@ pub async fn extract_wiki(
 
         // 带位置前缀的文件名
         let doc_title = markdown::prefixed_filename(node.position, &node.title);
+        if let Some(progress) = &progress {
+            let mut progress = progress
+                .lock()
+                .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+            progress.current_doc = Some(node.title.clone());
+            progress.current_path = Some(full_dir.to_string_lossy().to_string());
+        }
 
         // 提取文档
         match extract::extract_doc_with_title_async(
@@ -212,6 +254,29 @@ pub async fn extract_wiki(
                 failures.push(failure);
             }
         }
+        if let Some(progress) = &progress {
+            let mut progress = progress
+                .lock()
+                .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+            progress.done += 1;
+            progress.success_count = success_count + partial_count;
+            progress.failed_count = failed_count;
+            progress.errors = failures
+                .iter()
+                .map(|failure| failure.error.clone())
+                .collect();
+        }
+    }
+
+    if let Some(progress) = &progress {
+        let mut progress = progress
+            .lock()
+            .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+        progress.current_doc = None;
+        progress.current_path = None;
+        if progress.status != TaskStatus::Cancelled {
+            progress.status = TaskStatus::Completed;
+        }
     }
 
     Ok(WikiExtractResult {
@@ -222,7 +287,63 @@ pub async fn extract_wiki(
         partial_count,
         results,
         failures,
+        skipped_count,
+        skipped,
     })
+}
+
+fn unique_directory(parent: &Path, name: &str) -> PathBuf {
+    let candidate = parent.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    for suffix in 2..=10_000 {
+        let candidate = parent.join(format!("{} ({})", name, suffix));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    parent.join(format!("{}_{}", name, std::process::id()))
+}
+
+fn collect_skipped_nodes(node: &WikiNode, selected_tokens: Option<&[String]>) -> Vec<SkippedNode> {
+    let mut skipped = Vec::new();
+    collect_skipped_recursive(node, selected_tokens, false, &mut skipped);
+    skipped
+}
+
+fn collect_skipped_recursive(
+    node: &WikiNode,
+    selected_tokens: Option<&[String]>,
+    ancestor_selected: bool,
+    skipped: &mut Vec<SkippedNode>,
+) {
+    let directly_selected = selected_tokens
+        .map(|tokens| tokens.contains(&node.node_token))
+        .unwrap_or(true);
+    let selected = ancestor_selected || directly_selected;
+    let relevant = selected_tokens
+        .map(|tokens| selected || is_node_or_descendant_selected(node, tokens))
+        .unwrap_or(true);
+    if !relevant {
+        return;
+    }
+    if selected
+        && matches!(
+            node.obj_type,
+            WikiNodeType::Sheet | WikiNodeType::Bitable | WikiNodeType::Other
+        )
+    {
+        skipped.push(SkippedNode {
+            title: node.title.clone(),
+            node_token: node.node_token.clone(),
+            obj_type: node.obj_type.clone(),
+            reason: "当前版本仅支持导出飞书文档，暂不支持该节点类型".to_string(),
+        });
+    }
+    for child in &node.children {
+        collect_skipped_recursive(child, selected_tokens, selected, skipped);
+    }
 }
 
 /// 文档节点及其在目录树中的相对路径

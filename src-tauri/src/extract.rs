@@ -154,13 +154,17 @@ pub fn extract_doc_with_title(
 
     // 3. 准备输出路径
     let safe_title = markdown::safe_filename(&doc_title);
-    let filename = format!("{}.md", safe_title);
+    let filename = unique_markdown_filename(Path::new(output_dir), &safe_title);
     let filepath = Path::new(output_dir).join(&filename);
     let img_dir_name = markdown::images_dir_name(&filename);
-    let img_dir = Path::new(output_dir).join(&img_dir_name);
 
     // 确保输出目录存在
     fs::create_dir_all(output_dir)?;
+    let temp_dir = tempfile::Builder::new()
+        .prefix(".larkreader-")
+        .tempdir_in(output_dir)?;
+    let temp_filepath = temp_dir.path().join(&filename);
+    let img_dir = temp_dir.path().join(&img_dir_name);
 
     let mut errors = Vec::new();
     let mut images_downloaded = 0usize;
@@ -276,7 +280,17 @@ pub fn extract_doc_with_title(
     }
 
     // 5. 保存 .md 文件
-    fs::write(&filepath, content.as_bytes())?;
+    fs::write(&temp_filepath, content.as_bytes())?;
+    let final_img_dir = Path::new(output_dir).join(&img_dir_name);
+    if img_dir.exists() {
+        fs::rename(&img_dir, &final_img_dir)?;
+    }
+    if let Err(error) = fs::rename(&temp_filepath, &filepath) {
+        if final_img_dir.exists() {
+            let _ = fs::remove_dir_all(&final_img_dir);
+        }
+        return Err(error.into());
+    }
 
     // 判断提取状态
     let status = if images_failed == 0 {
@@ -296,6 +310,28 @@ pub fn extract_doc_with_title(
         status,
         errors,
     })
+}
+
+fn unique_markdown_filename(output_dir: &Path, title: &str) -> String {
+    let filename = format!("{}.md", title);
+    if !output_dir.join(&filename).exists()
+        && !output_dir
+            .join(markdown::images_dir_name(&filename))
+            .exists()
+    {
+        return filename;
+    }
+    for suffix in 2..=10_000 {
+        let filename = format!("{} ({}).md", title, suffix);
+        if !output_dir.join(&filename).exists()
+            && !output_dir
+                .join(markdown::images_dir_name(&filename))
+                .exists()
+        {
+            return filename;
+        }
+    }
+    format!("{}_{}.md", title, std::process::id())
 }
 
 /// 兼容异步调用方：用 tokio 的 spawn_blocking 包装同步函数

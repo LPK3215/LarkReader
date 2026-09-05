@@ -75,7 +75,41 @@ impl serde::Serialize for AppError {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("AppError", 3)?;
+        state.serialize_field("code", self.code())?;
+        state.serialize_field("message", &self.to_string())?;
+        state.serialize_field("retryable", &self.retryable())?;
+        state.end()
+    }
+}
+
+impl AppError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::LarkCliNotFound(_) => "LARK_CLI_NOT_FOUND",
+            Self::LarkCliError(_) | Self::LarkCliResponse(_) => "LARK_CLI_ERROR",
+            Self::JsonParse(_) => "INVALID_CLI_RESPONSE",
+            Self::NodeNotFound => "NODE_NOT_FOUND",
+            Self::NotLoggedIn => "AUTH_REQUIRED",
+            Self::AppNotConfigured => "APP_NOT_CONFIGURED",
+            Self::Io(_) => "IO_ERROR",
+            Self::Http(_) => "NETWORK_ERROR",
+            Self::Regex(_) => "REGEX_ERROR",
+            Self::Extract(_) => "EXTRACT_ERROR",
+            Self::InvalidSetting(_) => "INVALID_SETTING",
+            Self::InvalidInput(_) => "INVALID_INPUT",
+            Self::StateUnavailable(_) => "STATE_UNAVAILABLE",
+            Self::CommandTimeout(_) => "COMMAND_TIMEOUT",
+            Self::Other(_) => "INTERNAL_ERROR",
+        }
+    }
+
+    pub fn retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Http(_) | Self::CommandTimeout(_) | Self::StateUnavailable(_)
+        )
     }
 }
 

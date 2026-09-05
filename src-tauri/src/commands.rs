@@ -3,7 +3,10 @@
 //! 所有暴露给前端的接口都定义在这里。
 //! 前端通过 `invoke("command_name", { args })` 调用。
 
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 use tauri::State;
 
@@ -11,14 +14,20 @@ use crate::env;
 use crate::error::AppError;
 use crate::extract;
 use crate::models::{
-    DeviceInfo, EnvStatus, ExtractResult, LoginResult, PreviewResult, Settings, WikiExtractResult,
-    WikiNode,
+    DeviceInfo, EnvStatus, ExtractResult, LoginResult, PreviewResult, Progress, Settings,
+    TaskStatus, WikiExtractResult, WikiNode,
 };
 use crate::wiki;
 
 /// 应用状态：设置（持久化到本地文件）
 pub struct AppState {
     pub settings: Mutex<Settings>,
+    pub tasks: Arc<Mutex<HashMap<String, TaskControl>>>,
+}
+
+pub struct TaskControl {
+    pub progress: Arc<Mutex<Progress>>,
+    pub cancelled: Arc<AtomicBool>,
 }
 
 /// 配置文件路径
@@ -200,4 +209,87 @@ pub async fn extract_wiki(
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     std::fs::create_dir_all(&dir)?;
     wiki::extract_wiki(&wiki_url, &dir, &settings, selected_tokens.as_deref()).await
+}
+
+#[tauri::command]
+pub fn get_progress(task_id: String, state: State<'_, AppState>) -> Result<Progress, AppError> {
+    let tasks = state
+        .tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    let task = tasks
+        .get(&task_id)
+        .ok_or_else(|| AppError::InvalidInput("任务不存在".to_string()))?;
+    task.progress
+        .lock()
+        .map(|p| p.clone())
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))
+}
+
+#[tauri::command]
+pub fn cancel_task(task_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
+    let tasks = state
+        .tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    let task = tasks
+        .get(&task_id)
+        .ok_or_else(|| AppError::InvalidInput("任务不存在".to_string()))?;
+    task.cancelled.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_extract_wiki(
+    wiki_url: String,
+    output_dir: Option<String>,
+    selected_tokens: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let settings = read_settings(&state)?;
+    let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
+    std::fs::create_dir_all(&dir)?;
+    let task_id = Uuid::new_v4().to_string();
+    let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), 0)));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    state
+        .tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?
+        .insert(
+            task_id.clone(),
+            TaskControl {
+                progress: progress.clone(),
+                cancelled: cancelled.clone(),
+            },
+        );
+    let tasks = state.tasks.clone();
+    let task_id_for_run = task_id.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Ok(mut p) = progress.lock() {
+            p.status = TaskStatus::Running;
+        }
+        let result = crate::wiki::extract_wiki_controlled(
+            &wiki_url,
+            &dir,
+            &settings,
+            selected_tokens.as_deref(),
+            Some(progress.clone()),
+            Some(cancelled.clone()),
+        )
+        .await;
+        if let Ok(mut p) = progress.lock() {
+            if cancelled.load(Ordering::Relaxed) {
+                p.status = TaskStatus::Cancelled;
+            } else if result.is_ok() {
+                p.status = TaskStatus::Completed;
+            } else {
+                p.status = TaskStatus::Failed;
+                p.errors
+                    .push(result.err().map(|e| e.to_string()).unwrap_or_default());
+            }
+        }
+        let _ = (tasks, task_id_for_run);
+    });
+    Ok(task_id)
 }
