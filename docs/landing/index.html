@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="LarkReader · 免费、安全的飞书知识库本地导出工具。桌面原生，数据本地留痕，支持 Doc / Sheet / Bitable / File 多格式导出。">
+  <meta name="theme-color" content="#3370ff">
+  <meta property="og:title" content="LarkReader · 飞书知识库本地导出工具">
+  <meta property="og:description" content="把整个飞书 Wiki 一键备份成 Markdown + 图片，本地保留。免费、桌面原生、数据本地留痕。">
+  <meta property="og:type" content="website">
+  <title>LarkReader · 飞书知识库本地导出工具</title>
+
+  <link rel="icon" type="image/svg+xml" href="./assets/banner.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="./style.css">
+
+  <!-- Generator: LarkReader Landing · 2026-09-06 · WorkBuddy -->
+</head>
+<body data-theme="auto">
+
+  <!-- ============================================================
+       顶部导航（毛玻璃固定栏）
+       ============================================================ -->
+  <header class="topbar" id="topbar">
+    <div class="topbar-inner">
+      <a href="#top" class="brand">
+        <img src="./assets/banner.svg" alt="LarkReader" class="brand-mark">
+        <span class="brand-name">LarkReader</span>
+      </a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="#features">特性</a>
+        <a href="#how">3 步上手</a>
+        <a href="#download">下载</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/LPK3215/LarkReader" class="nav-github" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换主题">
+          <span class="theme-icon" data-mode="auto">◐</span>
+        </button>
+      </div>
+    </div>
+    <div class="scroll-progress" id="scroll-progress"></div>
+  </header>
+
+  <!-- ============================================================
+       Hero
+       ============================================================ -->
+  <section class="hero" id="top">
+    <div class="hero-bg" aria-hidden="true">
+      <div class="hero-grid"></div>
+      <div class="hero-glow hero-glow-1"></div>
+      <div class="hero-glow hero-glow-2"></div>
+    </div>
+    <div class="hero-inner">
+      <div class="hero-tag">
+        <span class="dot"></span>
+        v0.1.0 · 公开测试
+      </div>
+      <h1 class="hero-title">
+        飞书知识库，<br>
+        一键<span class="hl">本地留痕</span>
+      </h1>
+      <p class="hero-sub">
+        把整个 Wiki 或单篇文档备份成 Markdown + 图片，结构、附件、批注全保留。<br>
+        <strong>桌面原生 · 数据本地 · 不依赖云服务</strong>。
+      </p>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#download">
+          <span>立即下载</span>
+          <span class="btn-arrow">→</span>
+        </a>
+        <a class="btn btn-ghost" href="#how">查看 3 步上手</a>
+      </div>
+
+      <ul class="hero-chips" aria-label="产品关键词">
+        <li>🖥️ 桌面原生</li>
+        <li>🔒 数据本地留痕</li>
+        <li>📦 Doc / Sheet / Bitable / File 全类型</li>
+        <li>⚡ 并发可控</li>
+      </ul>
+
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-num" data-count="0" data-target="143">0</div>
+          <div class="stat-label">真实飞书 Wiki 验证节点</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" data-count="0" data-target="38">0</div>
+          <div class="stat-label">E2E 用例 · 0 失败</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" data-count="0" data-target="29">0</div>
+          <div class="stat-label">后端 IPC 命令</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" data-count="0" data-target="100">0</div>
+          <div class="stat-suffix">%</div>
+          <div class="stat-label">本地保存率</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       痛点 / 场景
+       ============================================================ -->
+  <section class="section" id="scenes">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">痛点 / 场景</span>
+        <h2>你为什么需要 LarkReader</h2>
+        <p>飞书很好，但内容出不来。本地导出这件事，市面上没人替你做。</p>
+      </header>
+
+      <div class="scene-grid">
+        <article class="scene-card">
+          <div class="scene-ico scene-ico-1">🛡️</div>
+          <h3>账号被封 / 离职交接</h3>
+          <p>团队 Wiki 是公司的，但内容是你的。把整个知识库一键备份到本地，离职 / 异动 / 封号都不慌。</p>
+        </article>
+        <article class="scene-card">
+          <div class="scene-ico scene-ico-2">📚</div>
+          <h3>离线阅读 / 通勤</h3>
+          <p>把 Wiki 同步成本地 Markdown，地铁、飞机、客户现场都能看。结构、附件、链接全保留。</p>
+        </article>
+        <article class="scene-card">
+          <div class="scene-ico scene-ico-3">📊</div>
+          <h3>多维表格做数据分析</h3>
+          <p>导出 Bitable / Sheet 为结构化 JSON / CSV，可直接接入 Pandas / Excel / BI 工具。</p>
+        </article>
+        <article class="scene-card">
+          <div class="scene-ico scene-ico-4">📜</div>
+          <h3>合规归档 / 审计</h3>
+          <p>金融、法律、医疗团队需要长期归档。LarkReader 生成的目录结构便于二次检索与脱敏。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       核心特性
+       ============================================================ -->
+  <section class="section" id="features">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">核心特性</span>
+        <h2>专为飞书设计，每一个细节都对齐官方 Open API</h2>
+      </header>
+
+      <div class="feature-grid">
+        <article class="feature feature-wide">
+          <div class="feature-text">
+            <div class="feature-tag">节点级精准导出</div>
+            <h3>勾哪个，导哪个</h3>
+            <p>不像"导出整个 Wiki"那种粗暴做法，LarkReader 用树形勾选界面让你精准指定要保留的节点。Doc / Sheet / Bitable / File / Folder 全部支持。</p>
+            <ul class="feature-list">
+              <li>三级树形 + 多选 / 全选 / 反选</li>
+              <li>类型自动识别（6 色编码）</li>
+              <li>节点规模自动统计</li>
+            </ul>
+          </div>
+          <div class="feature-art">
+            <svg viewBox="0 0 480 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="tree-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="rgba(120,160,255,.18)"/>
+                  <stop offset="1" stop-color="rgba(120,160,255,0)"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="480" height="320" rx="14" fill="url(#tree-grad)"/>
+              <!-- 树结构示意 -->
+              <g font-family="JetBrains Mono, monospace" font-size="11" fill="#cdd6f4">
+                <rect x="20" y="22" width="180" height="28" rx="6" fill="#1f2540" stroke="#3370ff" stroke-width="1.5"/>
+                <text x="34" y="40">📁 知识库总览</text>
+
+                <rect x="44" y="64" width="170" height="26" rx="5" fill="#1f2540" stroke="#3370ff" stroke-width="1"/>
+                <text x="58" y="81">📁 产品手册</text>
+
+                <rect x="68" y="104" width="150" height="24" rx="5" fill="#1f2540"/>
+                <rect x="78" y="108" width="14" height="14" rx="3" fill="none" stroke="#639922" stroke-width="1.5"/>
+                <polyline points="80,118 84,122 90,114" stroke="#639922" stroke-width="1.5" fill="none"/>
+                <text x="100" y="120" fill="#cdd6f4">📄 v3 迭代</text>
+
+                <rect x="68" y="134" width="150" height="24" rx="5" fill="#1f2540"/>
+                <rect x="78" y="138" width="14" height="14" rx="3" fill="none" stroke="#3370ff" stroke-width="1.5"/>
+                <text x="100" y="150" fill="#cdd6f4">📄 PRD 模板</text>
+
+                <rect x="44" y="174" width="170" height="26" rx="5" fill="#1f2540" stroke="#639922" stroke-width="1"/>
+                <rect x="54" y="178" width="14" height="14" rx="3" fill="#639922"/>
+                <polyline points="56,185 60,189 66,181" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <text x="74" y="191" fill="#cdd6f4">📊 数据看板</text>
+
+                <rect x="44" y="214" width="170" height="26" rx="5" fill="#1f2540" stroke="#7f77dd" stroke-width="1"/>
+                <text x="58" y="231" fill="#cdd6f4">📋 周会纪要</text>
+
+                <!-- 右侧汇总 -->
+                <rect x="260" y="22" width="200" height="280" rx="10" fill="#171a30" stroke="#262a4a"/>
+                <text x="276" y="44" fill="#a0a8c8" font-size="11" font-family="Inter, sans-serif">已选导出</text>
+                <line x1="276" y1="54" x2="444" y2="54" stroke="#262a4a"/>
+
+                <g font-size="11" fill="#cdd6f4">
+                  <text x="276" y="76">📄 v3 迭代</text>
+                  <text x="430" y="76" text-anchor="end" fill="#639922">✓</text>
+
+                  <text x="276" y="100">📄 PRD 模板</text>
+                  <text x="430" y="100" text-anchor="end" fill="#639922">✓</text>
+
+                  <text x="276" y="124">📊 数据看板</text>
+                  <text x="430" y="124" text-anchor="end" fill="#639922">✓</text>
+
+                  <text x="276" y="148">📋 周会纪要</text>
+                  <text x="430" y="148" text-anchor="end" fill="#639922">✓</text>
+
+                  <line x1="276" y1="166" x2="444" y2="166" stroke="#262a4a"/>
+
+                  <text x="276" y="186" fill="#a0a8c8">类型分布</text>
+                  <rect x="276" y="196" width="120" height="6" rx="3" fill="#3370ff"/>
+                  <text x="276" y="216" fill="#a0a8c8" font-size="10">📄 Doc 60%</text>
+
+                  <rect x="276" y="226" width="80" height="6" rx="3" fill="#639922"/>
+                  <text x="276" y="246" fill="#a0a8c8" font-size="10">📊 Sheet 40%</text>
+
+                  <rect x="276" y="256" width="60" height="6" rx="3" fill="#7f77dd"/>
+                  <text x="276" y="276" fill="#a0a8c8" font-size="10">📋 Bitable 30%</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-text">
+            <div class="feature-tag">实时进度</div>
+            <h3>看得见的 7 阶段流水线</h3>
+            <p>从扫树 → 拉取 → 转 Markdown → 下载图片 → 写盘，全程阶段条 + 当前文档 + ETA，不再"假死"。</p>
+          </div>
+          <div class="feature-art feature-art-small">
+            <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="200" rx="12" fill="rgba(51,112,255,.08)"/>
+              <g font-family="Inter, sans-serif" font-size="10">
+                <rect x="16" y="20" width="288" height="20" rx="10" fill="#3370ff"/>
+                <text x="28" y="34" fill="#fff" font-weight="600">扫树 ✓</text>
+                <text x="296" y="34" fill="#fff" text-anchor="end">143</text>
+
+                <rect x="16" y="48" width="288" height="20" rx="10" fill="#3370ff"/>
+                <text x="28" y="62" fill="#fff" font-weight="600">权限校验 ✓</text>
+                <text x="296" y="62" fill="#fff" text-anchor="end">38</text>
+
+                <rect x="16" y="76" width="288" height="20" rx="10" fill="#3370ff"/>
+                <text x="28" y="90" fill="#fff" font-weight="600">拉取文档 ✓</text>
+                <text x="296" y="90" fill="#fff" text-anchor="end">38/38</text>
+
+                <rect x="16" y="104" width="220" height="20" rx="10" fill="#639922"/>
+                <text x="28" y="118" fill="#fff" font-weight="600">转 Markdown</text>
+                <text x="296" y="118" fill="#fff" text-anchor="end">28/38</text>
+
+                <rect x="16" y="132" width="160" height="20" rx="10" fill="rgba(120,160,255,.25)"/>
+                <text x="28" y="146" fill="#a0a8c8">下载图片</text>
+
+                <rect x="16" y="160" width="100" height="20" rx="10" fill="rgba(120,160,255,.15)"/>
+                <text x="28" y="174" fill="#a0a8c8">写盘</text>
+              </g>
+            </svg>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-text">
+            <div class="feature-tag">并发可控</div>
+            <h3>1-32 任务并行</h3>
+            <p>默认 4 并发温和模式；网络好的拉到 16、32 飞起。失败自动重试，进度条不卡。</p>
+          </div>
+          <div class="feature-art feature-art-small">
+            <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="200" rx="12" fill="rgba(99,153,34,.08)"/>
+              <g font-family="JetBrains Mono, monospace" font-size="10">
+                <text x="20" y="30" fill="#a0a8c8">concurrency = 8</text>
+                <line x1="20" y1="44" x2="300" y2="44" stroke="#262a4a"/>
+
+                <!-- 8 个 worker 行 -->
+                <g>
+                  <rect x="20" y="60" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="64" y="60" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="108" y="60" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="152" y="60" width="40" height="14" rx="3" fill="#639922"/>
+                  <text x="280" y="71" fill="#a0a8c8" text-anchor="end">完成</text>
+                </g>
+                <g>
+                  <rect x="20" y="82" width="60" height="14" rx="3" fill="#639922"/>
+                  <rect x="84" y="82" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="128" y="82" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="172" y="82" width="40" height="14" rx="3" fill="#3370ff"/>
+                  <text x="280" y="93" fill="#a0a8c8" text-anchor="end">进行中</text>
+                </g>
+                <g>
+                  <rect x="20" y="104" width="40" height="14" rx="3" fill="#639922"/>
+                  <rect x="64" y="104" width="40" height="14" rx="3" fill="#3370ff"/>
+                  <text x="280" y="115" fill="#a0a8c8" text-anchor="end">...</text>
+                </g>
+                <g>
+                  <rect x="20" y="126" width="40" height="14" rx="3" fill="#3370ff"/>
+                  <text x="280" y="137" fill="#a0a8c8" text-anchor="end">队列</text>
+                </g>
+
+                <text x="20" y="170" fill="#cdd6f4">每 worker 单独跑 get_doc + extract + download</text>
+              </g>
+            </svg>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-text">
+            <div class="feature-tag">桌面原生</div>
+            <h3>Tauri · 不依赖云</h3>
+            <p>基于 Tauri 2 + Rust，体积小、启动快。Windows / macOS / Linux 三端原生，无浏览器依赖、无云中转。</p>
+          </div>
+          <div class="feature-art feature-art-small">
+            <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="200" rx="12" fill="rgba(127,119,221,.08)"/>
+              <g font-family="Inter, sans-serif" font-size="11">
+                <rect x="40" y="40" width="240" height="120" rx="8" fill="#171a30" stroke="#262a4a"/>
+                <rect x="40" y="40" width="240" height="20" rx="8" fill="#262a4a"/>
+                <circle cx="54" cy="50" r="3" fill="#e24b4a"/>
+                <circle cx="66" cy="50" r="3" fill="#ba7517"/>
+                <circle cx="78" cy="50" r="3" fill="#639922"/>
+                <text x="160" y="54" fill="#a0a8c8" text-anchor="middle" font-size="10">LarkReader</text>
+
+                <rect x="60" y="80" width="80" height="14" rx="3" fill="#3370ff"/>
+                <rect x="148" y="80" width="60" height="14" rx="3" fill="#639922"/>
+                <rect x="216" y="80" width="50" height="14" rx="3" fill="#7f77dd"/>
+
+                <rect x="60" y="104" width="200" height="6" rx="3" fill="rgba(120,160,255,.25)"/>
+                <rect x="60" y="104" width="140" height="6" rx="3" fill="#3370ff"/>
+
+                <rect x="60" y="120" width="200" height="6" rx="3" fill="rgba(99,153,34,.25)"/>
+                <rect x="60" y="120" width="160" height="6" rx="3" fill="#639922"/>
+
+                <rect x="60" y="136" width="200" height="6" rx="3" fill="rgba(127,119,221,.25)"/>
+                <rect x="60" y="136" width="80" height="6" rx="3" fill="#7f77dd"/>
+
+                <text x="160" y="180" fill="#a0a8c8" text-anchor="middle" font-size="10">Win · macOS · Linux</text>
+              </g>
+            </svg>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-text">
+            <div class="feature-tag">数据本地</div>
+            <h3>不经过任何云</h3>
+            <p>所有 token、所有导出文件、所有日志都在你的机器上。没有"我们的服务器"可以看你文档。</p>
+          </div>
+          <div class="feature-art feature-art-small">
+            <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="200" rx="12" fill="rgba(186,117,23,.08)"/>
+              <g font-family="Inter, sans-serif" font-size="11">
+                <circle cx="80" cy="100" r="36" fill="none" stroke="#3370ff" stroke-width="2"/>
+                <text x="80" y="105" fill="#3370ff" text-anchor="middle" font-size="11" font-weight="600">你的电脑</text>
+
+                <circle cx="240" cy="100" r="36" fill="none" stroke="rgba(186,117,23,.5)" stroke-width="2" stroke-dasharray="4 4"/>
+                <text x="240" y="98" fill="#ba7517" text-anchor="middle" font-size="10">飞书</text>
+                <text x="240" y="112" fill="#ba7517" text-anchor="middle" font-size="10">Open API</text>
+
+                <line x1="116" y1="100" x2="204" y2="100" stroke="#639922" stroke-width="2"/>
+                <text x="160" y="92" fill="#639922" text-anchor="middle" font-size="10">HTTPS</text>
+
+                <line x1="116" y1="100" x2="204" y2="100" stroke="#639922" stroke-width="2" stroke-dasharray="2 4" opacity="0.5"/>
+                <text x="160" y="135" fill="#a0a8c8" text-anchor="middle" font-size="10">没有"我们"</text>
+              </g>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3 步上手
+       ============================================================ -->
+  <section class="section section-alt" id="how">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">3 步上手</span>
+        <h2>不需要教程，启动就能用</h2>
+      </header>
+
+      <div class="steps">
+        <article class="step">
+          <div class="step-num">1</div>
+          <h3>粘贴飞书链接</h3>
+          <p>支持 Wiki URL 或单篇文档 URL。首次使用需要扫码登录飞书账号，整个 token 本地保存。</p>
+          <div class="step-art">
+            <svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="160" rx="10" fill="rgba(120,160,255,.08)"/>
+              <rect x="20" y="36" width="280" height="42" rx="8" fill="#1f2540" stroke="#3370ff"/>
+              <text x="36" y="62" font-family="JetBrains Mono, monospace" font-size="11" fill="#a0a8c8">https://</text>
+              <text x="92" y="62" font-family="JetBrains Mono, monospace" font-size="11" fill="#cdd6f4">feishu.cn/wiki/AbCdEf123</text>
+              <rect x="20" y="98" width="100" height="32" rx="6" fill="#3370ff"/>
+              <text x="70" y="118" fill="#fff" text-anchor="middle" font-size="12" font-weight="600">扫 树</text>
+              <text x="160" y="118" fill="#a0a8c8" font-size="11">→</text>
+              <text x="200" y="118" fill="#cdd6f4" font-size="11">143 节点 / 6 类型</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-num">2</div>
+          <h3>勾选要导出的节点</h3>
+          <p>树形界面多选，支持全选 / 反选 / 按类型筛选。右侧实时显示已选数量与类型分布。</p>
+          <div class="step-art">
+            <svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="160" rx="10" fill="rgba(99,153,34,.08)"/>
+              <rect x="20" y="20" width="280" height="120" rx="8" fill="#1f2540"/>
+              <g font-family="Inter, sans-serif" font-size="11" fill="#cdd6f4">
+                <rect x="32" y="32" width="14" height="14" rx="3" fill="#639922"/>
+                <polyline points="35,42 39,46 44,38" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <text x="54" y="43">📄 v3 迭代</text>
+
+                <rect x="32" y="56" width="14" height="14" rx="3" fill="#639922"/>
+                <polyline points="35,66 39,70 44,62" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <text x="54" y="67">📄 PRD 模板</text>
+
+                <rect x="32" y="80" width="14" height="14" rx="3" fill="#639922"/>
+                <polyline points="35,90 39,94 44,86" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <text x="54" y="91">📊 数据看板</text>
+
+                <rect x="32" y="104" width="14" height="14" rx="3" fill="none" stroke="#3370ff"/>
+                <text x="54" y="115">📋 周会纪要</text>
+
+                <rect x="200" y="56" width="86" height="30" rx="6" fill="#3370ff"/>
+                <text x="243" y="75" fill="#fff" text-anchor="middle" font-weight="600">已选 3</text>
+              </g>
+            </svg>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="step-num">3</div>
+          <h3>一键导出</h3>
+          <p>选好本地输出目录，按"开始"即可。进度条、阶段、ETA、当前文档全程可见。完成自动打开目录。</p>
+          <div class="step-art">
+            <svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="0" y="0" width="320" height="160" rx="10" fill="rgba(127,119,221,.08)"/>
+              <rect x="20" y="36" width="280" height="42" rx="8" fill="#1f2540" stroke="#639922"/>
+              <text x="36" y="62" font-family="JetBrains Mono, monospace" font-size="11" fill="#a0a8c8">📂 D:\Export\Wiki\</text>
+
+              <rect x="20" y="98" width="280" height="32" rx="6" fill="rgba(99,153,34,.15)" stroke="#639922"/>
+              <text x="160" y="118" fill="#639922" text-anchor="middle" font-size="12" font-weight="600">开始导出 · 预估 23 秒</text>
+            </svg>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       架构简图（一张简化版）
+       ============================================================ -->
+  <section class="section" id="arch">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">架构简图</span>
+        <h2>一个桌面进程，一条数据流</h2>
+      </header>
+
+      <div class="arch-wrap">
+        <img src="./assets/architecture.svg" alt="LarkReader 架构图：飞书 Open API → Tauri 后端（Rust）→ 本地文件系统" class="arch-img">
+        <p class="arch-cap">
+          飞书 Open Platform 提供 OAuth + 内容 API；Tauri 后端在本地 Rust 进程里完成权限校验、并发调度、Markdown 转换、图片下载与落盘；前端是 Vue 3 + Naive UI 渲染的控制台。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       下载安装
+       ============================================================ -->
+  <section class="section section-alt" id="download">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">下载 / 安装</span>
+        <h2>三分钟装好，立即可用</h2>
+      </header>
+
+      <div class="dl-grid">
+        <article class="dl-card">
+          <h3>系统要求</h3>
+          <ul class="req-list">
+            <li><strong>系统</strong> · Windows 10+ / macOS 11+ / Ubuntu 20.04+</li>
+            <li><strong>架构</strong> · x86_64 / arm64</li>
+            <li><strong>磁盘</strong> · 至少 200 MB 可用空间</li>
+            <li><strong>网络</strong> · 能访问 <code>open.feishu.cn</code></li>
+            <li><strong>账号</strong> · 一个有目标 Wiki / Doc 权限的飞书账号</li>
+          </ul>
+        </article>
+
+        <article class="dl-card">
+          <h3>下载预编译包（推荐）</h3>
+          <p class="dl-sub">GitHub Releases 提供 Windows MSI / macOS DMG / Linux AppImage / Linux deb。</p>
+          <a class="btn btn-primary btn-block" href="https://github.com/LPK3215/LarkReader/releases/latest" target="_blank" rel="noopener">
+            <span>从 GitHub Releases 下载</span>
+            <span class="btn-arrow">↗</span>
+          </a>
+          <p class="dl-version">当前版本 <strong>v0.1.0</strong> · 2026-09 发布</p>
+        </article>
+
+        <article class="dl-card">
+          <h3>从源码编译</h3>
+          <p class="dl-sub">需要 Rust 1.78+ 与 Node 20+：</p>
+<pre class="cmd"><code>git clone https://github.com/&lt;user&gt;/larkreader.git
+cd larkreader
+npm install
+npm run tauri build</code></pre>
+          <p class="dl-sub">产物在 <code>src-tauri/target/release/bundle/</code>。</p>
+        </article>
+
+        <article class="dl-card">
+          <h3>验证安装</h3>
+          <p class="dl-sub">启动后看到"LarkReader · 飞书文档导出工具"窗口即成功。</p>
+          <ul class="req-list">
+            <li><strong>第一步</strong> · Onboarding 检测 4 项环境</li>
+            <li><strong>第二步</strong> · 扫码登录飞书</li>
+            <li><strong>第三步</strong> · 选输出目录 → 完成</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       FAQ
+       ============================================================ -->
+  <section class="section" id="faq">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">FAQ</span>
+        <h2>常见问题</h2>
+      </header>
+
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary>LarkReader 是免费的吗？</summary>
+          <p>完全免费、开源、GPL-3.0 协议。你也可以用源码做二次开发（注意 GPL 传染性）。</p>
+        </details>
+        <details class="faq-item">
+          <summary>我的数据会上传到你们的服务器吗？</summary>
+          <p><strong>不会</strong>。LarkReader 不提供云服务、不维护服务器、不收集任何使用数据。所有 token、所有导出文件、所有日志都在你自己的机器上。唯一的网络流量是 LarkReader 直接调用飞书 Open API。</p>
+        </details>
+        <details class="faq-item">
+          <summary>支持哪些飞书内容类型？</summary>
+          <p>Doc（旧文档 / 新文档）、Sheet、Bitable、File、Folder。Doc 支持富文本、表格、代码块、图片附件；Sheet / Bitable 导出为结构化 JSON 与 CSV；File 按原始格式下载到本地。</p>
+        </details>
+        <details class="faq-item">
+          <summary>登录态会自动续期吗？</summary>
+          <p>会的。LarkReader 自动管理 user_access_token，过期前自动用 refresh_token 续命，不需要你每次扫码。</p>
+        </details>
+        <details class="faq-item">
+          <summary>怎么反馈 bug / 提需求 / 贡献代码？</summary>
+          <p>请到 GitHub Repo 的 <strong>Issues</strong> 区提 issue；想动手改源码的可以 fork 后提 PR，详细流程见 <code>CONTRIBUTING.md</code>。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Footer
+       ============================================================ -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="./assets/banner.svg" alt="LarkReader" class="footer-mark">
+        <div>
+          <div class="footer-name">LarkReader</div>
+          <div class="footer-tag">免费 · 安全 · 飞书知识库本地导出工具</div>
+        </div>
+      </div>
+
+      <div class="footer-cols">
+        <div class="footer-col">
+          <div class="footer-col-title">项目</div>
+          <a href="https://github.com/LPK3215/LarkReader" target="_blank" rel="noopener">GitHub Repo ↗</a>
+          <a href="https://github.com/LPK3215/LarkReader/releases/latest" target="_blank" rel="noopener">Releases ↗</a>
+          <a href="https://github.com/LPK3215/LarkReader/issues" target="_blank" rel="noopener">Issues ↗</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">文档</div>
+          <a href="#how">3 步上手</a>
+          <a href="#faq">FAQ</a>
+          <a href="./BACKEND.md" target="_blank">后端手册 ↗</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">许可 / 致谢</div>
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0 ↗</a>
+          <a href="https://open.feishu.cn/" target="_blank" rel="noopener">飞书 Open Platform ↗</a>
+          <a href="https://tauri.app/" target="_blank" rel="noopener">Tauri ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="container">
+        <span>© 2026 LarkReader · 仅供合法用途，请遵守飞书用户协议与所在司法辖区法律。</span>
+      </div>
+    </div>
+  </footer>
+
+  <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button>
+
+  <script src="./script.js" defer></script>
+</body>
+</html>
