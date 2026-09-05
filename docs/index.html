@@ -30,6 +30,7 @@
         <span class="brand-name">LarkReader</span>
       </a>
       <nav class="nav-links" aria-label="主导航">
+        <a href="#use-cases">使用场景</a>
         <a href="#features">特性</a>
         <a href="#how">3 步上手</a>
         <a href="#download">下载</a>
@@ -137,6 +138,83 @@
           <h3>合规归档 / 审计</h3>
           <p>金融、法律、医疗团队需要长期归档。LarkReader 生成的目录结构便于二次检索与脱敏。</p>
         </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       使用场景（两段分述：日常使用不便 + 端到端真实案例）
+       ============================================================ -->
+  <section class="section section-alt" id="use-cases">
+    <div class="container">
+      <header class="section-head">
+        <span class="eyebrow">使用场景</span>
+        <h2>一份知识库，两种角度</h2>
+        <p>先看日常使用的不便之处，再用真实下载产物证明 LarkReader 能解决到什么程度。</p>
+      </header>
+
+      <div class="use-cases-grid">
+
+        <!-- ① 日常使用不便 -->
+        <article class="use-case">
+          <div class="use-case-tag">①</div>
+          <h3>日常使用不便的时候</h3>
+          <p>在浏览器里看飞书知识库，常常是这样的体验：</p>
+
+          <ul class="pain-list">
+            <li><strong>多 tab 来回切换</strong> · 一篇文档要开好几个页面才能看全</li>
+            <li><strong>加载受网络影响</strong> · 网速不稳、跨网访问、页面资源多时正文断断续续</li>
+            <li><strong>搜索 / 跳转能力弱</strong> · 浏览器只能搜标题，正文搜不到，跨文档跳转要手动搜</li>
+            <li><strong>没有"阅读模式"</strong> · 导航、按钮、状态栏都在屏幕上，长文阅读容易分神</li>
+            <li><strong>离线基本不能用</strong> · 出差、路上、没网的环境里几乎看不了</li>
+          </ul>
+
+          <figure class="use-case-shot">
+            <img src="./image.png" alt="飞书知识库浏览示例">
+            <figcaption>在线浏览多内容、多目录的知识库时，浏览器里需要不停滑动、点击、等待加载。</figcaption>
+          </figure>
+
+          <p class="use-case-foot">备份到本地后用 LarkReader 阅读：一个窗口、左目录右正文、附件集中、断网可读、全文可搜。</p>
+        </article>
+
+        <!-- ② 端到端真实案例 -->
+        <article class="use-case use-case-2">
+          <div class="use-case-tag use-case-tag-2">②</div>
+          <h3>真实知识库，已经跑过端到端验证</h3>
+          <p>
+            <a href="https://github.com/LPK3215/LarkReader/tree/main/docs/e2e-download-case" target="_blank" rel="noopener">docs/e2e-download-case/</a>
+            是那次导出的完整产物，开源在 GitHub 上：
+          </p>
+
+          <div class="case-stats">
+            <div class="case-stat">
+              <div class="case-stat-num">8</div>
+              <div class="case-stat-label">顶层节点</div>
+            </div>
+            <div class="case-stat">
+              <div class="case-stat-num">38</div>
+              <div class="case-stat-label">导出成功</div>
+            </div>
+            <div class="case-stat">
+              <div class="case-stat-num case-stat-zero">0</div>
+              <div class="case-stat-label">失败 / 跳过</div>
+            </div>
+            <div class="case-stat">
+              <div class="case-stat-num">4</div>
+              <div class="case-stat-label">节点类型</div>
+            </div>
+          </div>
+
+          <ul class="case-types">
+            <li>📄 <strong>docx 正文</strong> · 导出 Markdown、图片本地化、附件原样</li>
+            <li>📊 <strong>Sheet</strong> · 导出 .xlsx</li>
+            <li>📋 <strong>Bitable</strong> · 导出 .ndjson + .manifest.json</li>
+            <li>📎 <strong>文件附件</strong> · 18 种扩展名、原样字节下载</li>
+          </ul>
+
+          <p class="use-case-foot">整棵目录树按飞书层级与排序落盘，编号前缀即子节点树序，zip 后可直接离线浏览整本知识库。</p>
+        </article>
+
       </div>
     </div>
   </section>
