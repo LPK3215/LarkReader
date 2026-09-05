@@ -9,6 +9,7 @@
 //!
 //! 不用 tokio，不用 spawn_blocking，简单直接。
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -174,8 +175,12 @@ pub fn extract_doc_with_title(
     // 4. 下载图片（串行，和 Python 参考代码一样）
     if settings.download_images && image_count > 0 {
         fs::create_dir_all(&img_dir)?;
+        let mut processed_urls = HashSet::new();
 
         for (i, img) in images.iter().enumerate() {
+            if !processed_urls.insert(img.url.clone()) {
+                continue;
+            }
             let token = &img.file_token;
             let output_base = img_dir.join(format!("img_{:02}", i + 1));
             let output_base_str = output_base.to_string_lossy().to_string();
@@ -228,7 +233,16 @@ pub fn extract_doc_with_title(
                     }
                     if saved != final_path {
                         if final_path.exists() {
-                            fs::remove_file(&final_path)?;
+                            if let Err(e) = fs::remove_file(&final_path) {
+                                images_failed += 1;
+                                errors.push(format!(
+                                    "图片 {}/{} 无法替换旧文件: {}",
+                                    i + 1,
+                                    image_count,
+                                    e
+                                ));
+                                continue;
+                            }
                         }
                         if let Err(e) = fs::rename(&saved, &final_path) {
                             images_failed += 1;

@@ -64,8 +64,10 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
 
     // 递归遍历子节点
     if has_child {
-        let mut visited = HashSet::from([node_token.clone()]);
-        root.children = traverse_children(&space_id, &node_token, 1, &mut visited)?;
+        let mut ancestors = HashSet::from([node_token.clone()]);
+        let mut node_count = 1usize;
+        root.children =
+            traverse_children(&space_id, &node_token, 1, &mut ancestors, &mut node_count)?;
     }
 
     Ok(root)
@@ -78,7 +80,8 @@ fn traverse_children(
     space_id: &str,
     parent_token: &str,
     depth: usize,
-    visited: &mut HashSet<String>,
+    ancestors: &mut HashSet<String>,
+    node_count: &mut usize,
 ) -> AppResult<Vec<WikiNode>> {
     if depth > MAX_WIKI_DEPTH {
         return Err(AppError::Extract(format!(
@@ -120,20 +123,24 @@ fn traverse_children(
                 "Wiki 节点缺少 node_token".to_string(),
             ));
         }
-        if !visited.insert(node.node_token.clone()) {
+        if ancestors.contains(&node.node_token) {
             return Err(AppError::Extract(format!(
-                "检测到重复或循环 Wiki 节点: {}",
+                "检测到循环 Wiki 节点: {}",
                 node.node_token
             )));
         }
-        if visited.len() > MAX_WIKI_NODES {
+        *node_count += 1;
+        if *node_count > MAX_WIKI_NODES {
             return Err(AppError::Extract(format!(
                 "Wiki 节点数量超过限制 {}",
                 MAX_WIKI_NODES
             )));
         }
         if node.has_child {
-            let children = traverse_children(space_id, &node.node_token, depth + 1, visited)?;
+            ancestors.insert(node.node_token.clone());
+            let children =
+                traverse_children(space_id, &node.node_token, depth + 1, ancestors, node_count)?;
+            ancestors.remove(&node.node_token);
             node.children = children;
         }
     }
@@ -180,8 +187,8 @@ pub async fn extract_wiki_controlled(
 
     // 收集所有文档节点（保留目录路径）
     let docs = collect_docs_with_path(&tree, selected_tokens);
-    let skipped = collect_skipped_nodes(&tree, selected_tokens);
-    let skipped_count = skipped.len();
+    let special_nodes = collect_special_nodes(&tree, selected_tokens);
+    let mut skipped = Vec::new();
 
     let total = docs.len();
     if let Some(progress) = &progress {
@@ -268,6 +275,37 @@ pub async fn extract_wiki_controlled(
         }
     }
 
+    for node in special_nodes {
+        if cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            break;
+        }
+        let safe = markdown::prefixed_filename(node.position, &node.title);
+        let result = match node.obj_type {
+            WikiNodeType::Sheet => {
+                let path = wiki_dir.join(format!("{}.xlsx", safe));
+                lark::sheets_export(
+                    &extract::build_wiki_url(&node.node_token),
+                    &path.to_string_lossy(),
+                )
+                .map(|_| ())
+            }
+            WikiNodeType::Bitable => export_bitable(node, &wiki_dir.join(&safe)),
+            _ => Err(AppError::Extract("当前 CLI 不支持该节点类型".to_string())),
+        };
+        if let Err(error) = result {
+            skipped.push(SkippedNode {
+                title: node.title.clone(),
+                node_token: node.node_token.clone(),
+                obj_type: node.obj_type.clone(),
+                reason: error.to_string(),
+            });
+        }
+    }
+    let skipped_count = skipped.len();
+
     if let Some(progress) = &progress {
         let mut progress = progress
             .lock()
@@ -306,17 +344,20 @@ fn unique_directory(parent: &Path, name: &str) -> PathBuf {
     parent.join(format!("{}_{}", name, std::process::id()))
 }
 
-fn collect_skipped_nodes(node: &WikiNode, selected_tokens: Option<&[String]>) -> Vec<SkippedNode> {
-    let mut skipped = Vec::new();
-    collect_skipped_recursive(node, selected_tokens, false, &mut skipped);
-    skipped
+fn collect_special_nodes<'a>(
+    node: &'a WikiNode,
+    selected_tokens: Option<&[String]>,
+) -> Vec<&'a WikiNode> {
+    let mut nodes = Vec::new();
+    collect_special_recursive(node, selected_tokens, false, &mut nodes);
+    nodes
 }
 
-fn collect_skipped_recursive(
-    node: &WikiNode,
+fn collect_special_recursive<'a>(
+    node: &'a WikiNode,
     selected_tokens: Option<&[String]>,
     ancestor_selected: bool,
-    skipped: &mut Vec<SkippedNode>,
+    nodes: &mut Vec<&'a WikiNode>,
 ) {
     let directly_selected = selected_tokens
         .map(|tokens| tokens.contains(&node.node_token))
@@ -334,16 +375,33 @@ fn collect_skipped_recursive(
             WikiNodeType::Sheet | WikiNodeType::Bitable | WikiNodeType::Other
         )
     {
-        skipped.push(SkippedNode {
-            title: node.title.clone(),
-            node_token: node.node_token.clone(),
-            obj_type: node.obj_type.clone(),
-            reason: "当前版本仅支持导出飞书文档，暂不支持该节点类型".to_string(),
-        });
+        nodes.push(node);
     }
     for child in &node.children {
-        collect_skipped_recursive(child, selected_tokens, selected, skipped);
+        collect_special_recursive(child, selected_tokens, selected, nodes);
     }
+}
+
+fn export_bitable(node: &WikiNode, output_dir: &Path) -> AppResult<()> {
+    let base_token = node.obj_token.as_deref().unwrap_or(&node.node_token);
+    std::fs::create_dir_all(output_dir)?;
+    let data = lark::base_table_list(base_token)?;
+    let tables = data
+        .get("items")
+        .or_else(|| data.get("tables"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| AppError::LarkCliResponse("无法解析多维表格的数据表列表".to_string()))?;
+    for (index, table) in tables.iter().enumerate() {
+        let id = table
+            .get("table_id")
+            .or_else(|| table.get("id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::LarkCliResponse("数据表缺少 table_id".to_string()))?;
+        let name = table.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+        let filename = format!("{:02}_{}.ndjson", index + 1, markdown::safe_filename(name));
+        lark::base_records_export(base_token, id, &output_dir.join(filename).to_string_lossy())?;
+    }
+    Ok(())
 }
 
 /// 文档节点及其在目录树中的相对路径

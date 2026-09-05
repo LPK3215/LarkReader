@@ -29,6 +29,13 @@ pub struct EnvStatus {
     pub user_name: Option<String>,
     /// token 状态（ready / needs_refresh / none）
     pub token_status: Option<String>,
+    pub check_errors: Vec<EnvCheckError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvCheckError {
+    pub component: String,
+    pub message: String,
 }
 
 // ============================================================================

@@ -6,6 +6,7 @@
 //! 3. 将远程 URL 替换为本地相对路径
 //! 4. 文件名安全化处理
 
+use pulldown_cmark::{Event, Parser, Tag};
 use regex::Regex;
 
 use crate::models::ImageRef;
@@ -15,28 +16,31 @@ use crate::models::ImageRef;
 /// 匹配模式：`![描述](url)`
 /// 返回 ImageRef 列表，包含 alt、url、file_token
 pub fn extract_images(content: &str) -> Vec<ImageRef> {
-    let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
     let mut images = Vec::new();
-
-    for caps in re.captures_iter(content) {
-        let alt = caps
-            .get(1)
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-        let url = caps
-            .get(2)
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
-
-        // 从 URL 中提取 file_token
-        // URL 格式: https://feishu.cn/file/<file_token> 或其他格式
-        let file_token = extract_file_token(&url);
-
-        images.push(ImageRef {
-            alt,
-            url,
-            file_token,
-        });
+    let mut current: Option<(String, String)> = None;
+    for event in Parser::new(content) {
+        match event {
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                current = Some((dest_url.into_string(), String::new()))
+            }
+            Event::Text(text) | Event::Code(text) if current.is_some() => {
+                if let Some((_, alt)) = &mut current {
+                    alt.push_str(&text);
+                }
+            }
+            Event::End(pulldown_cmark::TagEnd::Image) => {
+                if let Some((url, alt)) = current.take() {
+                    if !url.is_empty() {
+                        images.push(ImageRef {
+                            file_token: extract_file_token(&url),
+                            alt,
+                            url,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     images
@@ -90,10 +94,8 @@ pub fn safe_filename(name: &str) -> String {
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
-    let trimmed = if reserved
-        .iter()
-        .any(|name| trimmed.eq_ignore_ascii_case(name))
-    {
+    let stem = trimmed.split('.').next().unwrap_or(&trimmed);
+    let trimmed = if cfg!(windows) && reserved.iter().any(|name| stem.eq_ignore_ascii_case(name)) {
         format!("_{}", trimmed)
     } else {
         trimmed

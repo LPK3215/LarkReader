@@ -9,7 +9,9 @@ use std::process::Command;
 
 use crate::error::{AppError, AppResult};
 use crate::lark;
-use crate::models::{DeviceInfo, EnvStatus, LoginResult};
+use crate::models::{DeviceInfo, EnvCheckError, EnvStatus, LoginResult};
+
+const SUPPORTED_LARK_CLI_VERSION: &str = "1.0.93";
 
 /// 检测 Node.js 是否安装，返回版本号
 pub fn check_node() -> Option<String> {
@@ -83,20 +85,31 @@ pub fn check_env() -> EnvStatus {
     }
 
     // 检测飞书应用配置
-    if let Some((app_id, _brand)) = check_app_config() {
-        status.app_configured = true;
-        status.app_id = Some(app_id);
+    match lark::config_show() {
+        Ok(Some((app_id, _brand))) => {
+            status.app_configured = true;
+            status.app_id = Some(app_id);
+        }
+        Ok(None) => {}
+        Err(error) => status.check_errors.push(EnvCheckError {
+            component: "app_config".to_string(),
+            message: error.to_string(),
+        }),
     }
 
     // 检测用户登录状态
-    let (identity, token_status, user_name) = check_login();
-    if !identity.is_empty() {
-        // 只有 identity == "user" 且 token_status 为 ready/needs_refresh 才算用户已登录
-        // identity == "bot" 表示应用身份可用，但用户未登录
-        status.logged_in =
-            identity == "user" && (token_status == "ready" || token_status == "needs_refresh");
-        status.token_status = Some(token_status);
-        status.user_name = user_name;
+    match lark::whoami() {
+        Ok((identity, token_status, user_name)) if !identity.is_empty() => {
+            status.logged_in =
+                identity == "user" && (token_status == "ready" || token_status == "needs_refresh");
+            status.token_status = Some(token_status);
+            status.user_name = user_name;
+        }
+        Ok(_) => {}
+        Err(error) => status.check_errors.push(EnvCheckError {
+            component: "login".to_string(),
+            message: error.to_string(),
+        }),
     }
 
     status
@@ -117,7 +130,11 @@ pub fn install_lark_cli() -> AppResult<String> {
 
     // 执行 npm install -g @larksuite/cli@latest
     let output = Command::new("npm")
-        .args(["install", "-g", "@larksuite/cli@latest"])
+        .args([
+            "install",
+            "-g",
+            &format!("@larksuite/cli@{}", SUPPORTED_LARK_CLI_VERSION),
+        ])
         .output()
         .map_err(|e| AppError::Other(format!("npm 执行失败: {}", e)))?;
 

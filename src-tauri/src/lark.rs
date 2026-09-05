@@ -4,7 +4,8 @@
 //! subprocess.run → json.loads → 检查 ok → 取 data
 //! 不加多余的 --format json，不加 --overwrite，简单直接。
 
-use std::process::{Command, Stdio};
+use std::io::Read;
+use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
@@ -48,29 +49,49 @@ fn extract_json(stdout: &str) -> &str {
 /// - 自动清除 HERMES_HOME 等干扰变量
 /// - 检查退出码，非零则报错
 /// - 退出码为 0 时检查 JSON 的 ok 字段
-pub fn run_lark(args: &[&str]) -> AppResult<String> {
-    const TIMEOUT_SECS: u64 = 120;
+fn run_lark_with_timeout(args: &[&str], timeout: Duration) -> AppResult<String> {
     let mut child = build_command()
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| AppError::LarkCliNotFound(e.to_string()))?;
-    if child
-        .wait_timeout(Duration::from_secs(TIMEOUT_SECS))
-        .map_err(AppError::Io)?
-        .is_none()
-    {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(AppError::CommandTimeout(TIMEOUT_SECS));
-    }
-    let output = child.wait_with_output().map_err(AppError::Io)?;
+    let mut stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Other("无法读取 lark-cli stdout".to_string()))?;
+    let mut stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::Other("无法读取 lark-cli stderr".to_string()))?;
+    let stdout_reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stdout_pipe.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr_pipe.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let status: ExitStatus =
+        if let Some(status) = child.wait_timeout(timeout).map_err(AppError::Io)? {
+            status
+        } else {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(AppError::CommandTimeout(timeout.as_secs()));
+        };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| AppError::Other("读取 stdout 的线程异常退出".to_string()))??;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| AppError::Other("读取 stderr 的线程异常退出".to_string()))??;
+    let stdout = String::from_utf8_lossy(&stdout).to_string();
+    let stderr = String::from_utf8_lossy(&stderr).to_string();
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if !output.status.success() {
+    if !status.success() {
         // 非零退出码：尝试从 stdout 和 stderr 中解析 JSON 错误
         for text in [&stdout, &stderr] {
             let json_str = extract_json(text);
@@ -96,6 +117,18 @@ pub fn run_lark(args: &[&str]) -> AppResult<String> {
     }
 
     Ok(stdout)
+}
+
+pub fn run_lark(args: &[&str]) -> AppResult<String> {
+    run_lark_with_timeout(args, Duration::from_secs(120))
+}
+
+fn run_lark_quick(args: &[&str]) -> AppResult<String> {
+    run_lark_with_timeout(args, Duration::from_secs(15))
+}
+
+fn run_lark_interactive(args: &[&str]) -> AppResult<String> {
+    run_lark_with_timeout(args, Duration::from_secs(600))
 }
 
 /// 执行 lark-cli 命令，解析 JSON，返回 data 字段
@@ -181,7 +214,7 @@ fn translate_error_message(msg: &str) -> String {
 ///
 /// 返回 (identity, token_status, user_name)
 pub fn whoami() -> AppResult<(String, String, Option<String>)> {
-    let stdout = run_lark(&["whoami"])?;
+    let stdout = run_lark_quick(&["whoami"])?;
     let json_str = extract_json(&stdout);
     let resp: crate::models::WhoamiResponse =
         serde_json::from_str(json_str).map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -197,7 +230,7 @@ pub fn whoami() -> AppResult<(String, String, Option<String>)> {
 ///
 /// 返回 (app_id, brand)，如果未配置返回 None
 pub fn config_show() -> AppResult<Option<(String, String)>> {
-    let stdout = run_lark(&["config", "show"])?;
+    let stdout = run_lark_quick(&["config", "show"])?;
     let json_str = extract_json(&stdout);
     let resp: crate::models::ConfigResponse =
         serde_json::from_str(json_str).map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -209,7 +242,7 @@ pub fn config_show() -> AppResult<Option<(String, String)>> {
 
 /// 执行 `lark-cli config init --new --brand feishu --lang zh`
 pub fn config_init(brand: &str, lang: &str) -> AppResult<String> {
-    run_lark(&["config", "init", "--new", "--brand", brand, "--lang", lang])
+    run_lark_interactive(&["config", "init", "--new", "--brand", brand, "--lang", lang])
 }
 
 /// 执行 `lark-cli auth login --domain docs --domain drive --domain wiki`（阻塞模式）
@@ -219,7 +252,7 @@ pub fn auth_login_blocking(domains: &[&str]) -> AppResult<String> {
         args.push("--domain");
         args.push(d);
     }
-    run_lark(&args)
+    run_lark_interactive(&args)
 }
 
 /// 执行 `lark-cli auth login --no-wait --json`（非阻塞模式）
@@ -236,7 +269,7 @@ pub fn auth_login_no_wait(domains: &[&str]) -> AppResult<String> {
 
 /// 执行 `lark-cli auth login --device-code <code>`
 pub fn auth_login_with_device_code(device_code: &str) -> AppResult<String> {
-    run_lark(&["auth", "login", "--device-code", device_code])
+    run_lark_interactive(&["auth", "login", "--device-code", device_code])
 }
 
 /// 执行 `lark-cli docs +fetch --doc <url> --doc-format markdown --as user`
@@ -285,6 +318,61 @@ pub fn docs_media_preview(token: &str, output_path: &str) -> AppResult<String> {
     media_data
         .saved_path
         .ok_or_else(|| AppError::LarkCliResponse("media-preview 返回中缺少 saved_path".to_string()))
+}
+
+pub fn sheets_export(url: &str, output_path: &str) -> AppResult<String> {
+    let data = run_lark_get_data(&[
+        "sheets",
+        "+workbook-export",
+        "--url",
+        url,
+        "--file-extension",
+        "xlsx",
+        "--output-path",
+        output_path,
+        "--as",
+        "user",
+    ])?;
+    Ok(data
+        .get("saved_path")
+        .or_else(|| data.get("output_path"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(output_path)
+        .to_string())
+}
+
+pub fn base_table_list(base_token: &str) -> AppResult<serde_json::Value> {
+    run_lark_get_data(&[
+        "base",
+        "+table-list",
+        "--base-token",
+        base_token,
+        "--as",
+        "user",
+    ])
+}
+
+pub fn base_records_export(
+    base_token: &str,
+    table_id: &str,
+    output_path: &str,
+) -> AppResult<String> {
+    run_lark(&[
+        "base",
+        "+record-list",
+        "--base-token",
+        base_token,
+        "--table-id",
+        table_id,
+        "--format",
+        "ndjson",
+        "--output",
+        output_path,
+        "--overwrite",
+        "--as",
+        "user",
+    ])?;
+    Ok(output_path.to_string())
 }
 
 /// 执行 `lark-cli wiki +node-get --node-token <token> --as user --format json`
