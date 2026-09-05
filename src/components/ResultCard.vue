@@ -18,8 +18,10 @@ const props = withDefaults(
     outputRoot?: string;
     items?: ExportItemResult[];
     cancelled?: boolean;
+    /** 是否显示右上角关闭按钮（由宿主场景决定，如历史记录弹层） */
+    closable?: boolean;
   }>(),
-  { wikiName: "", outputRoot: "", items: () => [], cancelled: false }
+  { wikiName: "", outputRoot: "", items: () => [], cancelled: false, closable: false }
 );
 
 const emit = defineEmits<{ openDir: []; again: []; close: [] }>();
@@ -69,7 +71,7 @@ const showProblems = ref(false);
         </h3>
         <p v-if="wikiName" class="lr-result__sub lr-selectable">{{ wikiName }}</p>
       </div>
-      <button v-if="$slots.default === undefined" class="lr-iconbtn" title="关闭" @click="emit('close')">
+      <button v-if="props.closable" class="lr-iconbtn" title="关闭" @click="emit('close')">
         <AppIcon name="close" :size="14" />
       </button>
     </header>

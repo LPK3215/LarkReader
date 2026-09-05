@@ -14,9 +14,10 @@
 // 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import type {
+  ExportableCount,
   ExportItemResult,
   Progress,
   TaskPhase,
@@ -24,7 +25,7 @@ import type {
   WikiNodeType,
   WikiTaskResult,
 } from "../api/types";
-import { getWikiTree } from "../api/wiki";
+import { countExportable, getWikiTree } from "../api/wiki";
 import {
   cancelTask as apiCancelTask,
   startExtractWiki,
@@ -95,26 +96,12 @@ export const useTaskStore = defineStore("task", () => {
   const phaseIndex = computed(() => PHASE_FLOW.indexOf(phase.value));
   const phaseLabel = computed(() => PHASE_LABEL[phase.value]);
 
-  const selectedBreakdown = computed(() => {
-    const counts: Record<WikiNodeType, number> = {
-      doc: 0,
-      sheet: 0,
-      bitable: 0,
-      file: 0,
-      folder: 0,
-      other: 0,
-    };
-    const root = tree.value;
-    if (!root) return counts;
-    const walk = (node: WikiNode) => {
-      if (selectedTokens.value.includes(node.node_token)) {
-        counts[node.obj_type] += 1;
-      }
-      node.children.forEach(walk);
-    };
-    walk(root);
-    return counts;
-  });
+  /** 勾选范围后端统计的真实待导出条数（count_exportable），下载前展示用 */
+  const exportableCount = ref<ExportableCount | null>(null);
+  /** count_exportable 计算中（勾选密集变化时闪烁防抖用） */
+  const counting = ref(false);
+  /** count_exportable 失败信息（如：勾选尚未完成扫描） */
+  const countError = ref<string | null>(null);
 
   const hasFailure = computed(() => failedCount.value > 0);
 
@@ -141,19 +128,77 @@ export const useTaskStore = defineStore("task", () => {
     }
   }
 
+  // ---- 勾选计数（真实待导出条数） ----
+  const EMPTY_COUNT: ExportableCount = {
+    total: 0,
+    doc: 0,
+    sheet: 0,
+    bitable: 0,
+    file: 0,
+    other: 0,
+  };
+  let countTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** 防抖刷新：树上快速勾选/取消时合并为一次请求 */
+  function scheduleCountRefresh() {
+    if (countTimer) clearTimeout(countTimer);
+    countTimer = setTimeout(() => {
+      countTimer = null;
+      void refreshCount();
+    }, 250);
+  }
+
+  /**
+   * 用后端 count_exportable 统计勾选范围真实会导出的条目数。
+   * 不在前端自行推算——前端只有"勾选了哪些节点"，展开逻辑在后端，
+   * 自算必然与下载结果不一致。
+   */
+  async function refreshCount() {
+    if (stage.value !== "tree") return;
+    if (selectedTokens.value.length === 0) {
+      exportableCount.value = { ...EMPTY_COUNT };
+      countError.value = null;
+      counting.value = false;
+      return;
+    }
+    counting.value = true;
+    try {
+      exportableCount.value = await countExportable(selectedTokens.value);
+      countError.value = null;
+    } catch (err) {
+      countError.value = String(err);
+    } finally {
+      counting.value = false;
+    }
+  }
+
+  // 勾选变化（含全选/取消/清空）后自动重新统计
+  watch(selectedTokens, () => {
+    if (stage.value === "tree") {
+      scheduleCountRefresh();
+    }
+  });
+
   // ---- 动作 ----
 
   /**
-   * 扫描知识库结构。失败抛错由调用方 catch（UI 弹 n-message-error）。
+   * 扫描知识库结构。失败写入 lastError（App.vue 全局 toast 提示），不向上抛，
+   * 保持 empty/tree 原状态让用户可重试。
    */
   async function scan(url: string) {
     lastError.value = null;
-    wikiUrl.value = url;
-    const node = await getWikiTree(url);
-    tree.value = node;
-    selectedTokens.value = collectDocTokens(node);
-    stage.value = "tree";
-    resetProgressFields();
+    try {
+      const node = await getWikiTree(url);
+      wikiUrl.value = url;
+      tree.value = node;
+      selectedTokens.value = collectDocTokens(node);
+      stage.value = "tree";
+      resetProgressFields();
+      void refreshCount();
+    } catch (err) {
+      lastError.value = String(err);
+      console.error("[task.scan] 扫描失败:", err);
+    }
   }
 
   /**
@@ -170,7 +215,8 @@ export const useTaskStore = defineStore("task", () => {
     try {
       const id = await startExtractWiki(wikiUrl.value, undefined, selectedTokens.value);
       taskId.value = id;
-      total.value = selectedTokens.value.length;
+      // 启动瞬间的预估总数：优先用后端展开后的真实条数
+      total.value = exportableCount.value?.total ?? selectedTokens.value.length;
       stage.value = "running";
       phase.value = "checking_output";
       // taskId 变化时 useTaskProgress 内部 watch 会处理
@@ -181,10 +227,14 @@ export const useTaskStore = defineStore("task", () => {
     }
   }
 
-  /** 取消任务。 */
+  /**
+   * 取消任务：请求后端置 cancelled 标志后保持轮询，等任务线程收尾并推进到
+   * 终态（cancelled），由 useTaskProgress 调 applyTaskResult 落到结果卡。
+   * 不能在这里停轮询——后端是协作式取消，当前环节结束前状态不会变化，
+   * 一旦停轮询 UI 会永久卡在"正在取消"，任务条/面板/树全锁死无法收尾。
+   */
   async function cancel() {
     cancelled.value = true;
-    stopPolling();
     if (taskId.value) {
       try {
         await apiCancelTask(taskId.value);
@@ -205,10 +255,14 @@ export const useTaskStore = defineStore("task", () => {
   /** 回到 empty 状态。 */
   function clearAll() {
     stopPolling();
+    if (countTimer) clearTimeout(countTimer);
     stage.value = "empty";
     tree.value = null;
     selectedTokens.value = [];
     wikiUrl.value = "";
+    exportableCount.value = null;
+    countError.value = null;
+    counting.value = false;
     resetProgressFields();
   }
 
@@ -254,7 +308,7 @@ export const useTaskStore = defineStore("task", () => {
       }
       nodeStates.value = next;
     }
-    if (r.error) {
+    if (r.error && !cancelled.value) {
       lastError.value = r.error;
     }
   }
@@ -286,7 +340,9 @@ export const useTaskStore = defineStore("task", () => {
     progressPercent,
     phaseIndex,
     phaseLabel,
-    selectedBreakdown,
+    exportableCount,
+    counting,
+    countError,
     hasFailure,
     // actions
     scan,

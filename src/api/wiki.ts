@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { invoke } from "@tauri-apps/api/core";
-import type { WikiNode } from "./types";
+import type { ExportableCount, WikiNode } from "./types";
 
 /**
  * 拉取知识库目录树（只摸结构，不拉正文）。
@@ -18,4 +18,13 @@ import type { WikiNode } from "./types";
  */
 export async function getWikiTree(wikiUrl: string): Promise<WikiNode> {
   return invoke<WikiNode>("get_wiki_tree", { wikiUrl });
+}
+
+/**
+ * 统计勾选范围内真实会被导出的条目数（下载前的预估）。
+ * 勾选父节点会展开成其全部可导出后代，因此返回数字通常大于直接勾选的节点数，
+ * 与任务进度里的 total 口径一致。后端复用最近一次扫描缓存，不重复拉树。
+ */
+export async function countExportable(selectedTokens: string[]): Promise<ExportableCount> {
+  return invoke<ExportableCount>("count_exportable", { selectedTokens });
 }

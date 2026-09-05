@@ -28,7 +28,7 @@ const emit = defineEmits<{
   (e: "recheck"): void;
 }>();
 
-/** 手动兜底命令：与后端 init_app 同一命令 */
+/** 终端手动创建飞书应用的兜底命令（与应用内 start_app_init 走同一 lark-cli 向导） */
 const INIT_CMD = "lark-cli config init --new --brand feishu --lang zh";
 const OPEN_PLATFORM_URL = "https://open.feishu.cn/app";
 

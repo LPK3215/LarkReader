@@ -234,6 +234,22 @@ pub struct WikiExtractResult {
     pub items: Vec<ExportItemResult>,
 }
 
+/// 按节点类型统计的待导出条目数（下载前的真实预估）
+///
+/// 与"勾选了多少个节点"不是一回事：勾选一个父节点会展开成它的全部可导出
+/// 后代，这里的数字是展开后的真实条目数，与任务进度里的 `total` 口径一致。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportableCount {
+    /// 合计（doc + sheet + bitable + file + other）
+    pub total: usize,
+    pub doc: usize,
+    pub sheet: usize,
+    pub bitable: usize,
+    pub file: usize,
+    /// 当前版本暂不支持、导出时会被跳过的节点数
+    pub other: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportItemResult {
     pub title: String,
@@ -571,6 +587,41 @@ pub struct LogFileContent {
     pub size_bytes: u64,
     /// 内容过大时是否只返回了末尾部分
     pub truncated: bool,
+}
+
+// ============================================================================
+// 本地阅读（Reader）
+// ============================================================================
+
+/// 本地阅读目录中的一项（list_reader_dir 返回，一次一层，惰性加载）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReaderEntry {
+    /// 显示名（文件名/目录名）
+    pub name: String,
+    /// 绝对路径（前端拼接子级请求用）
+    pub path: String,
+    /// 条目类型
+    pub kind: ReaderEntryKind,
+    /// 文件字节数；目录为 null
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReaderEntryKind {
+    /// 目录
+    Dir,
+    /// Markdown 文档（可阅读）
+    Md,
+    /// 其他文件（附件，暂不渲染）
+    Other,
+}
+
+/// 二进制资源读取结果（read_reader_binary 返回，图片内联用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReaderBinary {
+    /// 已拼好可直接赋给 <img src> 的 data URL
+    pub data_url: String,
 }
 
 // ============================================================================

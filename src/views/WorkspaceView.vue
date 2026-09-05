@@ -31,12 +31,27 @@ const sideTitle = computed(() => {
   return "导出设置";
 });
 
-function onScan() {
-  task.scan(inputUrl.value);
+async function onScan() {
+  const url = inputUrl.value.trim();
+  if (!url) return;
+  await task.scan(url);
 }
 
-function onStart() {
-  task.start();
+async function onStart() {
+  // 工作台右侧的目录 / 下载图片 / 并发数直接改在 store 草稿上，启动前落盘，
+  // 让后端任务读取与右侧展示一致的设置（后端按持久化配置执行）。
+  try {
+    await settings.save();
+  } catch (err) {
+    console.warn("[workspace] 启动前保存设置失败:", err);
+    return;
+  }
+  await task.start();
+}
+
+/** 打开本次产物目录；未产出（如直接取消）时退回默认输出目录。 */
+function openResultDir() {
+  void settings.openDir(task.outputRoot || settings.settings.output_dir);
 }
 </script>
 
@@ -110,7 +125,7 @@ function onStart() {
               :items="task.items"
               :cancelled="task.cancelled"
               class="lr-work__result"
-              @open-dir="settings.openDir()"
+              @open-dir="openResultDir"
               @again="task.reset()"
             />
 
@@ -141,26 +156,40 @@ function onStart() {
               </div>
 
               <div class="lr-work__summary">
-                <span class="lr-field__label">已选内容</span>
+                <span class="lr-field__label">
+                  将导出内容
+                  <span v-if="task.counting" class="lr-work__summaryhint">计算中…</span>
+                </span>
                 <div class="lr-kv">
                   <span class="lr-kv__k">文档</span>
-                  <span class="lr-kv__v">{{ task.selectedBreakdown.doc }}</span>
+                  <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.doc : "—" }}</span>
                 </div>
                 <div class="lr-kv">
                   <span class="lr-kv__k">表格</span>
-                  <span class="lr-kv__v">{{ task.selectedBreakdown.sheet }}</span>
+                  <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.sheet : "—" }}</span>
                 </div>
                 <div class="lr-kv">
                   <span class="lr-kv__k">多维表格</span>
-                  <span class="lr-kv__v">{{ task.selectedBreakdown.bitable }}</span>
+                  <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.bitable : "—" }}</span>
                 </div>
                 <div class="lr-kv">
                   <span class="lr-kv__k">附件</span>
-                  <span class="lr-kv__v">{{ task.selectedBreakdown.file }}</span>
+                  <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.file : "—" }}</span>
                 </div>
                 <div class="lr-kv lr-work__totalrow">
                   <span class="lr-kv__k">合计</span>
-                  <span class="lr-kv__v">{{ task.selectedTokens.length }} 项</span>
+                  <span class="lr-kv__v">
+                    {{
+                      task.exportableCount
+                        ? `${task.exportableCount.total} 篇/个`
+                        : task.counting
+                          ? "计算中…"
+                          : "—"
+                    }}
+                  </span>
+                </div>
+                <div v-if="task.countError" class="lr-work__counterror">
+                  {{ task.countError }}
                 </div>
               </div>
 
@@ -347,6 +376,21 @@ function onStart() {
 
 .lr-work__totalrow .lr-kv__v {
   font-weight: var(--lr-fw-medium);
+}
+
+/* 计数计算中的角标提示 */
+.lr-work__summaryhint {
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-secondary);
+  font-weight: var(--lr-fw-normal);
+}
+
+/* 计数失败（如勾选时机异常）的红色提示 */
+.lr-work__counterror {
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-danger);
+  margin-top: var(--lr-space-1);
+  word-break: break-all;
 }
 
 .lr-work__opts {

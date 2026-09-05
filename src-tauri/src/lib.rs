@@ -10,6 +10,7 @@ pub mod lark;
 pub mod logger;
 pub mod markdown;
 pub mod models;
+pub mod reader;
 pub mod wiki;
 
 use std::collections::HashMap;
@@ -53,17 +54,16 @@ pub fn run() {
             completed_tasks: Arc::new(Mutex::new(completed_tasks)),
             settings_warning: Mutex::new(settings_warning),
             app_init: Arc::new(Mutex::new(models::AppInitStatus::default())),
+            last_tree: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             // P0 命令
             commands::check_env,
             commands::setup_lark_cli,
-            commands::init_app,
             commands::start_app_init,
             commands::get_app_init_status,
             commands::start_login,
             commands::complete_login,
-            commands::login_feishu_blocking,
             commands::logout,
             commands::preview_doc,
             commands::extract_doc,
@@ -74,6 +74,7 @@ pub fn run() {
             commands::open_output_dir,
             // P1 命令
             commands::get_wiki_tree,
+            commands::count_exportable,
             commands::extract_wiki,
             commands::get_progress,
             commands::cancel_task,
@@ -85,6 +86,10 @@ pub fn run() {
             commands::list_log_files,
             commands::read_log_file,
             commands::open_log_dir,
+            // 本地阅读（Reader）
+            commands::list_reader_dir,
+            commands::read_reader_md,
+            commands::read_reader_binary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");

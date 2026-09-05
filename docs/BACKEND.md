@@ -4,7 +4,7 @@
 
 ## 1. 项目定位
 
-LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端通过固定版本 `lark-cli 1.0.93` 获取飞书内容，负责环境检测、登录、文档预览、Markdown 与图片落盘、知识库遍历、批量任务及 Sheet/Bitable/文件附件导出。
+LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**工具。后端通过固定版本 `lark-cli 1.0.93` 获取飞书内容，负责环境检测、登录、文档预览、Markdown 与图片落盘、知识库遍历、批量任务及 Sheet/Bitable/文件附件导出；导出的本地目录由「本地阅读」页（/reader）离线渲染成可读文档。
 
 当前后端已经具备可用版本所需的核心能力。前端展示与交互不属于本文范围。
 
@@ -16,7 +16,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 - 配置检测与登录检测并行执行。
 - 区分未安装、未配置、未登录、版本不兼容和检测失败。
 - 自动安装已验证的 `@larksuite/cli@1.0.93`。
-- 支持设备码非阻塞登录，也保留阻塞登录回退路径。
+- 支持设备码登录（单次阻塞式等待验证码，不再轮询以免使验证码失效）。
 - `ready` 和 `needs_refresh` 均视为有效用户登录状态。
 - 后端不保存飞书密码或自行维护 token，凭据由 lark-cli 管理。
 
@@ -62,7 +62,15 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 - 支持主动删除任务结果和列出任务历史。
 - 历史持久化到本地，保留最近 24 小时且最多 100 条，按完成时间淘汰最旧记录。
 
-### 2.5 文件、配置和可靠性
+### 2.5 本地阅读（Reader）
+
+- 纯本地文件系统操作，不依赖飞书登录/网络；读取路径来自用户在前端显式选择/浏览的目录。
+- `list_reader_dir` 一次列一层（惰性加载），目录优先、按名称（忽略大小写）排序。
+- `read_reader_md` 仅允许 `.md`/`.markdown`，带 8 MiB 上限；`read_reader_binary` 读取图片等二进制资源并拼 data URL，16 MiB 上限，MIME 按扩展名推断。
+- 导出的图片资源目录（`{stem}_images`）识别约定在 `reader::is_images_dir_name`，前端树弱化展示、不可展开。
+- markdown 渲染在前端完成（markdown-it）；图片相对路径按「md 同目录」解析回本地并 base64 内联，CSP 已放行 `data:`，离线可读。
+
+### 2.6 文件、配置和可靠性
 
 - 输出前创建临时探测文件，确认目录真实可写。
 - 输出预检返回磁盘可用字节数。
@@ -83,12 +91,11 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 |---|---|---|---|
 | `check_env` | — | `EnvStatus` | 检测运行环境、配置和登录 |
 | `setup_lark_cli` | — | `String` | 安装固定版本 CLI 并返回版本 |
-| `init_app` | `brand`, `lang` | `String` | 初始化飞书应用配置（同步阻塞版，勿 UI 直调） |
 | `start_app_init` | `brand`, `lang` | `AppInitStatus` | 后台流式启动创建向导（`config init --new`），立即返回 |
 | `get_app_init_status` | — | `AppInitStatus` | 轮询创建向导状态：running / url / stage / error |
 | `start_login` | — | `DeviceInfo` | 发起设备码登录 |
 | `complete_login` | `device_code` | `LoginResult` | 完成设备码登录 |
-| `login_feishu_blocking` | — | `LoginResult` | 阻塞式登录回退 |
+| `logout` | — | — | 退出登录 |
 | `preview_doc` | `url` | `PreviewResult` | 获取正文与图片清单，不落盘 |
 | `extract_doc` | `url`, `output_dir?` | `ExtractResult` | 导出单篇文档 |
 | `get_settings` | — | `Settings` | 获取设置 |
@@ -97,6 +104,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 | `preflight_output_dir` | `path` | `OutputPreflight` | 检查可写性和磁盘空间 |
 | `open_output_dir` | `path` | — | 使用系统文件管理器打开目录 |
 | `get_wiki_tree` | `wiki_url` | `WikiNode` | 获取完整 Wiki 树 |
+| `count_exportable` | `wiki_url`, `selected_tokens?` | 计数 | 统计所选节点中实际会导出的项目数 |
 | `extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?` | `WikiExtractResult` | 同步等待批量导出结果 |
 | `start_extract_wiki` | 同上 | `String` | 创建后台任务并立即返回 ID |
 | `get_progress` | `task_id` | `Progress` | 查询任务状态和阶段 |
@@ -104,15 +112,22 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 | `get_task_result` | `task_id` | `WikiTaskResult` | 非破坏性读取完成结果 |
 | `dismiss_task_result` | `task_id` | — | 删除指定完成结果 |
 | `list_task_history` | — | `Vec<WikiTaskResult>` | 查询最近任务历史 |
+| `list_log_files` | — | 日志文件列表 | 查询运行日志文件 |
+| `read_log_file` | 文件标识 | 日志文本 | 读取日志内容（有体积上限） |
+| `open_log_dir` | — | — | 在文件管理器中打开日志目录 |
+| `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 本地阅读：列目录一层子项（惰性加载） |
+| `read_reader_md` | `path` | `String` | 本地阅读：读取 .md 文本 |
+| `read_reader_binary` | `path` | `ReaderBinary` | 本地阅读：读取二进制资源（data URL，16 MiB 上限） |
+| `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 列出本地目录一层子项（Reader 目录导航） |
+| `read_reader_md` | `path` | `String` | 读取 `.md` 文档文本（Reader 渲染正文） |
+| `read_reader_binary` | `path` | `ReaderBinary` | 读取二进制资源，返回可内联 data URL |
 
 > **`config init --new`（创建/配置飞书自建应用）的调用分工**
 >
 > 该命令是**阻塞式浏览器向导**：lark-cli 打印创建向导 URL 后阻塞等待用户在浏览器完成
 > 创建，官方对 AI/agent 的用法就是「后台运行、从输出读取验证 URL」。因此：
 >
-> - `init_app`（同步版）：UI 直调会占住 IPC 至 600s 且拿不到 URL，**仅供命令行/测试**，
->   勿在界面调用。
-> - `start_app_init` + `get_app_init_status`（界面实际使用）：后台线程流式执行同一命令，
+> - `start_app_init` + `get_app_init_status`（界面实际使用）：后台线程流式执行 `config init --new`，
 >   逐行回调；`extract_first_url` 从输出行中读取首个 http(s) 链接写入状态。前端
 >   `AppConfigGuide` 面板轮询（700ms），拿到 `url` 即自动打开浏览器并给出
 >   「重新打开链接 / 链接放入剪贴板」兜底，浏览器完成后命令结束，面板自动回抛 recheck
@@ -162,6 +177,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 | `extract.rs` | 单文档预览、导出、图片下载、事务提交和输出路径词法清理 |
 | `wiki.rs` | Wiki 遍历、选择、目录映射与批量导出（Doc/Sheet/Bitable/File 分流） |
 | `markdown.rs` | 图片解析、URL 替换和安全文件名 |
+| `reader.rs` | 本地阅读：目录导航、md 文本读取、二进制资源 data URL（纯本地，不依赖登录/网络） |
 | `models.rs` | 可序列化数据模型（含 `WikiNodeType::File`、`TaskPhase::ExportingFile`） |
 | `error.rs` | 结构化统一错误协议 |
 | `lib.rs` | 应用初始化、状态恢复和命令注册 |
@@ -173,7 +189,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           11 项通过
+cargo test --lib                           23 项通过
 cargo build                                通过
 npm run build                              通过
 ```

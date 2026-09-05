@@ -3,11 +3,14 @@
 本目录是从真实飞书知识库下载得到的**完整下载案例**，用于直观展示 LarkReader 后端
 下载链路对各种飞书节点类型、文件格式与目录规则的实际还原效果。
 
+**线上原地址（一键打开）**：<https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink>
+
 ## 案例来源
 
 | 项 | 值 |
 |---|---|
 | 知识库 | LarkReader-E2E-测试库（E2E 测试样例库） |
+| 线上原地址 | [在飞书打开本案例](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink) |
 | space_id | `7681927602327538869` |
 | 顶层节点 | 8 个（本目录即其全量下载产物） |
 | 下载方式 | `wiki::extract_wiki` 对每个顶层节点 URL 递归全量导出 |

@@ -16,9 +16,9 @@ use crate::extract;
 use crate::lark;
 use crate::markdown;
 use crate::models::{
-    DocFailure, ExportItemResult, ExportItemStatus, ExtractStatus, Progress, Settings, SkippedNode,
-    SpecialExport, SpecialExportFailure, TaskPhase, TaskStatus, WikiExtractResult, WikiNode,
-    WikiNodeType,
+    DocFailure, ExportItemResult, ExportItemStatus, ExportableCount, ExtractStatus, Progress,
+    Settings, SkippedNode, SpecialExport, SpecialExportFailure, TaskPhase, TaskStatus,
+    WikiExtractResult, WikiNode, WikiNodeType,
 };
 
 const MAX_WIKI_DEPTH: usize = 64;
@@ -270,15 +270,30 @@ pub async fn extract_wiki_tree_controlled(
 
         // 提取文档
         let item_started = std::time::Instant::now();
-        match extract::extract_doc_with_title_async_controlled(
+        let outcome = extract::extract_doc_with_title_async_controlled(
             &doc_url,
             Some(&doc_title),
             full_dir.to_str().unwrap_or(""),
             settings,
             cancelled.clone(),
         )
-        .await
+        .await;
+
+        // 用户在本篇导出期间点了取消：这篇既不算成功也不算失败。
+        // 若继续统计，被打断的图片下载会把它记成"部分成功"，与用户
+        // 看到的"任务已取消"自相矛盾。这里直接跳出，结果里只保留已完成的部分。
+        if cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
         {
+            crate::logger::info(format!(
+                "任务已取消，文档「{}」中止导出，不计入结果",
+                node.title
+            ));
+            break;
+        }
+
+        match outcome {
             Ok(result) => {
                 let item_ms = item_started.elapsed().as_millis();
                 match result.status {
@@ -650,13 +665,34 @@ fn export_bitable(
     Ok(paths)
 }
 
-pub fn count_selected_exportable_nodes(
+/// 统计勾选范围内**真实会被导出**的条目数（按节点类型分组）
+///
+/// 与"勾选了多少个节点"不是一回事：勾选一个父节点会展开成它的全部可导出
+/// 后代。本函数与 `extract_wiki_tree_controlled` 用同一套收集逻辑，保证
+/// 下载前展示的预估条数与任务进度里的 `total` 口径一致。
+pub fn count_exportable_breakdown(
     tree: &WikiNode,
     selected_tokens: Option<&[String]>,
-) -> usize {
+) -> ExportableCount {
     let relevant = selected_tokens.map(|tokens| build_relevant_tokens(tree, tokens));
-    collect_docs_with_path(tree, selected_tokens).len()
-        + collect_special_nodes(tree, selected_tokens, relevant.as_ref()).len()
+    let mut count = ExportableCount {
+        total: 0,
+        doc: collect_docs_with_path(tree, selected_tokens).len(),
+        sheet: 0,
+        bitable: 0,
+        file: 0,
+        other: 0,
+    };
+    for node in collect_special_nodes(tree, selected_tokens, relevant.as_ref()) {
+        match node.obj_type {
+            WikiNodeType::Sheet => count.sheet += 1,
+            WikiNodeType::Bitable => count.bitable += 1,
+            WikiNodeType::File => count.file += 1,
+            _ => count.other += 1,
+        }
+    }
+    count.total = count.doc + count.sheet + count.bitable + count.file + count.other;
+    count
 }
 
 /// 节点类型的中文描述（仅用于日志）
@@ -763,7 +799,7 @@ fn collect_docs_recursive<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_docs_with_path, collect_special_nodes};
+    use super::{collect_docs_with_path, collect_special_nodes, count_exportable_breakdown};
     use crate::models::{WikiNode, WikiNodeType};
 
     #[test]
@@ -938,5 +974,71 @@ mod tests {
         let selected = vec!["other".to_string()];
         let special = collect_special_nodes(&root, Some(&selected), None);
         assert_eq!(special.len(), 0);
+    }
+
+    fn node(token: &str, obj_type: WikiNodeType, children: Vec<WikiNode>) -> WikiNode {
+        WikiNode {
+            node_token: token.into(),
+            title: token.into(),
+            obj_type,
+            has_child: !children.is_empty(),
+            obj_token: Some(format!("obj-{token}")),
+            position: 0,
+            depth: 1,
+            children,
+        }
+    }
+
+    #[test]
+    fn count_exportable_expands_selected_parent() {
+        // 复现真实缺陷：勾选一个父节点，UI 曾只显示"合计 1 项"，
+        // 而实际会展开导出它的全部可导出后代。
+        let folder = node(
+            "folder",
+            WikiNodeType::Folder,
+            vec![
+                node("docA", WikiNodeType::Doc, vec![]),
+                node("docB", WikiNodeType::Doc, vec![]),
+            ],
+        );
+        let sheet = node("sheet", WikiNodeType::Sheet, vec![]);
+        let bitable = node("bitable", WikiNodeType::Bitable, vec![]);
+        let file = node("file", WikiNodeType::File, vec![]);
+        let root = WikiNode {
+            node_token: "root".into(),
+            title: "Root".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 0,
+            children: vec![folder, sheet, bitable, file],
+        };
+
+        // 全量：2 篇文档 + 表格 + 多维表格 + 附件 = 5
+        let all = count_exportable_breakdown(&root, None);
+        assert_eq!(all.doc, 2);
+        assert_eq!(all.sheet, 1);
+        assert_eq!(all.bitable, 1);
+        assert_eq!(all.file, 1);
+        assert_eq!(all.other, 0);
+        assert_eq!(all.total, 5);
+
+        // 只勾父文件夹：应展开为其中的 2 篇文档，而不是 1 项
+        let selected = vec!["folder".to_string()];
+        let only_folder = count_exportable_breakdown(&root, Some(&selected));
+        assert_eq!(
+            only_folder.doc, 2,
+            "勾选父文件夹应展开为其中全部文档，而非计 1 项"
+        );
+        assert_eq!(only_folder.sheet, 0);
+        assert_eq!(only_folder.total, 2);
+
+        // 只勾表格：只算表格
+        let selected = vec!["sheet".to_string()];
+        let only_sheet = count_exportable_breakdown(&root, Some(&selected));
+        assert_eq!(only_sheet.total, 1);
+        assert_eq!(only_sheet.sheet, 1);
+        assert_eq!(only_sheet.doc, 0);
     }
 }

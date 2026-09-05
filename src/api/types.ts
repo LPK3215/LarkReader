@@ -100,6 +100,16 @@ export interface WikiNode {
   children: WikiNode[];
 }
 
+/** 勾选范围内真实会被导出的条目数（count_exportable 返回值），与任务进度 total 口径一致 */
+export interface ExportableCount {
+  total: number;
+  doc: number;
+  sheet: number;
+  bitable: number;
+  file: number;
+  other: number;
+}
+
 // ---------------------------------------------------------------------------
 // 批量导出结果
 // ---------------------------------------------------------------------------
@@ -248,6 +258,25 @@ export interface LogFileContent {
   content: string;
   size_bytes: number;
   truncated: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// 本地阅读（Reader）
+// ---------------------------------------------------------------------------
+
+export type ReaderEntryKind = "dir" | "md" | "other";
+
+/** list_reader_dir 返回：目录中的一项（一次一层，惰性加载） */
+export interface ReaderEntry {
+  name: string;
+  path: string;
+  kind: ReaderEntryKind;
+  size_bytes: number | null;
+}
+
+/** read_reader_binary 返回：可直接赋给 <img src> 的 data URL */
+export interface ReaderBinary {
+  data_url: string;
 }
 
 // ---------------------------------------------------------------------------

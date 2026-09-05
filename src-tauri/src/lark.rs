@@ -42,8 +42,6 @@ fn build_command() -> Command {
 
 /// 终止 lark-cli 进程及其整棵进程树。
 ///
-/// 终止 lark-cli 进程及其整棵进程树。
-///
 /// 在 Windows 上 `lark-cli.cmd` 会被 std 以 cmd.exe 包装执行，cmd 再拉起
 /// node(scripts/run.js) 与真正的 cli 进程；直接 `Child::kill()` 只杀掉
 /// cmd 外壳，node 会变成孤儿继续在后台轮询——这正是 device-code 登录
@@ -341,12 +339,6 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
                 ("authentication", _) => {
                     format!("飞书认证失败：{}，请重新登录。", message)
                 }
-                ("permission", _) => {
-                    format!(
-                        "权限不足：{}，请确认你的飞书账号有该文档的阅读权限。",
-                        message
-                    )
-                }
                 ("rate_limit", _) => "请求过于频繁，请稍后再试。".to_string(),
                 ("not_found", _) => "文档不存在或链接无效，请检查链接是否正确。".to_string(),
                 _ => {
@@ -373,10 +365,23 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
 /// 翻译常见的英文错误消息为中文
 fn translate_error_message(msg: &str) -> String {
     let msg = msg.trim();
-    if msg.contains("need_user_authorization") || msg.contains("token_missing") {
+    if msg.contains("hermes context")
+        || msg.contains("OPENCLAW_HOME")
+        || msg.contains("HERMES_HOME")
+    {
+        "检测到本机的 AI 工具环境变量（HERMES_HOME 等）干扰了 lark-cli。\
+         请关闭相关 AI 工具后重启本应用再试。"
+            .to_string()
+    } else if msg.contains("authorization_pending") || msg.contains("slow_down") {
+        "等待你在浏览器中完成授权。若授权页\"开通并授权\"点击无反应，\
+         请换一个浏览器或无痕窗口重试（浏览器缓存/扩展可能导致提交静默失败）。"
+            .to_string()
+    } else if msg.contains("expired_token") {
+        "授权链接已过期（有效期 10 分钟），请重新发起登录。".to_string()
+    } else if msg.contains("access_denied") {
+        "你在授权页拒绝或取消了授权，请重新登录。".to_string()
+    } else if msg.contains("need_user_authorization") || msg.contains("token_missing") {
         "飞书未登录或登录已过期，请重新登录飞书账号。".to_string()
-    } else if msg.contains("permission_denied") || msg.contains("permission") {
-        format!("权限不足：{}，请确认你的飞书账号有该文档的阅读权限。", msg)
     } else if msg.contains("not found") || msg.contains("not exist") || msg.contains("Invalid") {
         "文档不存在或链接无效，请检查链接是否正确。".to_string()
     } else if msg.contains("rate_limit") || msg.contains("too many") {
@@ -396,7 +401,12 @@ fn translate_error_message(msg: &str) -> String {
 ///
 /// 返回 (identity, token_status, user_name)
 pub fn whoami() -> AppResult<(String, String, Option<String>)> {
-    let stdout = run_lark_quick(&["whoami"])?;
+    // 必须显式 --as user：不指定时 lark-cli 走 auto_detect，而 app 自身可取
+    // bot token，auto 会选中 bot（identity="bot", tokenStatus="ready"），
+    // 导致后端按 identity=="user" 判定登录时，用户已授权仍被认为未登录。
+    // 本项目所有业务命令（docs/sheets/drive/base）都以 --as user 身份执行，
+    // 登录状态检测必须与之保持一致。
+    let stdout = run_lark_quick(&["whoami", "--as", "user"])?;
     let json_str = extract_json(&stdout);
     let resp: crate::models::WhoamiResponse =
         serde_json::from_str(json_str).map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -422,14 +432,10 @@ pub fn config_show() -> AppResult<Option<(String, String)>> {
         .map(|app_id| (app_id, resp.brand.unwrap_or_default())))
 }
 
-/// 执行 `lark-cli config init --new --brand feishu --lang zh`
-pub fn config_init(brand: &str, lang: &str) -> AppResult<String> {
-    run_lark_interactive(&["config", "init", "--new", "--brand", brand, "--lang", lang])
-}
-
 /// 后台流式执行 `config init --new`（阻塞式浏览器创建向导）。
 ///
-/// 与同步版 `config_init` 不同：本函数把每一行 stdout/stderr 实时交给 `on_line`，
+/// 这是创建飞书应用的**唯一**入口：同步阻塞版会占住调用方最长 600 秒且拿不到
+/// 向导 URL，已移除。本函数把每一行 stdout/stderr 实时交给 `on_line`，
 /// 供调用方在向导阻塞期间提取验证 URL 并持续更新进度。命令最长运行 600 秒，
 /// 超时/异常退出均返回 Err，正常退出返回最后一行 stdout（去空行）。
 pub fn config_init_stream(
@@ -525,26 +531,36 @@ pub fn config_init_stream(
     }
 }
 
-/// 执行 `lark-cli auth login --domain docs --domain drive --domain wiki`（阻塞模式）
-pub fn auth_login_blocking(domains: &[&str]) -> AppResult<String> {
-    let mut args = vec!["auth", "login"];
-    for d in domains {
-        args.push("--domain");
-        args.push(d);
-    }
-    run_lark_interactive(&args)
+/// 登录申请的最小只读权限集（13 个，覆盖本项目全部业务命令）
+///
+/// 注意不要改回 `--domain docs/drive/wiki`：domain 是"大类目"，会捆绑申请
+/// 95+ 个权限（大量写入类），实测 lark-cli 1.0.93 的 `--recommend` 几乎不起
+/// 作用（101→95）。显式 `--scope` 才是精确申请（docs/LOGIN_ISSUE_20260905.md §3.1）。
+///
+/// 注意：显式申请≠最终授权范围。token 实际 scope 由开放平台应用后台已开通的
+/// 权限点决定（向导创建的应用会把预置权限包一并授予，实测 13 申请 → 110+ 授权）。
+/// 授权定稿：**只多不少、不做后台裁剪**（docs/FEISHU_AUTH.md §4.5）——本清单必须
+/// 覆盖全部业务命令，漏一项 → 对应类导出必然失败；多授权不影响任何功能。
+pub const LOGIN_SCOPES: &str = "docx:document:readonly docs:document.content:read \
+     docs:document.media:download drive:file:download drive:drive.metadata:readonly \
+     wiki:node:read wiki:node:retrieve wiki:space:retrieve \
+     sheets:spreadsheet:read base:app:read base:table:read base:record:read base:field:read";
+
+/// 执行 `lark-cli auth login --scope <LOGIN_SCOPES>`（阻塞模式）
+pub fn auth_login_blocking() -> AppResult<String> {
+    run_lark_interactive(&["auth", "login", "--scope", LOGIN_SCOPES])
 }
 
-/// 执行 `lark-cli auth login --no-wait --json`（非阻塞模式）
-pub fn auth_login_no_wait(domains: &[&str]) -> AppResult<String> {
-    let mut args = vec!["auth", "login"];
-    for d in domains {
-        args.push("--domain");
-        args.push(d);
-    }
-    args.push("--no-wait");
-    args.push("--json");
-    run_lark(&args)
+/// 执行 `lark-cli auth login --scope <LOGIN_SCOPES> --no-wait --json`（非阻塞模式）
+pub fn auth_login_no_wait() -> AppResult<String> {
+    run_lark(&[
+        "auth",
+        "login",
+        "--scope",
+        LOGIN_SCOPES,
+        "--no-wait",
+        "--json",
+    ])
 }
 
 /// 执行 `lark-cli auth login --device-code <code>`

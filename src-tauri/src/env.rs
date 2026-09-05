@@ -181,21 +181,12 @@ pub fn install_lark_cli() -> AppResult<String> {
     }
 }
 
-/// 初始化飞书应用（阻塞模式）
-///
-/// 执行 `lark-cli config init --new --brand feishu --lang zh`
-/// 此命令会阻塞，直到用户在浏览器中完成应用创建。
-/// 返回命令的完整输出（包含可能的 URL 信息）
-pub fn init_app_config(brand: &str, lang: &str) -> AppResult<String> {
-    lark::config_init(brand, lang)
-}
-
 /// 发起非阻塞飞书登录
 ///
-/// 执行 `lark-cli auth login --domain docs --domain drive --domain wiki --no-wait --json`
+/// 执行 `lark-cli auth login --scope <LOGIN_SCOPES> --no-wait --json`
 /// 返回 device_code 和 verification_url，应用需要打开浏览器让用户完成授权
-pub fn start_login(domains: &[&str]) -> AppResult<DeviceInfo> {
-    let stdout = lark::auth_login_no_wait(domains)?;
+pub fn start_login() -> AppResult<DeviceInfo> {
+    let stdout = lark::auth_login_no_wait()?;
     let json_str = extract_json(&stdout);
 
     // 解析非阻塞登录返回的 JSON
@@ -218,9 +209,13 @@ pub fn start_login(domains: &[&str]) -> AppResult<DeviceInfo> {
         })?
         .to_string();
 
+    // OAuth Device Flow 的标准字段名是 verification_uri（不是 url），
+    // lark-cli 可能输出该形式；取不到时回退到兜底页（该页需用户手动填设备码）。
     let verification_url = parsed
         .get("verification_url")
+        .or_else(|| parsed.get("verification_uri"))
         .or_else(|| parsed.get("verificationUrl"))
+        .or_else(|| parsed.get("verificationUri"))
         .or_else(|| parsed.get("url"))
         .and_then(|v| v.as_str())
         .unwrap_or("https://accounts.feishu.cn/oauth/v1/device/verify")

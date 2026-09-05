@@ -65,11 +65,18 @@ function goWorkspace() {
 }
 
 onMounted(() => {
-  if (!bare.value) void ensureEnv();
+  if (!bare.value) {
+    void ensureEnv();
+    // 兜底加载真实设置：会话恢复直进外壳时（未走引导/设置页）不显示假默认值
+    void settings.load();
+  }
 });
 
 watch(bare, (isBare) => {
-  if (!isBare) void ensureEnv();
+  if (!isBare) {
+    void ensureEnv();
+    void settings.load();
+  }
 });
 </script>
 

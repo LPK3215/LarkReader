@@ -15,9 +15,10 @@ use crate::error::AppError;
 use crate::extract;
 use crate::lark;
 use crate::models::{
-    AppInitStatus, DeviceInfo, EnvStatus, ExtractResult, ExtractStatus, LogFileContent,
-    LogFileMeta, LoginResult, OutputPreflight, PreviewResult, Progress, Settings, SettingsStatus,
-    TaskPhase, TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
+    AppInitStatus, DeviceInfo, EnvStatus, ExportableCount, ExtractResult, ExtractStatus,
+    LogFileContent, LogFileMeta, LoginResult, OutputPreflight, PreviewResult, Progress,
+    ReaderBinary, ReaderEntry, Settings, SettingsStatus, TaskPhase, TaskStatus, WikiExtractResult,
+    WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -29,6 +30,11 @@ pub struct AppState {
     pub settings_warning: Mutex<Option<String>>,
     /// 飞书应用创建向导状态（start_app_init / get_app_init_status）
     pub app_init: Arc<Mutex<AppInitStatus>>,
+    /// 最近一次扫描得到的知识库树（wiki URL + 树）。
+    ///
+    /// 前端扫树后进入勾选，`count_exportable` 与 `start_extract_wiki` 都直接复用，
+    /// 避免同一棵树在"预览"和"开始下载"时被重复扫描两次（大库扫描耗时可观）。
+    pub last_tree: Arc<Mutex<Option<(String, WikiNode)>>>,
 }
 
 pub struct TaskControl {
@@ -180,15 +186,6 @@ pub fn setup_lark_cli() -> Result<String, AppError> {
     env::install_lark_cli()
 }
 
-/// 初始化飞书应用配置（阻塞模式，会打开浏览器）
-///
-/// 注意：同步版，调用期间会占住 IPC 队列最长 600 秒，且无法把创建向导 URL
-/// 实时回传给前端。新界面请用 `start_app_init` + `get_app_init_status`。
-#[tauri::command]
-pub fn init_app(brand: String, lang: String) -> Result<String, AppError> {
-    env::init_app_config(&brand, &lang)
-}
-
 /// 在后台启动飞书应用创建向导（`config init --new`）并立即返回。
 ///
 /// lark-cli 的 `config init --new` 是阻塞式浏览器向导：命令在后台运行，逐行打印
@@ -303,7 +300,7 @@ pub fn get_app_init_status(state: State<'_, AppState>) -> Result<AppInitStatus, 
 /// 返回 DeviceInfo，前端拿到后打开浏览器
 #[tauri::command]
 pub fn start_login() -> Result<DeviceInfo, AppError> {
-    let device_info = env::start_login(&["docs", "drive", "wiki"])?;
+    let device_info = env::start_login()?;
     crate::logger::info("发起飞书登录（设备码授权流程）");
     Ok(device_info)
 }
@@ -325,60 +322,12 @@ pub async fn complete_login(device_code: String) -> Result<LoginResult, AppError
     login
 }
 
-/// 阻塞模式飞书登录（简化版，一步到位）
-#[tauri::command]
-pub async fn login_feishu_blocking() -> Result<LoginResult, AppError> {
-    let login = tauri::async_runtime::spawn_blocking(login_feishu_blocking_impl)
-        .await
-        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?;
-    match &login {
-        Ok(result) => log_login_result(result),
-        Err(error) => crate::logger::error(format!("飞书登录异常：{error}")),
-    }
-    login
-}
-
 /// 退出飞书登录（清除 lark-cli 保存的 token）
 #[tauri::command]
 pub fn logout() -> Result<String, AppError> {
     let result = env::logout()?;
     crate::logger::info("退出飞书登录");
     Ok(result)
-}
-
-/// login_feishu_blocking 的同步实现（在阻塞线程上运行）
-fn login_feishu_blocking_impl() -> Result<LoginResult, AppError> {
-    // 先尝试非阻塞方式
-    match env::start_login(&["docs", "drive", "wiki"]) {
-        Ok(device_info) => {
-            // 用 device_code 完成登录
-            env::complete_login(&device_info.device_code)
-        }
-        Err(e) => {
-            // 非阻塞模式失败，回退到阻塞模式
-            match crate::lark::auth_login_blocking(&["docs", "drive", "wiki"]) {
-                Ok(_) => {
-                    let (identity, token_status, user_name) = crate::lark::whoami()?;
-                    let success = !identity.is_empty()
-                        && (token_status == "ready" || token_status == "needs_refresh");
-                    Ok(LoginResult {
-                        success,
-                        user_name,
-                        error: if success {
-                            None
-                        } else {
-                            Some("登录后验证失败".to_string())
-                        },
-                    })
-                }
-                Err(e2) => Ok(LoginResult {
-                    success: false,
-                    user_name: None,
-                    error: Some(format!("{}; {}", e, e2)),
-                }),
-            }
-        }
-    }
 }
 
 /// 预览文档：获取 Markdown 正文（不下载图片）
@@ -484,9 +433,45 @@ pub fn open_output_dir(path: String) -> Result<(), AppError> {
 // ============================================================================
 
 /// 获取知识库目录树
+///
+/// 扫描结果会缓存到 `AppState.last_tree`，供后续 `count_exportable` 与
+/// `start_extract_wiki` 复用，避免同一棵树被扫描两次。
 #[tauri::command]
-pub fn get_wiki_tree(wiki_url: String) -> Result<WikiNode, AppError> {
-    wiki::get_wiki_tree(&wiki_url)
+pub fn get_wiki_tree(wiki_url: String, state: State<'_, AppState>) -> Result<WikiNode, AppError> {
+    let tree = wiki::get_wiki_tree(&wiki_url)?;
+    if let Ok(mut cached) = state.last_tree.lock() {
+        *cached = Some((wiki_url, tree.clone()));
+    }
+    crate::logger::info(format!(
+        "扫描知识库「{}」：{} 个顶层节点",
+        tree.title,
+        tree.children.len()
+    ));
+    Ok(tree)
+}
+
+/// 统计勾选范围内真实会被导出的条目数（下载前的预估）
+///
+/// 勾选一个父节点会展开成它的全部可导出后代，因此这里返回的数字通常**大于**
+/// 用户直接勾选的节点数。口径与任务进度里的 `total` 完全一致。
+#[tauri::command]
+pub fn count_exportable(
+    selected_tokens: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<ExportableCount, AppError> {
+    let cached = state
+        .last_tree
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    let Some((_, tree)) = cached.as_ref() else {
+        return Err(AppError::InvalidInput(
+            "尚未扫描知识库，请先扫描目录结构".to_string(),
+        ));
+    };
+    Ok(wiki::count_exportable_breakdown(
+        tree,
+        selected_tokens.as_deref(),
+    ))
 }
 
 /// 批量提取知识库
@@ -619,6 +604,14 @@ pub async fn start_extract_wiki(
             .map(|tokens| format!("，勾选 {} 个节点", tokens.len()))
             .unwrap_or_default()
     ));
+    // 若前端刚扫描过同一棵树，直接复用，省掉一次完整的目录遍历
+    let cached_tree = match state.last_tree.lock() {
+        Ok(cached) => match cached.as_ref() {
+            Some((url, tree)) if *url == wiki_url => Some(tree.clone()),
+            _ => None,
+        },
+        Err(_) => None,
+    };
     let tasks = state.tasks.clone();
     let completed_tasks = state.completed_tasks.clone();
     let task_id_for_run = task_id.clone();
@@ -626,9 +619,16 @@ pub async fn start_extract_wiki(
         if let Ok(mut p) = progress.lock() {
             p.start_phase(TaskPhase::ScanningWiki);
         }
-        let scan_url = wiki_url.clone();
-        let tree_result =
-            tauri::async_runtime::spawn_blocking(move || wiki::get_wiki_tree(&scan_url)).await;
+        let tree_result = match cached_tree {
+            Some(tree) => {
+                crate::logger::info("复用已扫描的知识库树，跳过重复扫描");
+                Ok(Ok(tree))
+            }
+            None => {
+                let scan_url = wiki_url.clone();
+                tauri::async_runtime::spawn_blocking(move || wiki::get_wiki_tree(&scan_url)).await
+            }
+        };
         let result = match tree_result {
             Ok(Ok(tree)) => {
                 if cancelled.load(Ordering::Relaxed) {
@@ -780,4 +780,26 @@ pub fn open_log_dir() -> Result<(), AppError> {
     std::fs::create_dir_all(&dir)?;
     tauri_plugin_opener::open_path(dir, None::<&str>)
         .map_err(|e| AppError::Other(format!("打开日志目录失败: {e}")))
+}
+
+// ============================================================================
+// 本地阅读（Reader）
+// ============================================================================
+
+/// 列出本地目录的一层子项（Reader 目录导航，惰性加载：目录优先、按名排序）
+#[tauri::command]
+pub fn list_reader_dir(path: String) -> Result<Vec<ReaderEntry>, AppError> {
+    crate::reader::list_reader_dir(&path)
+}
+
+/// 读取 .md 文档文本（Reader 渲染正文）
+#[tauri::command]
+pub fn read_reader_md(path: String) -> Result<String, AppError> {
+    crate::reader::read_reader_md(&path)
+}
+
+/// 读取二进制资源（图片等），返回可内联的 data URL
+#[tauri::command]
+pub fn read_reader_binary(path: String) -> Result<ReaderBinary, AppError> {
+    crate::reader::read_reader_binary(&path)
 }

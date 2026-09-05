@@ -5,7 +5,7 @@
 // actions: load()      get_settings_status（Tauri 启动时拉真实设置）
 //          save()      set_settings
 //          pickDir()   dialog 选目录 + preflight_output_dir 校验
-//          openDir()   open_output_dir 打开系统文件管理器
+//          openDir(p)  open_output_dir 打开系统文件管理器（可指定具体目录）
 //
 // 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // concurrency 合法范围 1–32（后端 Settings::validate 强制）。
@@ -88,10 +88,10 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  /** 在系统文件管理器里打开输出目录。 */
-  async function openDir() {
+  /** 在系统文件管理器里打开目录；不传路径时打开当前输出目录。 */
+  async function openDir(path?: string) {
     try {
-      await openOutputDir(settings.value.output_dir);
+      await openOutputDir(path ?? settings.value.output_dir);
     } catch (err) {
       warning.value = String(err);
     }

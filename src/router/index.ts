@@ -38,6 +38,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "任务历史" },
   },
   {
+    path: "/reader",
+    name: "reader",
+    component: () => import("../views/ReaderView.vue"),
+    meta: { title: "本地阅读" },
+  },
+  {
     path: "/terminal",
     name: "terminal",
     component: () => import("../views/TerminalView.vue"),
