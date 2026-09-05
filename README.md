@@ -2,6 +2,8 @@
 
 <img src="./docs/assets/banner.svg" alt="LarkReader" width="100%"/>
 
+<br>
+
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
