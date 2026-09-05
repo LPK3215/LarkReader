@@ -48,3 +48,21 @@ Desktop.ini
 *.bak
 *.orig
 *.rej
+
+# Rust / Cargo build artifacts not covered by target/
+*.pdb
+**/*.rs.bk
+
+# Tauri locally generated code (iOS / Android projects, local bindings, etc.)
+/src-tauri/gen/
+
+# Frontend / tooling caches
+.vite/
+.turbo/
+.coverage/
+.nyc_output/
+.eslintcache
+.stylelintcache
+
+# AI assistant local state (session memory, automations, logs — not source)
+.codebuddy/
