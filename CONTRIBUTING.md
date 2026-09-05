@@ -31,8 +31,11 @@ npm run verify
 # 清空 E2E 下载回归输出目录（每次真实下载测试前执行）
 npm run clean:e2e
 
-# 后端单元/集成测试（真实网络相关的测试已用 mock fixture，可离线跑）
-cd src-tauri && cargo test
+# 后端单元测试（离线可跑，24 项 lib 单测）
+cd src-tauri && cargo test --lib
+
+# 后端集成测试（真实下载类，需已登录飞书 + 联网）
+cd src-tauri && cargo test --test z_tmp_big_download
 ```
 
 ## 前后端契约（重要）
