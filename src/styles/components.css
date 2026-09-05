@@ -287,3 +287,21 @@
 .lr-type--other {
   color: var(--lr-type-other);
 }
+
+/* ---- 统一的加载旋转图标 ----
+   新组件请直接用 .lr-icon-spin，不要再各自声明 keyframes。 */
+.lr-icon-spin {
+  animation: lr-icon-spin 0.9s linear infinite;
+}
+
+@keyframes lr-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lr-icon-spin {
+    animation: none;
+  }
+}

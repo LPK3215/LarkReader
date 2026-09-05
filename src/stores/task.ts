@@ -26,11 +26,13 @@ import type {
   WikiTaskResult,
 } from "../api/types";
 import { countExportable, getWikiTree } from "../api/wiki";
+import type { ScanMode } from "../api/wiki";
 import {
   cancelTask as apiCancelTask,
   startExtractWiki,
 } from "../api/task";
 import { useTaskProgress } from "../composables/useTaskProgress";
+import { message } from "../composables/useMessage";
 
 /** 工作台阶段：空态 -> 已扫树 -> 任务中 -> 已完成 */
 export type WorkspaceStage = "empty" | "tree" | "running" | "done";
@@ -67,6 +69,7 @@ export const useTaskStore = defineStore("task", () => {
   const stage = ref<WorkspaceStage>("empty");
   const taskId = ref<string | null>(null);
   const wikiUrl = ref("");
+  const scanMode = ref<ScanMode>("auto");
   const tree = ref<WikiNode | null>(null);
   const selectedTokens = ref<string[]>([]);
   const phase = ref<TaskPhase>("queued");
@@ -85,9 +88,8 @@ export const useTaskStore = defineStore("task", () => {
   const lastError = ref<string | null>(null);
   /** 扫描知识库结构中（防止重复点击 / 用于按钮 loading） */
   const scanning = ref(false);
-
-  // ---- 内部 ----
-  let stopProgress: (() => void) | null = null;
+  /** 启动请求在途（防止双击「开始下载」重复创建任务） */
+  const starting = ref(false);
 
   // ---- 派生 ----
   const running = computed(() => stage.value === "running");
@@ -119,15 +121,9 @@ export const useTaskStore = defineStore("task", () => {
     estimatedRemainingSeconds.value = null;
     nodeStates.value = {};
     items.value = [];
+    outputRoot.value = ""; // 清掉上一任务的产物目录，避免失败/取消时错指旧目录
     cancelled.value = false;
     lastError.value = null;
-  }
-
-  function stopPolling() {
-    if (stopProgress) {
-      stopProgress();
-      stopProgress = null;
-    }
   }
 
   // ---- 勾选计数（真实待导出条数） ----
@@ -198,17 +194,22 @@ export const useTaskStore = defineStore("task", () => {
    * 扫描知识库结构。失败写入 lastError（App.vue 全局 toast 提示），不向上抛，
    * 保持 empty/tree 原状态让用户可重试。
    */
-  async function scan(url: string) {
+  async function scan(url: string, mode?: ScanMode) {
     if (scanning.value || stage.value === "running") return; // 防重入
     scanning.value = true;
     lastError.value = null;
+    const effectiveMode = mode ?? "auto";
     try {
-      const node = await getWikiTree(url);
+      const node = await getWikiTree(url, effectiveMode);
       wikiUrl.value = url;
+      scanMode.value = effectiveMode;
       tree.value = node;
       selectedTokens.value = collectDocTokens(node);
       stage.value = "tree";
       resetProgressFields();
+      // 上个知识库的勾选计数已失效：先清掉，避免新的计数返回前右侧摘要仍显示旧数字
+      exportableCount.value = null;
+      countError.value = null;
       // 只调度一次防抖计数：selectedTokens 赋值发生在 stage 切到 tree 之前，
       // 不会触发上面的 watch，需在这里显式调度（代替此前立即 refreshCount，
       // 避免扫描完成后计数请求被执行两遍）。
@@ -222,28 +223,41 @@ export const useTaskStore = defineStore("task", () => {
   }
 
   /**
-   * 启动下载。后端返回 taskId，启动 800ms 轮询；终态由 useTaskProgress 自动收尾。
+   * 启动下载。后端返回 taskId；轮询生命周期由 useTaskProgress 在 store 初始化时
+   * 注册一次并 watch taskId 自动管理（id 从 null 变有值即起、置 null 即停），
+   * 这里不再重复创建 composable，避免旧 watcher 残留累积成多路轮询。
    */
   async function start() {
-    if (stage.value !== "tree") return;
+    if (stage.value !== "tree" || starting.value) return;
     if (!tree.value || selectedTokens.value.length === 0) return;
     lastError.value = null;
     resetProgressFields();
-    cancelled.value = false;
     taskBarVisible.value = true;
-    stopPolling();
+    starting.value = true;
     try {
-      const id = await startExtractWiki(wikiUrl.value, undefined, selectedTokens.value);
+      const id = await startExtractWiki(
+        wikiUrl.value,
+        undefined,
+        selectedTokens.value,
+        scanMode.value
+      );
+      // 请求在途时用户可能已「换一个/清空」：丢弃结果并尽力取消孤儿任务
+      if (stage.value !== "tree") {
+        void apiCancelTask(id).catch(() => {
+          /* 孤儿任务无 UI 归属，尽力而为 */
+        });
+        return;
+      }
       taskId.value = id;
       // 启动瞬间的预估总数：优先用后端展开后的真实条数
       total.value = exportableCount.value?.total ?? selectedTokens.value.length;
       stage.value = "running";
       phase.value = "checking_output";
-      // taskId 变化时 useTaskProgress 内部 watch 会处理
-      stopProgress = useTaskProgress(taskId);
     } catch (err) {
       lastError.value = String(err);
       stage.value = "tree"; // 回到 tree，让用户重试
+    } finally {
+      starting.value = false;
     }
   }
 
@@ -254,34 +268,41 @@ export const useTaskStore = defineStore("task", () => {
    * 一旦停轮询 UI 会永久卡在"正在取消"，任务条/面板/树全锁死无法收尾。
    */
   async function cancel() {
+    if (!taskId.value) return;
     cancelled.value = true;
-    if (taskId.value) {
-      try {
-        await apiCancelTask(taskId.value);
-      } catch (err) {
-        console.warn("[task.cancel] cancel_task failed", err);
-      }
+    try {
+      await apiCancelTask(taskId.value);
+    } catch (err) {
+      // 点取消的瞬间任务刚好自然收尾（已完成表入库、任务表摘除）时，
+      // cancel_task 会报"任务不存在"。此时终态结果已在路上，不应弹报错。
+      if (stage.value !== "running") return;
+      // 其它原因失败：把标志复位，让用户还能再次点「取消」重试，避免锁死
+      cancelled.value = false;
+      console.warn("[task.cancel] cancel_task failed", err);
+      message.warning(`取消失败：${String(err)}，请重试`);
     }
   }
 
   /** 回到 tree 状态，可重新勾选再下。 */
   function reset() {
-    stopPolling();
-    taskId.value = null;
+    taskId.value = null; // 触发轮询 watcher 停止
+    starting.value = false;
     stage.value = "tree";
     resetProgressFields();
   }
 
   /** 回到 empty 状态。 */
   function clearAll() {
-    stopPolling();
+    taskId.value = null; // 触发轮询 watcher 停止
     if (countTimer) clearTimeout(countTimer);
     countSeq++; // 丢弃可能仍在途的计数响应
     scanning.value = false;
+    starting.value = false;
     stage.value = "empty";
     tree.value = null;
     selectedTokens.value = [];
     wikiUrl.value = "";
+    scanMode.value = "auto";
     exportableCount.value = null;
     countError.value = null;
     counting.value = false;
@@ -335,11 +356,31 @@ export const useTaskStore = defineStore("task", () => {
     }
   }
 
+  /**
+   * 兜底终态：任务已结束但结果明细拉取失败时调用，
+   * 避免界面永远停在「运行中」。保留进度计数，仅提示明细缺失。
+   */
+  function applyTaskResultError(message: string) {
+    stage.value = "done";
+    phase.value = "finished";
+    currentDoc.value = null;
+    currentItemType.value = null;
+    estimatedRemainingSeconds.value = 0;
+    if (!cancelled.value) {
+      lastError.value = `无法确认任务最终结果（${message}）。任务结果会写入任务历史，可稍后查看。`;
+    }
+  }
+
+  // 轮询生命周期挂在 store 实例上（只注册一次）：taskId 从 null 变有值时
+  // 自动起轮询，置回 null 时自动停止，由 composable 内部 watch 管理。
+  useTaskProgress(taskId);
+
   return {
     // state
     stage,
     taskId,
     wikiUrl,
+    scanMode,
     tree,
     selectedTokens,
     phase,
@@ -357,6 +398,7 @@ export const useTaskStore = defineStore("task", () => {
     nodeStates,
     lastError,
     scanning,
+    starting,
     // getters
     running,
     finished,
@@ -375,6 +417,7 @@ export const useTaskStore = defineStore("task", () => {
     clearAll,
     applyProgress,
     applyTaskResult,
+    applyTaskResultError,
   };
 });
 

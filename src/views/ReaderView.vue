@@ -15,6 +15,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import MarkdownIt from "markdown-it";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import AppIcon from "../components/AppIcon.vue";
 import ReaderTree from "../components/ReaderTree.vue";
@@ -22,6 +23,7 @@ import { findFirstReaderDoc, readReaderBinary, readReaderMd } from "../api/reade
 import { useTaskStore } from "../stores/task";
 import { useHistoryStore } from "../stores/history";
 import { openOutputDir } from "../api/settings";
+import { message } from "../composables/useMessage";
 
 const route = useRoute();
 const router = useRouter();
@@ -69,21 +71,23 @@ const historyDirs = computed(() =>
 
 const sources = computed(() => {
   const out: { key: string; name: string; path: string; source: string }[] = [];
+  // 同一产物目录去重（最近一次任务与任务历史可能指向同一目录），避免出现两行重复入口
+  const seen = new Set<string>();
+  const push = (
+    key: string,
+    name: string,
+    path: string,
+    source: string
+  ) => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    out.push({ key, name, path, source });
+  };
   if (lastTaskDir.value) {
-    out.push({
-      key: "latest",
-      name: basename(lastTaskDir.value),
-      path: lastTaskDir.value,
-      source: "最近一次任务",
-    });
+    push("latest", basename(lastTaskDir.value), lastTaskDir.value, "最近一次任务");
   }
   for (const item of historyDirs.value) {
-    out.push({
-      key: item.task_id,
-      name: item.name,
-      path: item.path,
-      source: "任务历史",
-    });
+    push(item.task_id, item.name, item.path, "任务历史");
   }
   return out;
 });
@@ -113,7 +117,8 @@ async function pickFolder() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string" && selected) setRoot(selected);
   } catch (err) {
-    mdError.value = `选择目录失败：${String(err)}`;
+    // 用户取消时 dialog 返回 null 不会走到这；真错误用 toast 提示即可
+    message.warning(`选择目录失败：${String(err)}`);
   }
 }
 
@@ -129,6 +134,7 @@ function clearRoot() {
 /** 打开发布中的文档：读 md -> 渲染 html -> 内联本地图片 */
 async function openDoc(path: string) {
   if (path === docPath.value) return;
+  const requested = path;
   mdLoading.value = true;
   mdError.value = null;
   docPath.value = path;
@@ -136,12 +142,19 @@ async function openDoc(path: string) {
   contentHtml.value = "";
   try {
     const raw = await readReaderMd(path);
+    if (docPath.value !== requested) return; // 等待期间用户已切到别的文档，丢弃这次结果
     contentHtml.value = md.render(raw);
   } catch (err) {
+    if (docPath.value !== requested) return;
     mdError.value = String(err);
   } finally {
+    if (docPath.value !== requested) return;
     mdLoading.value = false;
-    void nextTick(() => resolveLocalImages());
+    void nextTick(() => {
+      resolveLocalImages();
+      const el = contentEl.value;
+      if (el) el.scrollTop = 0; // 切换文档后回到顶部，避免停留在上一篇的滚动位置
+    });
   }
 }
 
@@ -150,13 +163,13 @@ async function openDoc(path: string) {
  * 自动切到该阅读源并打开第一篇 md（树随之展开定位）。
  */
 async function openExternalSource(dir: string) {
-  await loadHistory();
   setRoot(dir);
   let first: string | null = null;
   try {
     first = await findFirstReaderDoc(dir);
   } catch (err) {
-    mdError.value = `定位第一篇文档失败：${String(err)}`;
+    // 树仍可手动浏览目录，不必占据正文区
+    message.warning(`定位第一篇文档失败：${String(err)}`);
   }
   if (first) {
     revealPath.value = first;
@@ -168,42 +181,66 @@ async function openExternalSource(dir: string) {
   }
 }
 
-/** 把 md 里相对路径的 <img src> 换成本地文件 data URL（按 md 同目录解析） */
+/** 把 md 里相对路径的 <img src> 换成本地文件 data URL（按 md 同目录解析）。
+ *  图片多时串行 IPC 会很慢，这里用固定小并发批量读取；文档切换后立即停止。
+ */
 async function resolveLocalImages() {
   const container = contentEl.value;
   const current = docPath.value;
   if (!container || !current) return;
   const baseDir = dirname(current);
   const imgs = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
-  for (const img of imgs) {
-    const src = img.getAttribute("src") || "";
-    if (!src || /^(data:|https?:|asset:|blob:)/i.test(src)) continue;
-    let rel = src;
-    try {
-      rel = decodeURIComponent(src);
-    } catch {
-      /* 保留原样 */
-    }
-    const abs = joinPath(baseDir, rel);
-    try {
-      const cached = imageCache.get(abs);
-      const dataUrl = cached ?? (await readReaderBinary(abs)).data_url;
-      imageCache.set(abs, dataUrl);
-      img.src = dataUrl;
-    } catch (err) {
-      img.classList.add("is-broken");
-      img.alt = img.alt ? `${img.alt}（图片缺失）` : "（图片缺失）";
-      img.title = String(err);
+  const jobs = imgs.map((img) => ({ img, src: img.getAttribute("src") || "" }));
+  const pending = jobs.filter(({ src }) => !/^(data:|https?:|asset:|blob:)/i.test(src));
+
+  const CONCURRENCY = 6;
+  let next = 0;
+  async function worker() {
+    while (docPath.value === current) {
+      const job = pending[next++];
+      if (!job) return;
+      const { img, src } = job;
+      let rel = src;
+      try {
+        rel = decodeURIComponent(src);
+      } catch {
+        /* 保留原样 */
+      }
+      const abs = joinPath(baseDir, rel);
+      try {
+        const cached = imageCache.get(abs);
+        const dataUrl = cached ?? (await readReaderBinary(abs)).data_url;
+        imageCache.set(abs, dataUrl);
+        img.src = dataUrl;
+      } catch (err) {
+        img.classList.add("is-broken");
+        img.alt = img.alt ? `${img.alt}（图片缺失）` : "（图片缺失）";
+        img.title = String(err);
+      }
     }
   }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(CONCURRENCY, Math.max(1, pending.length)) },
+      () => worker()
+    )
+  );
 }
 
-/** 阅读区链接点击：本地相对链接一律阻止默认跳转（避免跑到 tauri:// 空白页） */
+/** 阅读区链接点击：外部 http(s) 链接交给系统浏览器打开；
+ *  本地相对链接一律阻止默认跳转（避免跑到 tauri:// 空白页）。 */
 function onContentClick(event: MouseEvent) {
   const target = (event.target as HTMLElement).closest("a");
   if (!target) return;
   const href = target.getAttribute("href") || "";
-  if (/^(https?:|data:|mailto:|asset:)/i.test(href)) return;
+  if (/^(https?:)/i.test(href)) {
+    event.preventDefault();
+    void openUrl(href).catch(() => {
+      /* 打不开外部链接时保持安静，避免打断阅读 */
+    });
+    return;
+  }
+  if (/^(data:|mailto:|asset:)/i.test(href)) return;
   event.preventDefault();
 }
 
@@ -214,7 +251,8 @@ async function revealDoc() {
   try {
     await openOutputDir(current.endsWith(".md") ? dirname(current) : current);
   } catch (err) {
-    mdError.value = `打开目录失败：${String(err)}`;
+    // 系统级失败（目录已被删/权限）不该覆盖正在阅读的正文
+    message.warning(`打开目录失败：${String(err)}`);
   }
 }
 
@@ -329,7 +367,6 @@ function joinPath(dir: string, rel: string): string {
               :active-path="docPath"
               :reveal-path="revealPath"
               @select="openDoc"
-              @error="(m) => (mdError = m)"
             />
           </div>
         </aside>
@@ -337,7 +374,7 @@ function joinPath(dir: string, rel: string): string {
         <main class="lr-card lr-reader__main">
           <!-- 加载中 -->
           <div v-if="mdLoading" class="lr-empty">
-            <AppIcon name="spinner" :size="24" />
+            <AppIcon name="spinner" :size="24" class="lr-icon-spin" />
             <span>正在渲染文档…</span>
           </div>
 

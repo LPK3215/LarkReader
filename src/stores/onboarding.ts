@@ -41,15 +41,20 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const checking = ref(false);
 
   const checks = ref<CheckItem[]>([]);
-  const envReady = computed(() =>
-    checks.value.length > 0 && checks.value.every((c) => c.state === "ok")
-  );
+  // 「登录状态」是步骤 2 的独立关卡，不应阻塞步骤 1（登录）入口：
+  // 若把登录 warn/error 也算进来，首次使用/重新登录时会永远无法进入登录页。
+  const envReady = computed(() => {
+    const relevant = checks.value.filter((c) => c.key !== "login");
+    return relevant.length > 0 && relevant.every((c) => c.state === "ok");
+  });
 
   const loginState = ref<LoginState>("idle");
   const deviceCode = ref("");
   const verificationUrl = ref("");
   const userName = ref<string | null>(null);
   const loginError = ref<string | null>(null);
+  /** 登录会话序号：取消/离开页面后作废在途 complete_login，防旧进程覆盖新会话 */
+  let loginSeq = 0;
 
   /** 把 EnvStatus 翻译成 UI 列表。 */
   function buildChecks(env: EnvStatus): CheckItem[] {
@@ -98,6 +103,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
         ? `已登录 · ${env.user_name ?? env.token_status ?? "已授权"}`
         : "未登录",
       state: env.logged_in ? "ok" : "warn",
+      action: env.logged_in ? undefined : "去登录",
     });
 
     return out;
@@ -112,6 +118,10 @@ export const useOnboardingStore = defineStore("onboarding", () => {
       if (env.logged_in) {
         loginState.value = "done";
         userName.value = env.user_name ?? null;
+      } else {
+        // 用户已在外部退出登录：把步骤 1 的“已登录”态复位，避免残留旧用户名/状态
+        loginState.value = "idle";
+        userName.value = null;
       }
     } catch (err) {
       checks.value = [
@@ -127,14 +137,21 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     }
   }
 
-  /** 步骤 1：安装/更新 lark-cli，再跑一次体检。 */
+  /** 步骤 1：安装/更新 lark-cli，再跑一次体检。失败要落在体检列表上可见，而不是写进登录错误。 */
   async function installCli() {
     checking.value = true;
     try {
       await setupLarkCli();
       await runCheck();
     } catch (err) {
-      loginError.value = String(err);
+      checks.value = [
+        {
+          key: "node",
+          label: "lark-cli 安装失败",
+          detail: String(err),
+          state: "error",
+        },
+      ];
     } finally {
       checking.value = false;
     }
@@ -144,8 +161,10 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   async function beginLogin() {
     if (loginState.value === "awaiting") return; // 已在等待授权，防止重复发起
     loginError.value = null;
+    const seq = ++loginSeq; // 每次发起都作废此前未结束的等待会话
     try {
       const info = await startLogin();
+      if (seq !== loginSeq) return;
       deviceCode.value = info.device_code;
       verificationUrl.value = info.verification_url;
       loginState.value = "awaiting";
@@ -158,6 +177,9 @@ export const useOnboardingStore = defineStore("onboarding", () => {
       // 直到用户在浏览器完成授权（最长约 10 分钟）。不要改成并发轮询——
       // lark-cli 每次重启该命令都会作废上一轮的 device code，并发等于永远无法登录。
       const result = await completeLogin(deviceCode.value);
+      // 取消/离开页面/重新登录后，旧进程迟到的结果只对旧设备码有效，一律丢弃，
+      // 避免把新会话的 awaiting（或用户在别处的登录态）误判成失败。
+      if (seq !== loginSeq) return;
       if (result.success) {
         userName.value = result.user_name;
         loginState.value = "done";
@@ -166,17 +188,19 @@ export const useOnboardingStore = defineStore("onboarding", () => {
         loginState.value = "failed";
       }
     } catch (err) {
+      if (seq !== loginSeq) return;
       loginError.value = String(err);
       loginState.value = "failed";
     }
   }
 
-  /** 取消登录：仅复位 UI 状态。
+  /** 取消登录：仅复位 UI 状态并作废在途会话。
    *
-   * 后端等待授权的阻塞进程无法中途终止，最长约 10 分钟后自行超时退出；
-   * 若在超时前重新登录，新会话与旧进程并存，旧进程超时后自动清理。
+   * 后端等待授权的阻塞进程无法中途终止，最长约 10 分钟后自行超时退出，
+   * 其迟到结果会被登录序号丢弃，不会影响新会话。
    */
   function cancelLogin() {
+    loginSeq++;
     loginState.value = "idle";
     deviceCode.value = "";
     verificationUrl.value = "";

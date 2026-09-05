@@ -37,7 +37,19 @@ async function onScan() {
   await task.scan(url);
 }
 
+/** 回车扫描：输入法组词回车不算 */
+function onScanKey(event: KeyboardEvent) {
+  if (event.isComposing) return;
+  void onScan();
+}
+
+/** 用对话框选了新的输出目录：先预检，让可用空间与可写性提示立刻生效 */
+function onDirPick(path: string) {
+  void settings.refreshPreflight(path);
+}
+
 async function onStart() {
+  if (task.starting) return; // store 内也有守卫，双保险
   // 工作台右侧的目录 / 下载图片 / 并发数直接改在 store 草稿上，启动前落盘，
   // 让后端任务读取与右侧展示一致的设置（后端按持久化配置执行）。
   try {
@@ -72,18 +84,21 @@ function openResultDir() {
             class="lr-input"
             placeholder="https://xxx.feishu.cn/wiki/..."
             :disabled="task.scanning"
-            @keyup.enter="onScan"
+            autofocus
+            autocomplete="off"
+            spellcheck="false"
+            @keydown.enter="onScanKey"
           />
           <button
             class="lr-btn lr-btn--primary lr-btn--lg lr-work__scanbtn"
-            :disabled="task.scanning"
+            :disabled="task.scanning || !inputUrl.trim()"
             @click="onScan"
           >
             <AppIcon
               v-if="task.scanning"
               name="spinner"
               :size="14"
-              class="lr-work__spin"
+              class="lr-icon-spin"
             />
             {{ task.scanning ? "扫描中…" : "扫描结构" }}
           </button>
@@ -166,6 +181,7 @@ function openResultDir() {
                 <DirPicker
                   v-model="settings.settings.output_dir"
                   :available-text="settings.availableText"
+                  @pick="onDirPick"
                 />
               </div>
 
@@ -226,11 +242,17 @@ function openResultDir() {
 
               <button
                 class="lr-btn lr-btn--primary lr-btn--lg lr-btn--block"
-                :disabled="task.selectedTokens.length === 0"
+                :disabled="task.selectedTokens.length === 0 || task.starting"
                 @click="onStart"
               >
-                <AppIcon name="download" :size="14" />
-                开始下载
+                <AppIcon
+                  v-if="task.starting"
+                  name="spinner"
+                  :size="13"
+                  class="lr-icon-spin"
+                />
+                <AppIcon v-else name="download" :size="14" />
+                {{ task.starting ? "启动中…" : "开始下载" }}
               </button>
             </div>
           </div>
@@ -299,23 +321,6 @@ function openResultDir() {
   margin-top: var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
-}
-
-/* 扫描中按钮里的旋转加载图标（keyframes 需与本组件 scoped 一起声明） */
-.lr-work__spin {
-  animation: lr-spin 0.9s linear infinite;
-}
-
-@keyframes lr-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lr-work__spin {
-    animation: none;
-  }
 }
 
 /* ---- 顶部链接条 ---- */
@@ -413,7 +418,7 @@ function openResultDir() {
 .lr-work__summaryhint {
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-secondary);
-  font-weight: var(--lr-fw-normal);
+  font-weight: var(--lr-fw-regular);
 }
 
 /* 计数失败（如勾选时机异常）的红色提示 */

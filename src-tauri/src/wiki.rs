@@ -53,13 +53,44 @@ fn retry_backoff_ms(attempt: usize) -> u64 {
         .unwrap_or(3200)
 }
 
-/// 获取 Wiki 节点树
+/// 扫描模式
+///
+/// - `Auto`（A 模式）：只导出传入 URL 对应的节点及其子树。默认行为，不变。
+/// - `FullSpace`（C 模式）：如果传入节点没有子节点，自动展开整个知识库
+///   （列出 space 下全部顶层节点，逐个递归）。A 模式的超集——A 能拿到的
+///   C 全能拿到，A 拿不到的兄弟节点 C 也能拿到。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScanMode {
+    Auto,
+    FullSpace,
+}
+
+impl Default for ScanMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+/// 获取 Wiki 节点树（A 模式，只导出传入节点及其子树）
 ///
 /// 流程：
 /// 1. 调 wiki +node-get 获取根节点信息（space_id、has_child）
 /// 2. 如果有子节点，调 wiki +node-list 递归遍历
 /// 3. 返回完整的 WikiNode 树结构
 pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
+    get_wiki_tree_with_mode(wiki_url, ScanMode::Auto)
+}
+
+/// 获取 Wiki 节点树（支持扫描模式选择）
+///
+/// - `ScanMode::Auto`：等同 `get_wiki_tree`，只导出传入节点及其子树
+/// - `ScanMode::FullSpace`：A 模式超集。先走 A 逻辑，如果传入节点
+///   `has_child=false`（无子树），额外调 `wiki +node-list --space-id`（不带
+///   parent）列出 space 下全部顶层节点，构造虚拟 Folder 根逐个递归。
+///   虚拟根 obj_type=Folder 不会被收集为文档；space 顶层节点按 A 模式同款
+///   depth=1 挂到虚拟根下，目录结构与 A 模式一致。
+pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<WikiNode> {
     let node_token = extract::parse_node_token(wiki_url);
     if node_token.is_empty() {
         return Err(AppError::InvalidInput(
@@ -92,12 +123,91 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
         children: vec![],
     };
 
-    // 递归遍历子节点
+    // A 模式或 C 模式且有子节点：走原有递归逻辑
     if has_child {
         let mut ancestors = HashSet::from([node_token.clone()]);
         let mut node_count = 1usize;
         root.children =
             traverse_children(&space_id, &node_token, 1, &mut ancestors, &mut node_count)?;
+    } else if mode == ScanMode::FullSpace {
+        // C 模式 fallback：传入节点无子树，展开整个 space
+        let space_roots = lark::wiki_space_roots(&space_id)?;
+        if !space_roots.is_empty() {
+            // 构造虚拟 Folder 根：obj_type=Folder 不会被收集为文档，
+            // title 用传入节点的 title（用户看到的是知识库首页名称）。
+            let mut virtual_root = WikiNode {
+                node_token: node_token.clone(),
+                title: root.title.clone(),
+                obj_type: WikiNodeType::Folder,
+                has_child: true,
+                obj_token: None,
+                position: 0,
+                depth: 0,
+                children: vec![],
+            };
+
+            let mut ancestors = HashSet::new();
+            let mut node_count = 0usize;
+
+            for item in &space_roots {
+                let child_token = item.node_token.clone().unwrap_or_default();
+                if child_token.is_empty() {
+                    continue;
+                }
+                let child_title = item.title.clone().unwrap_or_else(|| child_token.clone());
+                let child_has_child = item.has_child.unwrap_or(false);
+                let child_obj_type =
+                    WikiNodeType::from_api_value(&item.obj_type.clone().unwrap_or_default());
+
+                let mut child = WikiNode {
+                    node_token: child_token.clone(),
+                    title: child_title,
+                    obj_type: child_obj_type,
+                    has_child: child_has_child,
+                    obj_token: item.obj_token.clone(),
+                    position: item
+                        .position
+                        .and_then(|p| usize::try_from(p).ok())
+                        .unwrap_or(0),
+                    // depth=1：与 A 模式的顶层节点对齐。collect_docs_recursive
+                    // 用“父节点 depth != 0”来决定是否为其子节点创建目录层；
+                    // 若这里填 0，顶层文件夹本身不会生成目录，其下文档会整体
+                    // 塌陷到知识库根目录，两个文件夹里的同名文档可能互相覆盖。
+                    depth: 1,
+                    children: vec![],
+                };
+
+                if child_has_child {
+                    ancestors.insert(child_token.clone());
+                    node_count += 1;
+                    if node_count > MAX_WIKI_NODES {
+                        return Err(AppError::Extract(format!(
+                            "Wiki 节点数量超过限制 {}",
+                            MAX_WIKI_NODES
+                        )));
+                    }
+                    child.children = traverse_children(
+                        &space_id,
+                        &child_token,
+                        // space 顶层节点 depth=1，其子节点自然从 depth=2 开始，
+                        // 与 A 模式（根 depth0 -> 顶层 depth1 -> 更深递增）严格一致。
+                        2,
+                        &mut ancestors,
+                        &mut node_count,
+                    )?;
+                    ancestors.remove(&child_token);
+                }
+
+                virtual_root.children.push(child);
+            }
+
+            // 按 position 排序，确保顺序与飞书一致
+            virtual_root
+                .children
+                .sort_by_key(|n| n.position);
+
+            return Ok(virtual_root);
+        }
     }
 
     Ok(root)
@@ -871,6 +981,7 @@ fn collect_docs_recursive<'a>(
 mod tests {
     use super::{collect_docs_with_path, collect_special_nodes, count_exportable_breakdown};
     use crate::models::{WikiNode, WikiNodeType};
+    use std::path::PathBuf;
 
     #[test]
     fn test_count_docs() {
@@ -1044,6 +1155,95 @@ mod tests {
         let selected = vec!["other".to_string()];
         let special = collect_special_nodes(&root, Some(&selected), None);
         assert_eq!(special.len(), 0);
+    }
+
+    #[test]
+    fn full_space_top_level_folder_keeps_directory_layer() {
+        // 复现 C 模式（整库展开）缺陷：space 顶层节点若被误设成 depth=0，
+        // collect_docs_recursive 就不会为顶层文件夹创建目录层，其下文档会
+        // 全部塌陷到知识库根目录，两个文件夹里的同名文档可能互相覆盖。
+        let top_folder = WikiNode {
+            node_token: "A".into(),
+            title: "指南".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 1,
+            children: vec![
+                WikiNode {
+                    node_token: "a1".into(),
+                    title: "README".into(),
+                    obj_type: WikiNodeType::Doc,
+                    has_child: false,
+                    obj_token: None,
+                    position: 0,
+                    depth: 2,
+                    children: vec![],
+                },
+                WikiNode {
+                    node_token: "G".into(),
+                    title: "进阶".into(),
+                    obj_type: WikiNodeType::Folder,
+                    has_child: true,
+                    obj_token: None,
+                    position: 1,
+                    depth: 2,
+                    children: vec![WikiNode {
+                        node_token: "a2".into(),
+                        title: "约定".into(),
+                        obj_type: WikiNodeType::Doc,
+                        has_child: false,
+                        obj_token: None,
+                        position: 0,
+                        depth: 3,
+                        children: vec![],
+                    }],
+                },
+            ],
+        };
+        let top_doc = WikiNode {
+            node_token: "B".into(),
+            title: "首页".into(),
+            obj_type: WikiNodeType::Doc,
+            has_child: false,
+            obj_token: None,
+            position: 2,
+            depth: 1,
+            children: vec![],
+        };
+        let virtual_root = WikiNode {
+            node_token: "root".into(),
+            title: "Root".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 0,
+            children: vec![top_folder, top_doc],
+        };
+
+        let docs = collect_docs_with_path(&virtual_root, None);
+        assert_eq!(docs.len(), 3);
+        let by_token: std::collections::HashMap<_, _> = docs
+            .into_iter()
+            .map(|(n, p)| (n.node_token.clone(), p))
+            .collect();
+        assert_eq!(
+            by_token["a1"],
+            PathBuf::from("00_指南"),
+            "顶层文件夹内的文档应落在该文件夹目录下"
+        );
+        assert_eq!(
+            by_token["a2"],
+            PathBuf::from("00_指南").join("01_进阶"),
+            "嵌套文件夹的目录层必须完整保留"
+        );
+        assert_eq!(
+            by_token["B"],
+            PathBuf::new(),
+            "space 顶层的独立文档仍平铺在知识库根目录"
+        );
     }
 
     fn node(token: &str, obj_type: WikiNodeType, children: Vec<WikiNode>) -> WikiNode {

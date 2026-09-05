@@ -125,7 +125,15 @@ onMounted(async () => {
         class="lr-empty"
       >
         <AppIcon name="history" :size="28" />
-        <span>{{ history.loading ? "加载中…" : "还没有导出记录" }}</span>
+        <span>
+          {{
+            history.loading
+              ? "加载中…"
+              : history.lastError
+                ? "加载失败，点右上角「刷新」重试"
+                : "还没有导出记录"
+          }}
+        </span>
       </div>
 
       <section v-else class="lr-card lr-history">
@@ -331,6 +339,7 @@ onMounted(async () => {
 .lr-history__error {
   font-size: var(--lr-fs-secondary);
   color: var(--lr-danger);
+  word-break: break-word;
 }
 
 .lr-history__path {
@@ -386,7 +395,7 @@ onMounted(async () => {
 
 .lr-history__detail-title {
   font-size: var(--lr-fs-body);
-  color: var(--lr-text-primary);
+  color: var(--lr-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

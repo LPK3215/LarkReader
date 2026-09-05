@@ -6,12 +6,14 @@
 //      可写性与磁盘空间 -> 展示 OutputPreflight（不可写时给出错误态）
 //
 // 环境降级：在纯浏览器（npm run dev 且非 Tauri 窗口）里 dialog 不可用，
-//          捕获异常后保留手动输入（真机验收请用 npm run tauri dev）。
+//          会走 catch 弹 toast 提示并保留手动输入（真机验收请用 npm run tauri dev）。
+//          用户取消对话框时 dialog 返回 null，不视为错误、不弹提示。
 // ============================================================================
 
 import { ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import AppIcon from "./AppIcon.vue";
+import { message } from "../composables/useMessage";
 
 const props = withDefaults(
   defineProps<{
@@ -24,7 +26,11 @@ const props = withDefaults(
   { availableText: null, writable: true, error: null, compact: false }
 );
 
-const emit = defineEmits<{ "update:modelValue": [string] }>();
+const emit = defineEmits<{
+  "update:modelValue": [string];
+  /** 用户通过对话框实际选中目录时触发，供父级立即做可写性预检 */
+  pick: [path: string];
+}>();
 
 const picking = ref(false);
 
@@ -34,9 +40,12 @@ async function pick() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string" && selected) {
       emit("update:modelValue", selected);
+      emit("pick", selected);
     }
   } catch (err) {
-    // dialog 失败（用户取消、权限问题）静默忽略，保留手动输入
+    // 用户取消时 dialog 返回 null，不会走到这里；
+    // 走到这说明是真正的异常（权限不足、插件缺失等），值得明确反馈。
+    message.warning(`打开目录选择器失败：${String(err)}`);
   } finally {
     picking.value = false;
   }

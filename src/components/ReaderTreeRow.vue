@@ -178,7 +178,7 @@ function sizeText(bytes: number | null): string {
           :name="node.expanded && node.loaded ? 'chevronDown' : 'chevronRight'"
           :size="12"
         />
-        <AppIcon v-else-if="node.loading" name="spinner" :size="11" />
+        <AppIcon v-else-if="node.loading" name="spinner" :size="11" class="lr-icon-spin" />
       </span>
 
       <AppIcon
@@ -277,6 +277,6 @@ function sizeText(bytes: number | null): string {
   flex: none;
   padding-right: 4px;
   color: var(--lr-text-disabled);
-  font-size: var(--lr-fs-small);
+  font-size: var(--lr-fs-secondary);
 }
 </style>

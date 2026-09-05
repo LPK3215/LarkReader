@@ -95,6 +95,15 @@ const tokenLabel = computed(() => {
   return t === "ready" ? "凭据有效" : t === "needs_refresh" ? "凭据待刷新" : "无凭据";
 });
 
+/**
+ * 登录刚完成、env 还在刷新同步时（loggedIn 尚未翻转），先把账号卡显示出来，
+ * 避免成功瞬间闪回「开始登录」又跳成已登录。
+ */
+const accountShown = computed(() => auth.loggedIn || auth.loginState === "done");
+const accountSub = computed(() =>
+  auth.loggedIn ? tokenLabel.value : "登录已确认，同步状态中…"
+);
+
 /** 进入页面立即体检一次，保证看到的是最新状态。 */
 onMounted(() => {
   void auth.refresh();
@@ -177,18 +186,20 @@ function onSwitchAccount() {
       <section class="lr-card">
         <header class="lr-card__head">
           <span class="lr-card__title">飞书账号</span>
-          <span class="lr-card__meta">{{ auth.loggedIn ? "已登录" : "未登录" }}</span>
+          <span class="lr-card__meta">{{ accountShown ? "已登录" : "未登录" }}</span>
         </header>
         <div class="lr-card__body">
-          <!-- 已登录 -->
-          <template v-if="auth.loggedIn">
+          <!-- 已登录（或刚授权完成、env 正在同步） -->
+          <template v-if="accountShown">
             <div class="lr-term__account">
               <span class="lr-term__avatar">
                 <AppIcon name="user" :size="16" />
               </span>
               <span class="lr-term__accountmain">
-                <span class="lr-term__accountname lr-selectable">{{ auth.userName }}</span>
-                <span class="lr-term__accountsub">{{ tokenLabel }}</span>
+                <span class="lr-term__accountname lr-selectable">
+                  {{ auth.userName || "已授权账号" }}
+                </span>
+                <span class="lr-term__accountsub">{{ accountSub }}</span>
               </span>
             </div>
             <p class="lr-term__tip">
@@ -217,7 +228,7 @@ function onSwitchAccount() {
               打开浏览器授权
             </button>
             <p class="lr-term__wait">
-              <AppIcon name="spinner" :size="12" class="lr-term__spin" />
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
               等待授权完成…
             </p>
             <code class="lr-term__url lr-selectable">{{ auth.verificationUrl }}</code>
@@ -251,7 +262,7 @@ function onSwitchAccount() {
             :disabled="auth.refreshing"
             @click="onRefresh"
           >
-            <AppIcon v-if="auth.refreshing" name="spinner" :size="12" class="lr-term__spin" />
+            <AppIcon v-if="auth.refreshing" name="spinner" :size="12" class="lr-icon-spin" />
             {{ auth.refreshing ? "检测中…" : "重新检测" }}
           </button>
         </header>
@@ -412,22 +423,6 @@ function onSwitchAccount() {
   gap: var(--lr-space-2);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
-}
-
-.lr-term__spin {
-  animation: lr-term-spin 0.9s linear infinite;
-}
-
-@keyframes lr-term-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lr-term__spin {
-    animation: none;
-  }
 }
 
 .lr-term__url {

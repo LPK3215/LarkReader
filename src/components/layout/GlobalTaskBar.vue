@@ -14,6 +14,8 @@ withDefaults(
     successCount?: number;
     failedCount?: number;
     cancelled?: boolean;
+    /** 是否已进入终态（完成/被取消都算），终态后不再显示取消、进度换结果图标 */
+    finished?: boolean;
   }>(),
   {
     phaseLabel: "正在导出文档",
@@ -24,6 +26,7 @@ withDefaults(
     successCount: 0,
     failedCount: 0,
     cancelled: false,
+    finished: false,
   }
 );
 
@@ -32,7 +35,21 @@ const emit = defineEmits<{ cancel: []; minimize: []; detail: [] }>();
 
 <template>
   <div class="lr-taskbar">
-    <AppIcon name="spinner" :size="14" class="lr-taskbar__spinner" />
+    <!-- 运行中：转圈；终态：成功/有失败/已取消分别给出对应图标 -->
+    <AppIcon
+      v-if="finished && !cancelled && failedCount"
+      name="alert-circle"
+      :size="14"
+      class="lr-taskbar__done lr-taskbar__done--warn"
+    />
+    <AppIcon
+      v-else-if="finished && !cancelled"
+      name="check-circle"
+      :size="14"
+      class="lr-taskbar__done lr-taskbar__done--ok"
+    />
+    <AppIcon v-else-if="finished" name="close-circle" :size="14" class="lr-taskbar__done" />
+    <AppIcon v-else name="spinner" :size="14" class="lr-taskbar__spinner lr-icon-spin" />
 
     <div class="lr-taskbar__main">
       <div class="lr-taskbar__line">
@@ -48,6 +65,11 @@ const emit = defineEmits<{ cancel: []; minimize: []; detail: [] }>();
       <div class="lr-taskbar__track">
         <div
           class="lr-taskbar__fill"
+          :class="{
+            'is-done': finished && !cancelled,
+            'is-failed': finished && !cancelled && failedCount,
+            'is-cancelled': finished && cancelled,
+          }"
           :style="{ width: total ? `${Math.round((done / total) * 100)}%` : '0%' }"
         />
       </div>
@@ -59,8 +81,13 @@ const emit = defineEmits<{ cancel: []; minimize: []; detail: [] }>();
 
     <button class="lr-taskbar__btn" @click="emit('detail')">明细</button>
     <button class="lr-taskbar__btn" @click="emit('minimize')">收起</button>
-    <button class="lr-taskbar__btn lr-taskbar__btn--danger" :disabled="cancelled" @click="emit('cancel')">
-      取消
+    <button
+      v-if="!finished"
+      class="lr-taskbar__btn lr-taskbar__btn--danger"
+      :disabled="cancelled"
+      @click="emit('cancel')"
+    >
+      {{ cancelled ? "取消中…" : "取消" }}
     </button>
   </div>
 </template>
@@ -78,19 +105,18 @@ const emit = defineEmits<{ cancel: []; minimize: []; detail: [] }>();
 
 .lr-taskbar__spinner {
   color: var(--lr-primary);
-  animation: lr-spin 0.9s linear infinite;
 }
 
-@keyframes lr-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.lr-taskbar__done {
+  color: var(--lr-text-tertiary);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .lr-taskbar__spinner {
-    animation: none;
-  }
+.lr-taskbar__done--ok {
+  color: var(--lr-success);
+}
+
+.lr-taskbar__done--warn {
+  color: var(--lr-warning);
 }
 
 .lr-taskbar__main {
@@ -139,7 +165,19 @@ const emit = defineEmits<{ cancel: []; minimize: []; detail: [] }>();
   height: 100%;
   border-radius: 1.5px;
   background: var(--lr-primary);
-  transition: width 0.3s ease-out;
+  transition: width 0.3s ease-out, background 0.3s ease-out;
+}
+
+.lr-taskbar__fill.is-done {
+  background: var(--lr-success);
+}
+
+.lr-taskbar__fill.is-failed {
+  background: var(--lr-warning);
+}
+
+.lr-taskbar__fill.is-cancelled {
+  background: var(--lr-text-tertiary);
 }
 
 .lr-taskbar__doc {

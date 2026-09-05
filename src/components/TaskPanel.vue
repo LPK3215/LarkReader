@@ -43,7 +43,7 @@ const remainingText = computed(() => {
 <template>
   <div class="lr-taskpanel">
     <div class="lr-taskpanel__head">
-      <AppIcon v-if="!finished" name="spinner" :size="14" class="lr-taskpanel__spinner" />
+      <AppIcon v-if="!finished" name="spinner" :size="14" class="lr-taskpanel__spinner lr-icon-spin" />
       <AppIcon v-else-if="failedCount" name="alert-circle" :size="14" class="lr-taskpanel__warn" />
       <AppIcon v-else name="check-circle" :size="14" class="lr-taskpanel__ok" />
       <span class="lr-taskpanel__phase">{{ phaseLabel }}</span>
@@ -84,7 +84,7 @@ const remainingText = computed(() => {
         <AppIcon name="check" :size="12" />
         成功 {{ successCount }}
       </span>
-      <span class="lr-taskpanel__stat lr-taskpanel__stat--bad">
+      <span v-if="failedCount" class="lr-taskpanel__stat lr-taskpanel__stat--bad">
         <AppIcon name="close" :size="12" />
         失败 {{ failedCount }}
       </span>
@@ -121,19 +121,6 @@ const remainingText = computed(() => {
 
 .lr-taskpanel__spinner {
   color: var(--lr-primary);
-  animation: lr-spin 0.9s linear infinite;
-}
-
-@keyframes lr-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lr-taskpanel__spinner {
-    animation: none;
-  }
 }
 
 .lr-taskpanel__ok {

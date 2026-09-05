@@ -229,12 +229,7 @@ onBeforeUnmount(stopPoll);
       <!-- 运行中 / 已完成 / 失败 共用状态区 -->
       <div v-if="working || autoDone || autoFail" class="lr-appcfg__statusbox">
         <div class="lr-appcfg__statusline" :class="autoDone ? 'is-done' : autoFail ? 'is-fail' : ''">
-          <AppIcon
-            v-if="working"
-            class="lr-appcfg__spin"
-            name="spinner"
-            :size="13"
-          />
+          <AppIcon v-if="working" class="lr-icon-spin" name="spinner" :size="13" />
           <AppIcon v-else-if="autoDone" name="check-circle" :size="13" />
           <AppIcon v-else name="close-circle" :size="13" />
           <span>{{ autoFail ? `创建未完成：${autoFail}` : liveText }}</span>
@@ -419,16 +414,6 @@ onBeforeUnmount(stopPoll);
 
 .lr-appcfg__statusline.is-fail {
   color: var(--lr-danger);
-}
-
-.lr-appcfg__spin {
-  animation: lr-appcfg-rotate 1s linear infinite;
-}
-
-@keyframes lr-appcfg-rotate {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .lr-appcfg__linkrow {

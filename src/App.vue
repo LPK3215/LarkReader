@@ -103,7 +103,7 @@ watch(bare, (isBare) => {
 
     <GlobalTaskBar
       v-if="showTaskBar"
-      :phase-label="task.phaseLabel"
+      :phase-label="task.finished && task.cancelled ? '已取消' : task.phaseLabel"
       :done="task.done"
       :total="task.total"
       :current-doc="task.currentDoc"
@@ -113,6 +113,7 @@ watch(bare, (isBare) => {
       :success-count="task.successCount"
       :failed-count="task.failedCount"
       :cancelled="task.cancelled"
+      :finished="task.finished"
       @cancel="task.cancel()"
       @minimize="task.taskBarVisible = false"
       @detail="goWorkspace"

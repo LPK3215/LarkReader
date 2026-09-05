@@ -9,26 +9,39 @@
 // 保存按钮：把当前 settings 草稿写盘；恢复默认：把草稿重置为 DEFAULT，再写盘。
 // ============================================================================
 
-import { onMounted, ref } from "vue";
-import { useSettingsStore } from "../stores/settings";
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useSettingsStore, DEFAULT_SETTINGS } from "../stores/settings";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
 
 const settings = useSettingsStore();
 
-const DEFAULT = {
-  output_dir: "D:\\Documents\\LarkReader",
-  concurrency: 5,
-  download_images: true,
-};
-
 const saving = ref(false);
+/** 保存成功的瞬时内联反馈（替代无处安放的 toast） */
+const flashText = ref("");
+let flashTimer: number | undefined;
+
+function flashSaved(text: string) {
+  flashText.value = text;
+  if (flashTimer) window.clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => {
+    flashText.value = "";
+  }, 1600);
+}
+
+onBeforeUnmount(() => {
+  if (flashTimer) window.clearTimeout(flashTimer);
+});
 
 async function onSave() {
   if (saving.value) return;
   saving.value = true;
   try {
     await settings.save();
+    flashSaved("保存成功");
+  } catch (err) {
+    // 写盘失败：settings.warning 已同步，顶部告警横幅会展示具体原因
+    console.warn("[settings] 保存失败:", err);
   } finally {
     saving.value = false;
   }
@@ -38,10 +51,18 @@ async function onReset() {
   if (saving.value) return;
   saving.value = true;
   try {
-    await settings.save({ ...DEFAULT });
+    await settings.save({ ...DEFAULT_SETTINGS });
+    flashSaved("保存成功");
+  } catch (err) {
+    console.warn("[settings] 恢复默认失败:", err);
   } finally {
     saving.value = false;
   }
+}
+
+/** 用对话框选了新目录：先做可写性预检，让「可用空间/错误」立刻刷新 */
+function onDirPick(path: string) {
+  void settings.refreshPreflight(path);
 }
 
 onMounted(async () => {
@@ -72,6 +93,7 @@ onMounted(async () => {
             <DirPicker
               v-model="settings.settings.output_dir"
               :available-text="settings.availableText"
+              @pick="onDirPick"
             />
             <span class="lr-field__hint">
               每次导出会在该目录下新建以知识库名命名的子目录，同名不会覆盖
@@ -117,7 +139,7 @@ onMounted(async () => {
           恢复默认
         </button>
         <button class="lr-btn lr-btn--primary" :disabled="saving" @click="onSave">
-          {{ saving ? "保存中…" : "保存" }}
+          {{ saving ? "保存中…" : flashText || "保存" }}
         </button>
       </div>
     </div>

@@ -449,14 +449,20 @@ pub fn open_output_dir(path: String) -> Result<(), AppError> {
 ///
 /// 扫描结果会缓存到 `AppState.last_tree`，供后续 `count_exportable` 与
 /// `start_extract_wiki` 复用，避免同一棵树被扫描两次。
+///
+/// `scan_mode`：可选，默认 `auto`（A 模式，只导出传入节点及其子树）。
+/// 传 `full_space`（C 模式）时，如果传入节点无子节点，自动展开整个
+/// 知识库（列出 space 下全部顶层节点）。不传或传 `auto` 时行为不变。
 #[tauri::command]
 pub async fn get_wiki_tree(
     wiki_url: String,
+    scan_mode: Option<wiki::ScanMode>,
     state: State<'_, AppState>,
 ) -> Result<WikiNode, AppError> {
+    let mode = scan_mode.unwrap_or_default();
     let tree = tauri::async_runtime::spawn_blocking({
         let wiki_url = wiki_url.clone();
-        move || wiki::get_wiki_tree(&wiki_url)
+        move || wiki::get_wiki_tree_with_mode(&wiki_url, mode)
     })
     .await
     .map_err(|e| AppError::Other(format!("扫描知识库任务异常: {e}")))??;
@@ -464,8 +470,9 @@ pub async fn get_wiki_tree(
         *cached = Some((wiki_url, tree.clone()));
     }
     crate::logger::info(format!(
-        "扫描知识库「{}」：{} 个顶层节点",
+        "扫描知识库「{}」（模式 {:?}）：{} 个顶层节点",
         tree.title,
+        mode,
         tree.children.len()
     ));
     Ok(tree)
@@ -596,6 +603,7 @@ pub async fn start_extract_wiki(
     wiki_url: String,
     output_dir: Option<String>,
     selected_tokens: Option<Vec<String>>,
+    scan_mode: Option<wiki::ScanMode>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let settings = read_settings(&state)?;
@@ -647,7 +655,11 @@ pub async fn start_extract_wiki(
             }
             None => {
                 let scan_url = wiki_url.clone();
-                tauri::async_runtime::spawn_blocking(move || wiki::get_wiki_tree(&scan_url)).await
+                let scan_mode = scan_mode.unwrap_or_default();
+                tauri::async_runtime::spawn_blocking(move || {
+                    wiki::get_wiki_tree_with_mode(&scan_url, scan_mode)
+                })
+                .await
             }
         };
         let result = match tree_result {

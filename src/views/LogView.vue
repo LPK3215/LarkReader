@@ -86,6 +86,7 @@ async function loadFilesList() {
 async function loadActiveContent() {
   if (!activeName.value) {
     content.value = "";
+    truncated.value = false;
     return;
   }
   const data = await logApi.readLogFile(activeName.value);
@@ -103,7 +104,8 @@ async function refreshAll(silent = false) {
     await loadActiveContent();
   } catch (err) {
     errorText.value = String(err);
-    content.value = "";
+    // 自动刷新中偶发的瞬时读取失败不清空已有内容，避免整屏闪烁/丢日志
+    if (!content.value) content.value = "";
   } finally {
     if (!silent) busy.value = false;
   }
@@ -114,7 +116,11 @@ async function selectFile(name: string) {
   if (activeName.value === name) return;
   activeName.value = name;
   if (follow.value) follow.value = false;
+  truncated.value = false;
   content.value = "";
+  // 切文件回到顶部（默认是跟读旧日志，不沿用上一文件的底部位置）
+  const el = rowsEl.value;
+  if (el) el.scrollTop = 0;
   await refreshAll(true);
 }
 
@@ -244,7 +250,7 @@ onBeforeUnmount(() => {
               :disabled="busy"
               @click="refreshAll(false)"
             >
-              <AppIcon v-if="busy" name="spinner" :size="12" class="lr-log__spin" />
+              <AppIcon v-if="busy" name="spinner" :size="12" class="lr-icon-spin" />
               {{ busy ? "刷新中…" : "刷新" }}
             </button>
           </span>
@@ -439,22 +445,7 @@ onBeforeUnmount(() => {
   margin: var(--lr-space-2) 0 0;
   color: var(--lr-warning);
   font-size: var(--lr-fs-secondary);
-  font-family: var(--lr-font-body);
+  font-family: var(--lr-font-sans);
 }
 
-.lr-log__spin {
-  animation: lr-log-spin 0.9s linear infinite;
-}
-
-@keyframes lr-log-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lr-log__spin {
-    animation: none;
-  }
-}
 </style>

@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { invoke } from "@tauri-apps/api/core";
+import type { ScanMode } from "./wiki";
 import type { Progress, WikiTaskResult } from "./types";
 
 /**
@@ -22,16 +23,19 @@ import type { Progress, WikiTaskResult } from "./types";
  * @param wikiUrl  知识库根节点链接
  * @param outputDir 输出目录；undefined 表示用 Settings.output_dir
  * @param selectedTokens 选中节点的 token；undefined 表示全选
+ * @param scanMode 扫描模式；undefined 表示 auto（与扫描时保持一致）
  */
 export async function startExtractWiki(
   wikiUrl: string,
   outputDir?: string,
-  selectedTokens?: string[]
+  selectedTokens?: string[],
+  scanMode?: ScanMode
 ): Promise<string> {
   return invoke<string>("start_extract_wiki", {
     wikiUrl,
     outputDir: outputDir ?? null,
     selectedTokens: selectedTokens ?? null,
+    scanMode: scanMode ?? null,
   });
 }
 

@@ -3,9 +3,9 @@
 //
 // state : settings(Settings) / warning / preflight(OutputPreflight)
 // actions: load()      get_settings_status（Tauri 启动时拉真实设置）
-//          save()      set_settings
-//          pickDir()   dialog 选目录 + preflight_output_dir 校验
+//          save()      set_settings（成功后再预检新目录）
 //          openDir(p)  open_output_dir 打开系统文件管理器（可指定具体目录）
+//          refreshPreflight(p) 目录可写性/可用空间预检（可选保留旧告警）
 //
 // 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // concurrency 合法范围 1–32（后端 Settings::validate 强制）。
@@ -13,7 +13,6 @@
 
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { OutputPreflight, Settings } from "../api/types";
 import {
   getSettingsStatus,
@@ -22,7 +21,7 @@ import {
   setSettings,
 } from "../api/settings";
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   output_dir: "D:\\Documents\\LarkReader",
   concurrency: 5,
   download_images: true,
@@ -33,10 +32,14 @@ export const useSettingsStore = defineStore("settings", () => {
   const warning = ref<string | null>(null);
   const preflight = ref<OutputPreflight | null>(null);
 
-  const availableText = computed(() => {
-    const bytes = preflight.value?.available_bytes ?? 0;
+  /** 可读的可用空间文案；未预检时为 null（界面隐藏该行）。 */
+  const availableText = computed<string | null>(() => {
+    if (!preflight.value) return null;
+    const bytes = preflight.value.available_bytes ?? 0;
     const gb = bytes / 1024 ** 3;
-    return gb >= 1024 ? `${(gb / 1024).toFixed(1)} TB` : `${Math.round(gb)} GB`;
+    if (gb >= 1024) return `${(gb / 1024).toFixed(1)} TB`;
+    // 小盘/近满时保留 1 位小数，避免 0.3GB 被四舍五入成误导性的「0 GB」
+    return gb < 10 ? `${gb.toFixed(1)} GB` : `${Math.round(gb)} GB`;
   });
 
   /** 启动时调一次：拉真实设置并预检输出目录。 */
@@ -45,7 +48,8 @@ export const useSettingsStore = defineStore("settings", () => {
       const status = await getSettingsStatus();
       settings.value = status.settings;
       warning.value = status.warning;
-      await refreshPreflight(status.settings.output_dir);
+      // keepWarning：后端可能带配置层告警（如配置损坏已恢复默认），不能被预检成功清掉
+      await refreshPreflight(status.settings.output_dir, true);
     } catch (err) {
       warning.value = String(err);
     }
@@ -56,32 +60,24 @@ export const useSettingsStore = defineStore("settings", () => {
     const merged = { ...settings.value, ...next };
     try {
       await setSettings(merged);
-      await refreshPreflight(merged.output_dir);
       settings.value = merged;
       warning.value = null;
+      // 预检放最后：它只在失败时写 warning，成功只更新空间/可写性，不会清掉上面的结果
+      await refreshPreflight(merged.output_dir);
     } catch (err) {
       warning.value = String(err);
       throw err;
     }
   }
 
-  /** 仅更新本地草稿，不写盘（用于表单实时预览）。 */
-  function draft(patch: Partial<Settings>) {
-    settings.value = { ...settings.value, ...patch };
-  }
-
-  /** dialog 选目录 → preflight 校验 → 写 settings。 */
-  async function pickDir() {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked !== "string") return;
-    await refreshPreflight(picked);
-    await save({ output_dir: picked });
-  }
-
-  /** 重新做 preflight（路径切换后）。 */
-  async function refreshPreflight(path: string) {
+  /**
+   * 重新做 preflight（路径切换后）。
+   * @param keepWarning 预检成功时是否保留现有告警（load() 传 true 以保留后端配置层告警）
+   */
+  async function refreshPreflight(path: string, keepWarning = false) {
     try {
       preflight.value = await preflightOutputDir(path);
+      if (!keepWarning) warning.value = null;
     } catch (err) {
       warning.value = String(err);
       preflight.value = null;
@@ -104,8 +100,7 @@ export const useSettingsStore = defineStore("settings", () => {
     availableText,
     load,
     save,
-    draft,
-    pickDir,
+    refreshPreflight,
     openDir,
   };
 });

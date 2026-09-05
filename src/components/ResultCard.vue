@@ -65,7 +65,12 @@ const showProblems = ref(false);
     <header class="lr-result__head">
       <div>
         <h3 class="lr-result__title">
-          <AppIcon v-if="summary.failed" name="alert-circle" :size="15" class="lr-result__warn" />
+          <AppIcon
+            v-if="problemItems.length"
+            name="alert-circle"
+            :size="15"
+            class="lr-result__warn"
+          />
           <AppIcon v-else name="check-circle" :size="15" class="lr-result__ok" />
           {{ cancelled ? "任务已取消" : "导出完成" }}
         </h3>

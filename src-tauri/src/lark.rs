@@ -872,6 +872,37 @@ pub fn wiki_node_list(
     }
 }
 
+/// 执行 `lark-cli wiki +node-list --space-id <id> --page-all --as user --format json`
+///
+/// 不带 `--parent-node-token`，返回该 space 下的**全部顶层节点**（互为兄弟）。
+/// 用于 C 模式（整库展开）：用户传入的 URL 可能指向一个无子节点的文档，
+/// 此时通过 space 级 node-list 获取所有顶层节点，逐个递归即可覆盖整个知识库。
+pub fn wiki_space_roots(space_id: &str) -> AppResult<Vec<crate::models::NodeListItem>> {
+    let data = run_lark_get_data(&[
+        "wiki",
+        "+node-list",
+        "--space-id",
+        space_id,
+        "--page-all",
+        "--as",
+        "user",
+        "--format",
+        "json",
+    ])?;
+
+    if data.is_array() {
+        serde_json::from_value(data).map_err(|e| AppError::JsonParse(e.to_string()))
+    } else if let Some(items) = data.get("nodes") {
+        serde_json::from_value(items.clone()).map_err(|e| AppError::JsonParse(e.to_string()))
+    } else if let Some(items) = data.get("items") {
+        serde_json::from_value(items.clone()).map_err(|e| AppError::JsonParse(e.to_string()))
+    } else if data.is_null() {
+        Ok(vec![])
+    } else {
+        serde_json::from_value(data).map_err(|e| AppError::JsonParse(e.to_string()))
+    }
+}
+
 /// 执行 `lark-cli --version`
 pub fn lark_cli_version() -> AppResult<String> {
     let output = build_command()

@@ -52,6 +52,33 @@ async function recheck() {
   }
 }
 
+/** 步骤 3 离开时把「默认输出目录」落盘，避免重启后丢失选择 */
+const savingDir = ref(false);
+async function onNextStep() {
+  if (onboarding.step === 2) {
+    if (savingDir.value) return;
+    savingDir.value = true;
+    let saved = false;
+    try {
+      await settings.save();
+      saved = true;
+    } catch (err) {
+      // 目录不可写等：warning 已同步并全局提示，停在当前步让用户处理
+      console.warn("[onboarding] 保存输出目录失败:", err);
+    } finally {
+      savingDir.value = false;
+    }
+    if (saved) nextStep();
+    return;
+  }
+  nextStep();
+}
+
+/** 选目录后立即预检，进入工作台时也保证 settings.save 落盘 */
+function onDirPick(path: string) {
+  void settings.refreshPreflight(path);
+}
+
 async function fixCli() {
   await onboarding.installCli();
 }
@@ -149,6 +176,13 @@ onBeforeUnmount(() => {
                 >
                   {{ item.action }}
                 </button>
+                <button
+                  v-else-if="item.action && item.key === 'login'"
+                  class="lr-btn lr-btn--secondary lr-onboard__fix"
+                  @click="onboarding.step = 1"
+                >
+                  {{ item.action }}
+                </button>
               </li>
             </ul>
 
@@ -186,7 +220,7 @@ onBeforeUnmount(() => {
               打开浏览器授权
             </button>
             <p class="lr-onboard__wait">
-              <AppIcon name="spinner" :size="12" class="lr-onboard__spin" />
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
               等待授权完成…
             </p>
             <code class="lr-onboard__url lr-selectable">{{ onboarding.verificationUrl }}</code>
@@ -221,6 +255,7 @@ onBeforeUnmount(() => {
             <DirPicker
               v-model="settings.settings.output_dir"
               :available-text="settings.availableText"
+              @pick="onDirPick"
             />
           </div>
         </template>
@@ -264,12 +299,13 @@ onBeforeUnmount(() => {
           v-if="onboarding.step < 3"
           class="lr-btn lr-btn--primary"
           :disabled="
+            savingDir ||
             (onboarding.step === 0 && !onboarding.envReady) ||
             (onboarding.step === 1 && onboarding.loginState !== 'done')
           "
-          @click="nextStep"
+          @click="onNextStep"
         >
-          下一步
+          {{ savingDir ? "保存中…" : "下一步" }}
         </button>
       </footer>
     </div>
@@ -491,22 +527,6 @@ onBeforeUnmount(() => {
   gap: var(--lr-space-2);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
-}
-
-.lr-onboard__spin {
-  animation: lr-spin 0.9s linear infinite;
-}
-
-@keyframes lr-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lr-onboard__spin {
-    animation: none;
-  }
 }
 
 .lr-onboard__url {

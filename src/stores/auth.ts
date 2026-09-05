@@ -64,6 +64,8 @@ export const useAuthStore = defineStore("auth", () => {
   const verificationUrl = ref("");
   const loginError = ref<string | null>(null);
   const loggingOut = ref(false);
+  /** 登录会话序号：取消后作废在途的 complete_login 响应，防止旧进程覆盖新会话状态 */
+  let loginSeq = 0;
 
   const loggedIn = computed(() => env.value?.logged_in === true);
   const userName = computed(() => env.value?.user_name ?? null);
@@ -110,8 +112,10 @@ export const useAuthStore = defineStore("auth", () => {
   async function beginLogin() {
     if (loginState.value === "awaiting") return; // 已在等待授权，防止重复发起
     loginError.value = null;
+    const seq = ++loginSeq; // 每次发起都作废此前未结束的等待会话
     try {
       const info = await startLogin();
+      if (seq !== loginSeq) return; // 等待期间已被取消/重开
       deviceCode.value = info.device_code;
       verificationUrl.value = info.verification_url;
       loginState.value = "awaiting";
@@ -121,6 +125,9 @@ export const useAuthStore = defineStore("auth", () => {
         // 用户拒绝了打开外部链接的权限，设备码仍然显示在页面里
       }
       const result = await completeLogin(deviceCode.value);
+      // 取消后重新登录时旧进程（最长约 10 分钟超时）会迟到返回：
+      // 它的结果只对旧设备码有效，一律丢弃，避免覆盖新会话的 awaiting/failed 状态。
+      if (seq !== loginSeq) return;
       if (result.success) {
         loginState.value = "done";
         await refresh();
@@ -129,13 +136,16 @@ export const useAuthStore = defineStore("auth", () => {
         loginState.value = "failed";
       }
     } catch (err) {
+      if (seq !== loginSeq) return;
       loginError.value = String(err);
       loginState.value = "failed";
     }
   }
 
-  /** 取消登录：仅复位流程 UI。后端等待授权的阻塞进程最长约 10 分钟后自行超时。 */
+  /** 取消登录：仅复位流程 UI，并作废在途的 complete_login 会话。
+   *  后端等待授权的阻塞进程最长约 10 分钟后自行超时，其迟到结果会被序号丢弃。 */
   function cancelLogin() {
+    loginSeq++;
     loginState.value = "idle";
     deviceCode.value = "";
     verificationUrl.value = "";

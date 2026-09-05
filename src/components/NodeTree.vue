@@ -127,11 +127,17 @@ function renderSuffix({ option }: { option: TreeOption }) {
   if (!state) return typeText;
 
   const icon =
-    state === "failed" || state === "skipped" ? "close-circle" : "check-circle";
+    state === "failed" || state === "skipped"
+      ? "close-circle"
+      : state === "partial"
+        ? "alert-circle"
+        : "check-circle";
   const cls =
     state === "failed" || state === "skipped"
       ? "lr-tree__state lr-tree__state--bad"
-      : "lr-tree__state lr-tree__state--ok";
+      : state === "partial"
+        ? "lr-tree__state lr-tree__state--warn"
+        : "lr-tree__state lr-tree__state--ok";
 
   return h("span", { class: "lr-tree__suffix" }, [
     typeText,
@@ -246,6 +252,10 @@ function renderLabel({ option }: { option: TreeOption }) {
 
 .lr-tree__scroll :deep(.lr-tree__state--ok) {
   color: var(--lr-success);
+}
+
+.lr-tree__scroll :deep(.lr-tree__state--warn) {
+  color: var(--lr-warning);
 }
 
 .lr-tree__scroll :deep(.lr-tree__state--bad) {

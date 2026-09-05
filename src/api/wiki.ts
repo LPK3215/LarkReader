@@ -10,14 +10,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ExportableCount, WikiNode } from "./types";
 
+/** 扫描模式：auto=A模式（只导出传入节点子树），full_space=C模式（整库展开） */
+export type ScanMode = "auto" | "full_space";
+
 /**
  * 拉取知识库目录树（只摸结构，不拉正文）。
  * 后端走飞书 lark-cli 完成。
  *
+ * @param wikiUrl  知识库节点链接
+ * @param scanMode 可选，默认 auto。full_space 时无子节点的 URL 会自动展开整个知识库
  * @throws AppError(InvalidInput | Extract | Other) 来自后端
  */
-export async function getWikiTree(wikiUrl: string): Promise<WikiNode> {
-  return invoke<WikiNode>("get_wiki_tree", { wikiUrl });
+export async function getWikiTree(
+  wikiUrl: string,
+  scanMode?: ScanMode
+): Promise<WikiNode> {
+  return invoke<WikiNode>("get_wiki_tree", {
+    wikiUrl,
+    scanMode: scanMode ?? null,
+  });
 }
 
 /**
