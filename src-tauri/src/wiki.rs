@@ -320,26 +320,11 @@ pub async fn extract_wiki_tree_controlled(
             progress.phase = match node.obj_type {
                 WikiNodeType::Sheet => TaskPhase::ExportingSheet,
                 WikiNodeType::Bitable => TaskPhase::ExportingBitable,
+                WikiNodeType::File => TaskPhase::ExportingFile,
                 _ => TaskPhase::Finalizing,
             };
         }
-        if matches!(node.obj_type, WikiNodeType::Other) {
-            skipped.push(SkippedNode {
-                title: node.title.clone(),
-                node_token: node.node_token.clone(),
-                obj_type: node.obj_type.clone(),
-                reason: "当前版本暂不支持该节点类型".to_string(),
-            });
-            if let Some(progress) = &progress {
-                let mut progress = progress
-                    .lock()
-                    .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
-                progress.done += 1;
-                progress.refresh_timing();
-            }
-            continue;
-        }
-        let result: AppResult<Vec<String>> = match node.obj_type {
+        let result: AppResult<Vec<String>> = match &node.obj_type {
             WikiNodeType::Sheet => {
                 let path = wiki_dir.join(format!("{}.xlsx", safe));
                 lark::sheets_export_controlled(
@@ -352,7 +337,34 @@ pub async fn extract_wiki_tree_controlled(
             WikiNodeType::Bitable => {
                 export_bitable(node, &wiki_dir.join(&safe), cancelled.as_deref())
             }
-            _ => unreachable!("非特殊节点不会进入特殊导出循环"),
+            WikiNodeType::File => {
+                // 挂载在 Wiki 上的普通文件（zip/pdf/…）：用 Drive 预览接口取原文件。
+                // obj_token 即 Drive file token；个别缺失时退化为 node_token 再试。
+                let file_token = node.obj_token.as_deref().unwrap_or(&node.node_token);
+                let path = wiki_dir.join(&safe);
+                lark::drive_file_preview_controlled(
+                    file_token,
+                    &path.to_string_lossy(),
+                    cancelled.as_deref(),
+                )
+                .map(|saved| vec![saved])
+            }
+            other => {
+                skipped.push(SkippedNode {
+                    title: node.title.clone(),
+                    node_token: node.node_token.clone(),
+                    obj_type: other.clone(),
+                    reason: format!("当前版本暂不支持该节点类型: {:?}", other),
+                });
+                if let Some(progress) = &progress {
+                    let mut progress = progress
+                        .lock()
+                        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+                    progress.done += 1;
+                    progress.refresh_timing();
+                }
+                continue;
+            }
         };
         match result {
             Ok(paths) => {
@@ -511,7 +523,7 @@ fn collect_special_recursive<'a>(
     if selected
         && matches!(
             node.obj_type,
-            WikiNodeType::Sheet | WikiNodeType::Bitable | WikiNodeType::Other
+            WikiNodeType::Sheet | WikiNodeType::Bitable | WikiNodeType::File | WikiNodeType::Other
         )
     {
         nodes.push(node);
@@ -622,24 +634,20 @@ fn collect_docs_recursive<'a>(
         return;
     }
 
-    // 如果是文档节点，收集
-    if matches!(node.obj_type, WikiNodeType::Doc) {
-        // 如果有 selected_tokens，检查当前节点是否被选中
-        if selected_tokens.is_some() && !subtree_selected {
-            return;
-        }
-
+    // 文档节点：收集本体；若它同时带子节点（父文档 + 子页面），不能在此 return，
+    // 否则挂在文档节点下的所有子文档会整体丢失。
+    if matches!(node.obj_type, WikiNodeType::Doc) && (selected_tokens.is_none() || subtree_selected)
+    {
         docs.push((node, current_path.to_path_buf()));
-        return;
     }
 
-    // 如果是文件夹节点，递归处理子节点
+    // 文件夹节点或带子页面的文档节点：递归处理子节点
     for child in &node.children {
         let child_path = if matches!(node.depth, 0) {
             // 根节点的子节点不需要额外目录层
             current_path.to_path_buf()
         } else {
-            // 非根节点的文件夹节点，创建子目录
+            // 非根节点的节点（文件夹或父文档），创建子目录
             current_path.join(markdown::prefixed_filename(node.position, &node.title))
         };
         collect_docs_recursive(
@@ -655,7 +663,7 @@ fn collect_docs_recursive<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::collect_docs_with_path;
+    use super::{collect_docs_with_path, collect_special_nodes};
     use crate::models::{WikiNode, WikiNodeType};
 
     #[test]
@@ -740,5 +748,95 @@ mod tests {
         let docs = collect_docs_with_path(&root, Some(&selected));
         assert_eq!(docs.len(), 1);
         assert_eq!(docs[0].0.node_token, "doc");
+    }
+
+    #[test]
+    fn doc_parent_with_child_pages_collects_all_descendants() {
+        // 复现真实缺陷：父节点是文档（Doc）且带子文档（子页面）时，
+        // 收集器曾只导出父文档、丢弃全部子文档。
+        let doc_b = WikiNode {
+            node_token: "docB".into(),
+            title: "DocB".into(),
+            obj_type: WikiNodeType::Doc,
+            has_child: false,
+            obj_token: None,
+            position: 0,
+            depth: 2,
+            children: vec![],
+        };
+        let doc_a = WikiNode {
+            node_token: "docA".into(),
+            title: "DocA".into(),
+            obj_type: WikiNodeType::Doc,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 1,
+            children: vec![doc_b],
+        };
+        let root = WikiNode {
+            node_token: "root".into(),
+            title: "Root".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 0,
+            children: vec![doc_a],
+        };
+
+        // 全量导出：父文档与其子页面都应被收集
+        let docs = collect_docs_with_path(&root, None);
+        assert_eq!(docs.len(), 2, "父文档 + 子页面应全部被收集");
+        assert_eq!(docs[0].0.node_token, "docA");
+        assert!(
+            docs[0].1.as_os_str().is_empty(),
+            "根下文档平铺在知识库根目录"
+        );
+        assert_eq!(docs[1].0.node_token, "docB");
+        assert_eq!(
+            docs[1].1.to_string_lossy(),
+            "00_DocA",
+            "子页面应落在父文档目录下"
+        );
+
+        // 只选中父文档：应自动包含其子页面
+        let selected = vec!["docA".to_string()];
+        let docs = collect_docs_with_path(&root, Some(&selected));
+        assert_eq!(docs.len(), 2, "选中父文档应包含其子页面");
+    }
+
+    #[test]
+    fn file_node_collected_as_special() {
+        let file = WikiNode {
+            node_token: "fileToken".into(),
+            title: "资源包.zip".into(),
+            obj_type: WikiNodeType::File,
+            has_child: false,
+            obj_token: Some("driveToken".into()),
+            position: 0,
+            depth: 1,
+            children: vec![],
+        };
+        let root = WikiNode {
+            node_token: "root".into(),
+            title: "Root".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 0,
+            children: vec![file],
+        };
+
+        let special = collect_special_nodes(&root, None, None);
+        assert_eq!(special.len(), 1);
+        assert!(matches!(special[0].obj_type, WikiNodeType::File));
+        assert_eq!(special[0].obj_token.as_deref(), Some("driveToken"));
+
+        // 选中不相关的节点时不应收集
+        let selected = vec!["other".to_string()];
+        let special = collect_special_nodes(&root, Some(&selected), None);
+        assert_eq!(special.len(), 0);
     }
 }

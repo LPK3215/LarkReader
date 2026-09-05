@@ -5,6 +5,7 @@
 //! 不加多余的 --format json，不加 --overwrite，简单直接。
 
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -56,7 +57,26 @@ fn run_lark_with_timeout(
     timeout: Duration,
     cancelled: Option<&AtomicBool>,
 ) -> AppResult<String> {
-    let mut child = build_command()
+    run_lark_in(args, timeout, cancelled, None)
+}
+
+/// 带工作目录的执行入口。
+///
+/// lark-cli 1.0.93 对写类命令（media-preview / workbook-export / record-list 等）有
+/// 输出路径白名单：只允许写入当前工作目录、系统临时目录或用户 home 下的 files 目录，
+/// 其余绝对路径一律报 `unsafe output path`。因此在写文件前把子进程 cwd 设为
+/// 输出目标的所在目录，使该目录本身成为白名单内的当前目录。
+fn run_lark_in(
+    args: &[&str],
+    timeout: Duration,
+    cancelled: Option<&AtomicBool>,
+    current_dir: Option<&Path>,
+) -> AppResult<String> {
+    let mut command = build_command();
+    if let Some(dir) = current_dir {
+        command.current_dir(dir);
+    }
+    let mut child = command
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -140,6 +160,20 @@ fn run_lark_with_timeout(
 
 pub fn run_lark(args: &[&str]) -> AppResult<String> {
     run_lark_with_timeout(args, Duration::from_secs(120), None)
+}
+
+/// 取输出路径的父目录作为写类命令的工作目录（仅当该目录真实存在时）。
+///
+/// 目录不存在时返回 None，退化为不设置 cwd（保持旧行为）。
+fn write_dir_of(output_path: &str) -> Option<PathBuf> {
+    let parent = Path::new(output_path).parent()?;
+    if parent.as_os_str().is_empty() || parent.as_os_str() == "." {
+        None
+    } else if parent.is_dir() {
+        Some(parent.to_path_buf())
+    } else {
+        None
+    }
 }
 
 fn run_lark_quick(args: &[&str]) -> AppResult<String> {
@@ -370,7 +404,7 @@ pub fn docs_media_preview_controlled(
     output_path: &str,
     cancelled: Option<&AtomicBool>,
 ) -> AppResult<String> {
-    let stdout = run_lark_with_timeout(
+    let stdout = run_lark_in(
         &[
             "docs",
             "+media-preview",
@@ -383,6 +417,7 @@ pub fn docs_media_preview_controlled(
         ],
         Duration::from_secs(120),
         cancelled,
+        write_dir_of(output_path).as_deref(),
     )?;
     let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
         .map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -407,7 +442,7 @@ pub fn sheets_export_controlled(
     output_path: &str,
     cancelled: Option<&AtomicBool>,
 ) -> AppResult<String> {
-    let stdout = run_lark_with_timeout(
+    let stdout = run_lark_in(
         &[
             "sheets",
             "+workbook-export",
@@ -422,6 +457,7 @@ pub fn sheets_export_controlled(
         ],
         Duration::from_secs(120),
         cancelled,
+        write_dir_of(output_path).as_deref(),
     )?;
     let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
         .map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -431,6 +467,52 @@ pub fn sheets_export_controlled(
     Ok(data
         .get("saved_path")
         .or_else(|| data.get("output_path"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(output_path)
+        .to_string())
+}
+
+/// 执行 `lark-cli drive +preview --file-token <token> --type source_file --output <path> --as user`
+///
+/// 用于下载挂载在 Wiki 上的普通文件附件（zip/pdf 等，obj_type=file）。
+/// 注意不能用 `drive +download`：它对非可导出类型报
+/// “current identity does not have export permission for this Drive file”，
+/// 需改用 `+preview --type source_file` 直接取原文件。
+/// 返回本地保存路径。
+pub fn drive_file_preview(token: &str, output_path: &str) -> AppResult<String> {
+    drive_file_preview_controlled(token, output_path, None)
+}
+
+pub fn drive_file_preview_controlled(
+    token: &str,
+    output_path: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
+    let stdout = run_lark_in(
+        &[
+            "drive",
+            "+preview",
+            "--file-token",
+            token,
+            "--type",
+            "source_file",
+            "--output",
+            output_path,
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(300),
+        cancelled,
+        write_dir_of(output_path).as_deref(),
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
+    Ok(data
+        .get("output_path")
+        .or_else(|| data.get("saved_path"))
         .and_then(|value| value.as_str())
         .unwrap_or(output_path)
         .to_string())
@@ -476,7 +558,7 @@ pub fn base_records_export_controlled(
     output_path: &str,
     cancelled: Option<&AtomicBool>,
 ) -> AppResult<String> {
-    run_lark_with_timeout(
+    run_lark_in(
         &[
             "base",
             "+record-list",
@@ -494,6 +576,7 @@ pub fn base_records_export_controlled(
         ],
         Duration::from_secs(120),
         cancelled,
+        write_dir_of(output_path).as_deref(),
     )?;
     Ok(output_path.to_string())
 }

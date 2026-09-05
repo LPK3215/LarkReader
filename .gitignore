@@ -11,6 +11,8 @@
 # Logs
 /logs/
 *.log
+# Persisted E2E case snapshot keeps its .log fixture (04_app.log)
+!docs/e2e-download-case/06_附件下载/04_app.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -66,3 +68,8 @@ Desktop.ini
 
 # AI assistant local state (session memory, automations, logs — not source)
 .codebuddy/
+
+# E2E download working directory (cleared before each test run;
+# the persisted case snapshot lives in docs/e2e-download-case/)
+/e2e_download_tmp/
+/e2e_download_tmp_big/

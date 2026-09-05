@@ -33,6 +33,9 @@ tempfile = "3"
 rayon = "1"
 fs2 = "0.4"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

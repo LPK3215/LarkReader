@@ -1,0 +1,73 @@
+{
+  "manifest_version": "v1",
+  "format": "ndjson",
+  "base_token": "WgBZbz2rXajJKlsP7m8cC5a8nJT",
+  "table_id": "tbliO7vbwtjK2PXo",
+  "rev": 7,
+  "timezone": "Asia/Shanghai",
+  "query_context": {
+    "field_scope": "all_fields",
+    "record_scope": "all_records"
+  },
+  "requested_limit": 2000,
+  "records_count": 5,
+  "page_count": 1,
+  "has_more": false,
+  "record_file": "D:\\Develop\\SourceCode\\rustcode\\LarkReader\\docs\\e2e-download-case\\03_表格数据库\\01_项目看板\\01_Table.ndjson",
+  "record_file_size_bytes": 677,
+  "manifest_file": "D:\\Develop\\SourceCode\\rustcode\\LarkReader\\docs\\e2e-download-case\\03_表格数据库\\01_项目看板\\01_Table.manifest.json",
+  "columns": {
+    "Attachment": {
+      "field_id": "fldO2Z56AK",
+      "field_type": "attachment",
+      "physical_type": "array<struct<file_token string, size number, name string>>",
+      "stats": {
+        "empty_count": 5,
+        "max_length": 0,
+        "avg_length": 0
+      },
+      "hint": "All values are empty; type inference may be ambiguous. Avoid analyzing this column unless required."
+    },
+    "Date": {
+      "field_id": "fldNYdURvF",
+      "field_type": "datetime",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 0,
+        "min": "2026-08-01T00:00:00.000+08:00",
+        "max": "2026-09-30T00:00:00.000+08:00"
+      },
+      "example": "2026-08-01T00:00:00.000+08:00"
+    },
+    "Text": {
+      "field_id": "fldGNpFUlm",
+      "field_type": "text",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 0,
+        "max_length": 10
+      },
+      "example": "Wiki 树解析"
+    },
+    "record_id": {
+      "physical_type": "string",
+      "stats": {
+        "max_length": 14
+      },
+      "example": "recvuk9brL20ex"
+    },
+    "状态": {
+      "field_id": "fld7je0Df4",
+      "field_type": "select",
+      "physical_type": "array<string>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        "已完成"
+      ]
+    }
+  }
+}

@@ -118,6 +118,8 @@ pub enum WikiNodeType {
     Bitable,
     /// 文件夹/目录
     Folder,
+    /// 上传的普通文件（zip/pdf 等），底层为 Drive file
+    File,
     /// 其他类型
     Other,
 }
@@ -130,6 +132,7 @@ impl WikiNodeType {
             "sheet" => Self::Sheet,
             "bitable" => Self::Bitable,
             "folder" | "" => Self::Folder,
+            "file" => Self::File,
             _ => Self::Other,
         }
     }
@@ -341,6 +344,8 @@ pub enum TaskPhase {
     ExportingDocument,
     ExportingSheet,
     ExportingBitable,
+    /// 下载文件类附件（file 节点）
+    ExportingFile,
     Finalizing,
     Finished,
 }

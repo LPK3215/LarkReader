@@ -44,6 +44,30 @@ pub fn parse_node_token(url: &str) -> String {
         .to_string()
 }
 
+/// 词法上展开路径中的 `.` / `..` 段（不做磁盘 I/O，不解析符号链接）。
+///
+/// 背景：Windows 上 `fs::rename` 的目标若含未展开的 `..` 段（例如
+/// `D:\a\..\out\file`）会直接报 `os error 2`，而该路径经其它工具
+/// （如 lark-cli）规范化后返回的绝对路径与源路径字符串不一致，导致
+/// 本应跳过 rename 的场景也走进 rename 分支而失败。此函数把输出路径
+/// 统一规范化，避免两套表示并存。
+fn lexically_clean_path(path: &std::path::Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push(component.as_os_str());
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 fn normalize_wiki_url(input: &str) -> AppResult<String> {
     let input = input.trim();
     if input.is_empty() {
@@ -167,13 +191,18 @@ fn extract_doc_with_title_controlled(
     let image_count = images.len();
 
     // 3. 准备输出路径
+    // 先规范化输出目录（展开 `..` 段），确保所有 rename / 子进程写入基于同一
+    // 套路径表示，避免 Windows 下 rename 目标含 `..` 时失败。
+    fs::create_dir_all(output_dir)?;
+    let cleaned_output_dir = lexically_clean_path(Path::new(output_dir))
+        .to_string_lossy()
+        .into_owned();
+    let output_dir = cleaned_output_dir.as_str();
     let safe_title = markdown::safe_filename(&doc_title);
     let filename = unique_markdown_filename(Path::new(output_dir), &safe_title);
     let filepath = Path::new(output_dir).join(&filename);
     let img_dir_name = markdown::images_dir_name(&filename);
 
-    // 确保输出目录存在
-    fs::create_dir_all(output_dir)?;
     let temp_dir = tempfile::Builder::new()
         .prefix(".larkreader-")
         .tempdir_in(output_dir)?;
@@ -186,7 +215,7 @@ fn extract_doc_with_title_controlled(
     let mut content = content;
     let mut url_map = Vec::new();
 
-    // 4. 下载图片（串行，和 Python 参考代码一样）
+    // 4. 下载图片（按 Settings.concurrency 并发下载，失败计数）
     if settings.download_images && image_count > 0 {
         fs::create_dir_all(&img_dir)?;
         let mut processed_urls = HashSet::new();
@@ -270,9 +299,11 @@ fn extract_doc_with_title_controlled(
                         if let Err(e) = fs::rename(&saved, &final_path) {
                             images_failed += 1;
                             errors.push(format!(
-                                "图片 {}/{} 重命名失败: {}",
+                                "图片 {}/{} 重命名失败 [{} -> {}]: {}",
                                 i + 1,
                                 image_count,
+                                saved.display(),
+                                final_path.display(),
                                 e
                             ));
                             tracing::warn!(
