@@ -5,11 +5,11 @@
 // 操作：打开产物目录（openOutputDir）、删除单条（dismissTaskResult）
 //
 // 后端约定：历史持久化到本地，保留最近 24 小时且最多 100 条，按完成时间淘汰。
+// 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
 import { ref } from "vue";
 import { defineStore } from "pinia";
-import { isTauri } from "@tauri-apps/api/core";
 import type { WikiTaskResult } from "../api/types";
 import { dismissTaskResult, listTaskHistory } from "../api/task";
 import { openOutputDir } from "../api/settings";
@@ -21,7 +21,6 @@ export const useHistoryStore = defineStore("history", () => {
 
   /** 进入页面时拉一次；后续删除/打开目录成功后调用 refresh()。 */
   async function load() {
-    if (!isTauri()) return;
     loading.value = true;
     lastError.value = null;
     try {
@@ -41,10 +40,6 @@ export const useHistoryStore = defineStore("history", () => {
 
   /** 删除单条本地记录。 */
   async function remove(taskId: string) {
-    if (!isTauri()) {
-      records.value = records.value.filter((r) => r.task_id !== taskId);
-      return;
-    }
     try {
       await dismissTaskResult(taskId);
       records.value = records.value.filter((r) => r.task_id !== taskId);
@@ -55,7 +50,6 @@ export const useHistoryStore = defineStore("history", () => {
 
   /** 在系统文件管理器里打开该任务的产物目录。 */
   async function openDir(path: string) {
-    if (!isTauri()) return;
     try {
       await openOutputDir(path);
     } catch (err) {

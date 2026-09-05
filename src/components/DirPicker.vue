@@ -35,8 +35,8 @@ async function pick() {
     if (typeof selected === "string" && selected) {
       emit("update:modelValue", selected);
     }
-  } catch {
-    // 非 Tauri 环境（浏览器预览）下 dialog 不可用，忽略，保留手动输入
+  } catch (err) {
+    // dialog 失败（用户取消、权限问题）静默忽略，保留手动输入
   } finally {
     picking.value = false;
   }

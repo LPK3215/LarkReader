@@ -5,11 +5,10 @@
 // 数据：stores/history.ts records（list_task_history 结果）
 // 操作：刷新、打开产物目录、删除单条
 //
-// 浏览器 dev 模式（isTauri() === false）显示 demo 数据，便于视觉验收。
+// 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
-import { computed, onMounted } from "vue";
-import { isTauri } from "@tauri-apps/api/core";
+import { onMounted } from "vue";
 import { useHistoryStore } from "../stores/history";
 import type { TaskStatus } from "../api/types";
 import AppIcon from "../components/AppIcon.vue";
@@ -31,77 +30,6 @@ const STATUS_CLASS: Record<TaskStatus, string> = {
   failed: "lr-badge--danger",
   cancelled: "lr-badge--warning",
 };
-
-const demoRecords = computed(() => [
-  {
-    task_id: "t-20260905-01",
-    progress: {
-      task_id: "t-20260905-01",
-      total: 38,
-      done: 38,
-      current_doc: null,
-      current_path: null,
-      success_count: 38,
-      failed_count: 0,
-      errors: [],
-      status: "completed" as TaskStatus,
-      phase: "finished" as const,
-      current_item_type: null,
-      created_at: "2026-09-05T14:02:00Z",
-      started_at: "2026-09-05T14:02:01Z",
-      finished_at: "2026-09-05T14:03:12Z",
-      elapsed_seconds: 71,
-      estimated_remaining_seconds: 0,
-    },
-    result: {
-      wiki_name: "LarkReader-E2E-测试库",
-      output_root: "D:\\Documents\\LarkReader\\LarkReader-E2E-测试库",
-      total: 38,
-      completed_count: 38,
-      success_count: 38,
-      partial_count: 0,
-      failed_count: 0,
-      skipped_count: 0,
-      cancelled: false,
-      results: [],
-      failures: [],
-      skipped: [],
-      exports: [],
-      export_failures: [],
-      items: [],
-    },
-    error: null,
-  },
-  {
-    task_id: "t-20260905-02",
-    progress: {
-      task_id: "t-20260905-02",
-      total: 144,
-      done: 96,
-      current_doc: "03_工具.md",
-      current_path: "03_智能体工具/01_OpenClaw进阶",
-      success_count: 94,
-      failed_count: 2,
-      errors: [],
-      status: "cancelled" as TaskStatus,
-      phase: "finalizing" as const,
-      current_item_type: "doc",
-      created_at: "2026-09-05T13:20:00Z",
-      started_at: "2026-09-05T13:20:02Z",
-      finished_at: "2026-09-05T13:24:48Z",
-      elapsed_seconds: 286,
-      estimated_remaining_seconds: 0,
-    },
-    result: null,
-    error: null,
-  },
-]);
-
-const displayRecords = computed(() => {
-  if (history.records.length > 0) return history.records;
-  if (!isTauri()) return demoRecords.value;
-  return [];
-});
 
 function formatTime(iso: string | null) {
   if (!iso) return "—";
@@ -151,7 +79,7 @@ onMounted(async () => {
       </p>
 
       <div
-        v-if="displayRecords.length === 0"
+        v-if="history.records.length === 0"
         class="lr-empty"
       >
         <AppIcon name="history" :size="28" />
@@ -161,7 +89,7 @@ onMounted(async () => {
       <section v-else class="lr-card lr-history">
         <ul class="lr-history__list">
           <li
-            v-for="record in displayRecords"
+            v-for="record in history.records"
             :key="record.task_id"
             class="lr-history__row"
           >

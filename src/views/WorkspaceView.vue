@@ -7,12 +7,9 @@
 //   tree    输入条收起为一行 + 左树勾选 + 右侧栏（输出目录 / 选中摘要 / 开始）
 //   running 树不销毁，逐节点打勾打叉；右侧栏换成 TaskPanel
 //   done    右侧栏换成 ResultCard，可「重新选择」回到 tree
-//
-// 浏览器 dev 模式（isTauri() === false）走 mock；空态底部展示"试一下 demo 树"按钮。
 // ============================================================================
 
 import { computed, ref } from "vue";
-import { isTauri } from "@tauri-apps/api/core";
 import { useTaskStore } from "../stores/task";
 import { useSettingsStore } from "../stores/settings";
 import NodeTree from "../components/NodeTree.vue";
@@ -25,7 +22,6 @@ const task = useTaskStore();
 const settings = useSettingsStore();
 
 const inputUrl = ref("");
-const showDemo = computed(() => !isTauri());
 
 const treeNodes = computed(() => (task.tree ? [task.tree] : []));
 
@@ -41,11 +37,6 @@ function onScan() {
 
 function onStart() {
   task.start();
-}
-
-function tryDemo() {
-  inputUrl.value = "https://example.feishu.cn/wiki/DEMO";
-  onScan();
 }
 </script>
 
@@ -73,11 +64,6 @@ function tryDemo() {
         <p class="lr-work__emptynote">
           扫描阶段只读取目录树，不下载正文、不写入磁盘
         </p>
-
-        <button v-if="showDemo" class="lr-btn lr-btn--ghost lr-work__demobtn" @click="tryDemo">
-          <AppIcon name="play" :size="12" />
-          试一下 demo 树（仅浏览器预览模式）
-        </button>
       </div>
     </div>
 
@@ -124,7 +110,7 @@ function tryDemo() {
               :items="task.items"
               :cancelled="task.cancelled"
               class="lr-work__result"
-              @open-dir="task.reset()"
+              @open-dir="settings.openDir()"
               @again="task.reset()"
             />
 
@@ -215,8 +201,6 @@ function tryDemo() {
 .lr-work {
   position: relative;
 }
-
-/* ---- 骨架演示条（接入 IPC 后删除） ---- */
 
 /* ---- 空态 ---- */
 .lr-work__empty {

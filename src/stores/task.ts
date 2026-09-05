@@ -11,7 +11,7 @@
 //   applyProgress(p)   useTaskProgress 回调；只写变化的字段
 //   applyTaskResult(r) useTaskProgress 终态回调；填 items / outputRoot
 //
-// 真机专享：所有动作走 IPC；不再保留浏览器 demo 兜底。
+// 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
 import { computed, ref } from "vue";

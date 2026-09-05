@@ -3,6 +3,8 @@
 /dist/
 /dist-ssr/
 *.tsbuildinfo
+# Lockfiles: package-lock.json is authoritative (npm); pnpm lockfile is not used
+pnpm-lock.yaml
 
 # Rust / Tauri generated output
 /src-tauri/target/

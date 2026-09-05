@@ -8,12 +8,11 @@
 // 步骤 3：复用 settings store 的 pickDir()，选择完后预检可写性
 // 步骤 4：finish() 跳 /workspace
 //
-// 浏览器 dev 模式（isTauri() === false）保留 demo 数据，方便视觉验收。
+// 真机专享：所有动作走 IPC；不再保留浏览器假数据兜底。
 // ============================================================================
 
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { EnvStatus } from "../api/types";
 import {
@@ -108,29 +107,15 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     return out;
   }
 
-  /** demo 模式占位数据（dev 服务器下视觉验收）。 */
-  function buildDemoChecks(): CheckItem[] {
-    return [
-      { key: "node", label: "Node.js", detail: "v22.22.2", state: "ok" },
-      { key: "cli", label: "lark-cli", detail: "@larksuite/cli 1.0.93", state: "ok" },
-      { key: "app", label: "飞书应用配置", detail: "cli_aa11bcce79b8dcbc", state: "ok" },
-      { key: "login", label: "飞书登录状态", detail: "已登录 · 用户614265", state: "ok" },
-    ];
-  }
-
   /** 步骤 1：跑一次完整环境体检。 */
   async function runCheck() {
     checking.value = true;
     try {
-      if (isTauri()) {
-        const env = await checkEnv();
-        checks.value = buildChecks(env);
-        if (env.logged_in) {
-          loginState.value = "done";
-          userName.value = env.user_name ?? null;
-        }
-      } else {
-        checks.value = buildDemoChecks();
+      const env = await checkEnv();
+      checks.value = buildChecks(env);
+      if (env.logged_in) {
+        loginState.value = "done";
+        userName.value = env.user_name ?? null;
       }
     } catch (err) {
       checks.value = [
@@ -148,7 +133,6 @@ export const useOnboardingStore = defineStore("onboarding", () => {
 
   /** 步骤 1：安装/更新 lark-cli，再跑一次体检。 */
   async function installCli() {
-    if (!isTauri()) return;
     checking.value = true;
     try {
       await setupLarkCli();
@@ -162,11 +146,6 @@ export const useOnboardingStore = defineStore("onboarding", () => {
 
   /** 步骤 2：发起设备码登录，弹出浏览器授权页。 */
   async function beginLogin() {
-    if (!isTauri()) {
-      loginState.value = "done";
-      userName.value = "用户614265";
-      return;
-    }
     loginError.value = null;
     try {
       const info = await startLogin();
