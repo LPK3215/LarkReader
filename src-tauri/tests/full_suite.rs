@@ -21,9 +21,15 @@ fn test_a01_parse_node_token_various_formats() {
     println!("\n=== A01: URL 解析各种格式 ===");
 
     let cases = vec![
-        ("https://gcnyv4rcw1jv.feishu.cn/wiki/Kh47wj3YRiPxsekidFWcbW0Knkb", "Kh47wj3YRiPxsekidFWcbW0Knkb"),
+        (
+            "https://gcnyv4rcw1jv.feishu.cn/wiki/Kh47wj3YRiPxsekidFWcbW0Knkb",
+            "Kh47wj3YRiPxsekidFWcbW0Knkb",
+        ),
         ("https://feishu.cn/wiki/ABC123", "ABC123"),
-        ("https://internal-api.feishu.cn/wiki/XYZ789?param=1", "XYZ789"),
+        (
+            "https://internal-api.feishu.cn/wiki/XYZ789?param=1",
+            "XYZ789",
+        ),
         ("Kh47wj3YRiPxsekidFWcbW0Knkb", "Kh47wj3YRiPxsekidFWcbW0Knkb"),
         ("ABC123", "ABC123"),
         ("https://gcnyv4rcw1jv.feishu.cn/wiki/Token/", "Token"),
@@ -31,7 +37,11 @@ fn test_a01_parse_node_token_various_formats() {
 
     for (input, expected) in cases {
         let result = extract::parse_node_token(input);
-        assert_eq!(result, expected, "parse_node_token(\"{}\") = \"{}\", expected \"{}\"", input, result, expected);
+        assert_eq!(
+            result, expected,
+            "parse_node_token(\"{}\") = \"{}\", expected \"{}\"",
+            input, result, expected
+        );
         println!("  ✅ {} → {}", input, result);
     }
 }
@@ -40,12 +50,18 @@ fn test_a01_parse_node_token_various_formats() {
 fn test_a02_build_wiki_url() {
     println!("\n=== A02: Wiki URL 构造 ===");
 
-    assert_eq!(extract::build_wiki_url("ABC123"), "https://feishu.cn/wiki/ABC123");
+    assert_eq!(
+        extract::build_wiki_url("ABC123"),
+        "https://feishu.cn/wiki/ABC123"
+    );
     assert_eq!(
         extract::build_wiki_url("https://xxx.feishu.cn/wiki/ABC123"),
         "https://xxx.feishu.cn/wiki/ABC123"
     );
-    assert_eq!(extract::build_wiki_url("https://feishu.cn/wiki/XYZ"), "https://feishu.cn/wiki/XYZ");
+    assert_eq!(
+        extract::build_wiki_url("https://feishu.cn/wiki/XYZ"),
+        "https://feishu.cn/wiki/XYZ"
+    );
     println!("  ✅ 所有 URL 构造测试通过");
 }
 
@@ -57,7 +73,10 @@ fn test_a03_safe_filename_chinese() {
     let long_name = "中".repeat(200);
     let result = markdown::safe_filename(&long_name);
     assert!(result.chars().count() <= 100, "应该截断到 100 字符");
-    println!("  ✅ 超长中文字符串安全截断: {} 字符", result.chars().count());
+    println!(
+        "  ✅ 超长中文字符串安全截断: {} 字符",
+        result.chars().count()
+    );
 
     // 特殊字符替换
     assert_eq!(markdown::safe_filename("测试/文件:名*"), "测试_文件_名_");
@@ -100,10 +119,19 @@ fn test_a05_replace_image_urls() {
     println!("\n=== A05: 图片 URL 替换 ===");
 
     let content = "![img](https://feishu.cn/file/tokenA)\n![img2](https://feishu.cn/file/tokenB)";
-    let replaced = markdown::replace_image_urls(content, &[
-        ("https://feishu.cn/file/tokenA".to_string(), "images/img_01.png".to_string()),
-        ("https://feishu.cn/file/tokenB".to_string(), "images/img_02.png".to_string()),
-    ]);
+    let replaced = markdown::replace_image_urls(
+        content,
+        &[
+            (
+                "https://feishu.cn/file/tokenA".to_string(),
+                "images/img_01.png".to_string(),
+            ),
+            (
+                "https://feishu.cn/file/tokenB".to_string(),
+                "images/img_02.png".to_string(),
+            ),
+        ],
+    );
     assert!(replaced.contains("images/img_01.png"));
     assert!(replaced.contains("images/img_02.png"));
     assert!(!replaced.contains("https://feishu.cn/file/tokenA"));
@@ -120,10 +148,22 @@ fn test_b01_env_check_logged_in() {
     println!("\n=== B01: 环境检测（已登录）===");
 
     let status = env::check_env();
-    println!("  Node.js: {} {:?}", status.node_installed, status.node_version);
-    println!("  lark-cli: {} {:?}", status.lark_cli_installed, status.lark_cli_version);
-    println!("  已配置: {} AppID={:?}", status.app_configured, status.app_id);
-    println!("  已登录: {} Token={:?}", status.logged_in, status.token_status);
+    println!(
+        "  Node.js: {} {:?}",
+        status.node_installed, status.node_version
+    );
+    println!(
+        "  lark-cli: {} {:?}",
+        status.lark_cli_installed, status.lark_cli_version
+    );
+    println!(
+        "  已配置: {} AppID={:?}",
+        status.app_configured, status.app_id
+    );
+    println!(
+        "  已登录: {} Token={:?}",
+        status.logged_in, status.token_status
+    );
 
     assert!(status.node_installed, "Node.js 必须已安装");
     assert!(status.lark_cli_installed, "lark-cli 必须已安装");
@@ -137,7 +177,10 @@ fn test_b02_whoami() {
     println!("\n=== B02: whoami ===");
 
     let (identity, token_status, user_name) = lark::whoami().expect("whoami 失败");
-    println!("  identity={}, token={}, user={:?}", identity, token_status, user_name);
+    println!(
+        "  identity={}, token={}, user={:?}",
+        identity, token_status, user_name
+    );
 
     assert_eq!(identity, "user", "identity 必须是 user");
     assert!(token_status == "ready" || token_status == "needs_refresh");
@@ -208,13 +251,15 @@ fn test_b06_extract_doc_full() {
         download_images: true,
     };
 
-    let result = extract::extract_doc(TEST_URL, &settings.output_dir, &settings)
-        .expect("提取失败");
+    let result = extract::extract_doc(TEST_URL, &settings.output_dir, &settings).expect("提取失败");
 
     println!("  标题: {}", result.title);
     println!("  文件名: {}", result.filename);
     println!("  字符数: {}", result.char_count);
-    println!("  图片: 总{}张, 成功{}张, 失败{}张", result.image_count, result.images_downloaded, result.images_failed);
+    println!(
+        "  图片: 总{}张, 成功{}张, 失败{}张",
+        result.image_count, result.images_downloaded, result.images_failed
+    );
     println!("  状态: {:?}", result.status);
     println!("  文件路径: {}", result.filepath);
 
@@ -223,20 +268,27 @@ fn test_b06_extract_doc_full() {
     assert!(result.char_count > 100, "字符数应该 > 100");
     assert!(result.image_count > 0, "这个文档应该有图片");
     assert_eq!(result.images_failed, 0, "图片下载不应该有失败");
-    assert!(std::path::Path::new(&result.filepath).exists(), "文件必须存在");
+    assert!(
+        std::path::Path::new(&result.filepath).exists(),
+        "文件必须存在"
+    );
 
     // 验证图片文件存在
     let img_dir = std::path::Path::new(&result.filepath)
         .with_extension("")
         .to_string_lossy()
-        .to_string() + "_images";
+        .to_string()
+        + "_images";
     let img_dir_path = std::path::Path::new(&img_dir);
     if std::path::Path::new(img_dir_path).exists() {
         let img_count = std::fs::read_dir(img_dir_path)
             .map(|d| d.count())
             .unwrap_or(0);
         println!("  图片目录文件数: {}", img_count);
-        assert_eq!(img_count, result.images_downloaded, "图片目录文件数应该等于下载数");
+        assert_eq!(
+            img_count, result.images_downloaded,
+            "图片目录文件数应该等于下载数"
+        );
     }
 
     println!("  ✅ 单文档提取完整验证通过");
@@ -262,12 +314,13 @@ fn test_c01_empty_url() {
 fn test_c02_invalid_url() {
     println!("\n=== C02: 无效链接 ===");
 
-    let result = extract::preview_doc("https://gcnyv4rcw1jv.feishu.cn/wiki/INVALID_TOKEN_NOT_EXIST_99999");
+    let result =
+        extract::preview_doc("https://gcnyv4rcw1jv.feishu.cn/wiki/INVALID_TOKEN_NOT_EXIST_99999");
     assert!(result.is_err(), "无效链接应该返回错误");
     let err = result.unwrap_err().to_string();
     println!("  错误: {}", err);
     // 错误信息应该是中文
-    let is_chinese = err.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}');
+    let is_chinese = err.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
     assert!(is_chinese, "错误信息应该包含中文");
     println!("  ✅ 无效链接返回中文错误");
 }
@@ -320,7 +373,7 @@ fn test_d01_error_message_is_chinese() {
     assert!(result.is_err());
 
     let err = result.unwrap_err().to_string();
-    let has_chinese = err.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}');
+    let has_chinese = err.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
     let has_raw_json = err.contains('{') || err.contains('\"');
 
     println!("  错误: {}", err);
@@ -368,21 +421,33 @@ fn test_e01_repeat_extract_same_doc() {
     };
 
     // 第一次提取
-    let result1 = extract::extract_doc(TEST_URL, &settings.output_dir, &settings)
-        .expect("第一次提取失败");
-    println!("  第一次: 标题={}, 图片={}/{}, 状态={:?}", result1.title, result1.images_downloaded, result1.image_count, result1.status);
+    let result1 =
+        extract::extract_doc(TEST_URL, &settings.output_dir, &settings).expect("第一次提取失败");
+    println!(
+        "  第一次: 标题={}, 图片={}/{}, 状态={:?}",
+        result1.title, result1.images_downloaded, result1.image_count, result1.status
+    );
     assert_eq!(result1.images_failed, 0, "第一次不应该有图片失败");
 
     // 第二次提取（同一文档同一目录，测试旧文件清理）
-    let result2 = extract::extract_doc(TEST_URL, &settings.output_dir, &settings)
-        .expect("第二次提取失败");
-    println!("  第二次: 标题={}, 图片={}/{}, 状态={:?}", result2.title, result2.images_downloaded, result2.image_count, result2.status);
+    let result2 =
+        extract::extract_doc(TEST_URL, &settings.output_dir, &settings).expect("第二次提取失败");
+    println!(
+        "  第二次: 标题={}, 图片={}/{}, 状态={:?}",
+        result2.title, result2.images_downloaded, result2.image_count, result2.status
+    );
     assert_eq!(result2.images_failed, 0, "第二次不应该有图片失败");
 
     // 两次结果应该一致
     assert_eq!(result1.title, result2.title, "两次提取标题应该一致");
-    assert_eq!(result1.image_count, result2.image_count, "两次图片数应该一致");
-    assert_eq!(result1.images_downloaded, result2.images_downloaded, "两次下载数应该一致");
+    assert_eq!(
+        result1.image_count, result2.image_count,
+        "两次图片数应该一致"
+    );
+    assert_eq!(
+        result1.images_downloaded, result2.images_downloaded,
+        "两次下载数应该一致"
+    );
 
     println!("  ✅ 重复提取稳定性验证通过");
 }
@@ -400,8 +465,8 @@ fn test_e02_extract_sub_doc() {
         download_images: true,
     };
 
-    let result = extract::extract_doc(SUB_DOC_URL, &settings.output_dir, &settings)
-        .expect("子文档提取失败");
+    let result =
+        extract::extract_doc(SUB_DOC_URL, &settings.output_dir, &settings).expect("子文档提取失败");
 
     println!("  标题: {}", result.title);
     println!("  字符数: {}", result.char_count);

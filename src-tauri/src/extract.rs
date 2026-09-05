@@ -9,8 +9,8 @@
 //!
 //! 不用 tokio，不用 spawn_blocking，简单直接。
 
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 use crate::lark;
@@ -23,16 +23,49 @@ use crate::models::{ExtractResult, ExtractStatus, PreviewResult, Settings};
 /// - `https://xxx.feishu.cn/wiki/<node_token>`
 /// - 纯 node_token 字符串
 pub fn parse_node_token(url: &str) -> String {
+    let url = url.trim();
     // 如果是纯 token（不含 /），直接返回（去掉可能的 query string）
     if !url.contains('/') {
-        return url.split('?').next().unwrap_or(url).to_string();
+        return url.split(['?', '#']).next().unwrap_or(url).to_string();
     }
 
     // 从 URL 中提取最后一段作为 node_token
     let trimmed = url.trim_end_matches('/');
     let last_segment = trimmed.rsplit('/').next().unwrap_or("");
     // 去掉 query string
-    last_segment.split('?').next().unwrap_or(last_segment).to_string()
+    last_segment
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(last_segment)
+        .to_string()
+}
+
+fn normalize_wiki_url(input: &str) -> AppResult<String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(AppError::InvalidInput(
+            "飞书链接或 token 不能为空".to_string(),
+        ));
+    }
+    let token = parse_node_token(input);
+    if token.is_empty()
+        || !token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(AppError::InvalidInput(
+            "无法识别有效的飞书节点 token".to_string(),
+        ));
+    }
+    if input.contains("://") {
+        let lower = input.to_ascii_lowercase();
+        if !(lower.starts_with("https://")
+            && (lower.contains(".feishu.cn/") || lower.contains("//feishu.cn/")))
+        {
+            return Err(AppError::InvalidInput("仅支持 HTTPS 飞书链接".to_string()));
+        }
+    }
+    Ok(build_wiki_url(input))
 }
 
 /// 构造飞书 Wiki URL
@@ -57,12 +90,14 @@ pub fn extract_title_from_url(url: &str) -> String {
 /// 对应 Python: fetch_doc(node_token)
 /// 先尝试获取文档真实标题，获取失败则用 URL token
 pub fn preview_doc(url: &str) -> AppResult<PreviewResult> {
-    let wiki_url = build_wiki_url(url);
+    let wiki_url = normalize_wiki_url(url)?;
     let node_token = parse_node_token(&wiki_url);
 
     // 尝试获取真实标题
     let title = match lark::wiki_node_get(&node_token) {
-        Ok(info) => info.title.unwrap_or_else(|| extract_title_from_url(&wiki_url)),
+        Ok(info) => info
+            .title
+            .unwrap_or_else(|| extract_title_from_url(&wiki_url)),
         Err(_) => extract_title_from_url(&wiki_url),
     };
 
@@ -76,7 +111,7 @@ pub fn preview_doc(url: &str) -> AppResult<PreviewResult> {
         title,
         content_markdown: content.clone(),
         images,
-        char_count: content.len(),
+        char_count: content.chars().count(),
     })
 }
 
@@ -95,14 +130,16 @@ pub fn extract_doc_with_title(
     output_dir: &str,
     settings: &Settings,
 ) -> AppResult<ExtractResult> {
-    let wiki_url = build_wiki_url(url);
+    let wiki_url = normalize_wiki_url(url)?;
     let doc_title = match title {
         Some(t) => t.to_string(),
         None => {
             // 尝试从 wiki_node_get 获取真实标题
             let node_token = parse_node_token(&wiki_url);
             match lark::wiki_node_get(&node_token) {
-                Ok(info) => info.title.unwrap_or_else(|| extract_title_from_url(&wiki_url)),
+                Ok(info) => info
+                    .title
+                    .unwrap_or_else(|| extract_title_from_url(&wiki_url)),
                 Err(_) => extract_title_from_url(&wiki_url),
             }
         }
@@ -116,7 +153,8 @@ pub fn extract_doc_with_title(
     let image_count = images.len();
 
     // 3. 准备输出路径
-    let filename = format!("{}.md", markdown::safe_filename(&doc_title));
+    let safe_title = markdown::safe_filename(&doc_title);
+    let filename = format!("{}.md", safe_title);
     let filepath = Path::new(output_dir).join(&filename);
     let img_dir_name = markdown::images_dir_name(&filename);
     let img_dir = Path::new(output_dir).join(&img_dir_name);
@@ -179,22 +217,59 @@ pub fn extract_doc_with_title(
 
                     // 重命名为统一的 img_XX.ext 格式
                     let final_path = img_dir.join(format!("img_{:02}{}", i + 1, ext));
+                    if !saved.is_file() {
+                        images_failed += 1;
+                        errors.push(format!("图片 {}/{} 下载结果不存在", i + 1, image_count));
+                        continue;
+                    }
                     if saved != final_path {
-                        // 如果目标文件已存在，先删除
-                        let _ = fs::remove_file(&final_path);
-                        let _ = fs::rename(&saved, &final_path);
+                        if final_path.exists() {
+                            fs::remove_file(&final_path)?;
+                        }
+                        if let Err(e) = fs::rename(&saved, &final_path) {
+                            images_failed += 1;
+                            errors.push(format!(
+                                "图片 {}/{} 重命名失败: {}",
+                                i + 1,
+                                image_count,
+                                e
+                            ));
+                            tracing::warn!(
+                                "图片重命名失败 {} -> {}: {}",
+                                saved.display(),
+                                final_path.display(),
+                                e
+                            );
+                            continue;
+                        }
+                    }
+
+                    if !final_path.is_file() {
+                        images_failed += 1;
+                        errors.push(format!("图片 {}/{} 未保存到预期位置", i + 1, image_count));
+                        continue;
                     }
 
                     // 替换 Markdown 中的远程 URL → 本地相对路径
                     let local_ref = format!("{}/img_{:02}{}", img_dir_name, i + 1, ext);
                     content = content.replace(&img.url, &local_ref);
-
                     images_downloaded += 1;
                 }
                 Err(e) => {
                     images_failed += 1;
-                    errors.push(format!("图片 {}/{} 下载失败: {}", i + 1, image_count, token));
-                    tracing::warn!("图片 {}/{} 下载失败 token={}: {}", i + 1, image_count, token, e);
+                    errors.push(format!(
+                        "图片 {}/{} 下载失败: {}",
+                        i + 1,
+                        image_count,
+                        token
+                    ));
+                    tracing::warn!(
+                        "图片 {}/{} 下载失败 token={}: {}",
+                        i + 1,
+                        image_count,
+                        token,
+                        e
+                    );
                 }
             }
         }
@@ -206,18 +281,14 @@ pub fn extract_doc_with_title(
     // 判断提取状态
     let status = if images_failed == 0 {
         ExtractStatus::Success
-    } else if images_downloaded > 0 {
-        ExtractStatus::Partial
-    } else if image_count > 0 {
-        ExtractStatus::Partial
     } else {
-        ExtractStatus::Success
+        ExtractStatus::Partial
     };
 
     Ok(ExtractResult {
         title: doc_title,
         filename,
-        char_count: content.len(),
+        char_count: content.chars().count(),
         image_count,
         images_downloaded,
         images_failed,

@@ -14,9 +14,18 @@ fn test_logged_in_01_check_env() {
     println!("========================================\n");
 
     let status = env::check_env();
-    println!("Node.js:    {}  版本: {:?}", status.node_installed, status.node_version);
-    println!("lark-cli:   {}  版本: {:?}", status.lark_cli_installed, status.lark_cli_version);
-    println!("应用配置:   {}  AppID: {:?}", status.app_configured, status.app_id);
+    println!(
+        "Node.js:    {}  版本: {:?}",
+        status.node_installed, status.node_version
+    );
+    println!(
+        "lark-cli:   {}  版本: {:?}",
+        status.lark_cli_installed, status.lark_cli_version
+    );
+    println!(
+        "应用配置:   {}  AppID: {:?}",
+        status.app_configured, status.app_id
+    );
     println!("已登录:     {}", status.logged_in);
     println!("用户名:     {:?}", status.user_name);
     println!("Token状态:  {:?}", status.token_status);
@@ -43,7 +52,10 @@ fn test_logged_in_02_whoami() {
     println!("user_name: {:?}", user_name);
 
     assert_eq!(identity, "user", "identity 应该是 user");
-    assert!(token_status == "ready" || token_status == "needs_refresh", "token 应该可用");
+    assert!(
+        token_status == "ready" || token_status == "needs_refresh",
+        "token 应该可用"
+    );
     println!("\n✅ whoami 通过");
 }
 
@@ -79,20 +91,25 @@ fn test_logged_in_04_preview_doc() {
     println!("========================================\n");
 
     let result = extract::preview_doc(TEST_URL);
-    
+
     match &result {
         Ok(preview) => {
             println!("标题: {}", preview.title);
             println!("字符数: {}", preview.char_count);
             println!("图片数: {}", preview.images.len());
-            
+
             // 打印正文前200字符预览（安全截断）
             let content_preview: String = preview.content_markdown.chars().take(200).collect();
             println!("\n正文前200字符:\n{}", content_preview);
 
             // 打印前3张图片信息
             for (i, img) in preview.images.iter().take(3).enumerate() {
-                println!("  图片 {}: alt={}, token={}", i + 1, img.alt, img.file_token);
+                println!(
+                    "  图片 {}: alt={}, token={}",
+                    i + 1,
+                    img.alt,
+                    img.file_token
+                );
             }
 
             assert!(!preview.content_markdown.is_empty(), "正文不应该为空");
@@ -147,7 +164,11 @@ fn test_logged_in_05_extract_doc() {
             println!("\n文件是否存在: {}", file_exists);
             if file_exists {
                 let file_size = std::fs::metadata(&r.filepath).unwrap().len();
-                println!("文件大小: {} bytes ({:.1} KB)", file_size, file_size as f64 / 1024.0);
+                println!(
+                    "文件大小: {} bytes ({:.1} KB)",
+                    file_size,
+                    file_size as f64 / 1024.0
+                );
             }
 
             assert!(!r.title.is_empty(), "标题不应该为空");
@@ -180,8 +201,10 @@ fn test_logged_in_06_get_wiki_tree() {
             // 打印前5个子节点（不全打）
             println!("\n前5个子节点:");
             for (i, child) in tree.children.iter().take(5).enumerate() {
-                println!("  {}: {} (type={:?}, has_child={}, position={})",
-                    i, child.title, child.obj_type, child.has_child, child.position);
+                println!(
+                    "  {}: {} (type={:?}, has_child={}, position={})",
+                    i, child.title, child.obj_type, child.has_child, child.position
+                );
             }
 
             println!("\n✅ 知识库目录树获取通过");
@@ -216,12 +239,12 @@ fn test_logged_in_07_invalid_url() {
 
             let err_str = e.to_string();
             // 验证错误信息是友好的中文提示
-            let is_friendly = err_str.contains("不存在") 
-                || err_str.contains("无效") 
+            let is_friendly = err_str.contains("不存在")
+                || err_str.contains("无效")
                 || err_str.contains("失败")
                 || err_str.contains("权限")
                 || err_str.contains("错误");
-            
+
             if is_friendly {
                 println!("\n✅ 错误信息友好");
             } else {

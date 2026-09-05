@@ -6,6 +6,7 @@
 //! 3. 保留层级结构（depth、position）
 //! 4. 批量提取知识库（按目录顺序逐个提取）
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
@@ -16,6 +17,9 @@ use crate::models::{
     DocFailure, ExtractStatus, Settings, WikiExtractResult, WikiNode, WikiNodeType,
 };
 
+const MAX_WIKI_DEPTH: usize = 64;
+const MAX_WIKI_NODES: usize = 10_000;
+
 /// 获取 Wiki 节点树
 ///
 /// 流程：
@@ -24,6 +28,11 @@ use crate::models::{
 /// 3. 返回完整的 WikiNode 树结构
 pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
     let node_token = extract::parse_node_token(wiki_url);
+    if node_token.is_empty() {
+        return Err(AppError::InvalidInput(
+            "Wiki 链接或 token 不能为空".to_string(),
+        ));
+    }
 
     // 获取根节点信息
     let root_info = lark::wiki_node_get(&node_token)?;
@@ -32,9 +41,12 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
         .space_id
         .ok_or_else(|| AppError::LarkCliResponse("无法获取 space_id".to_string()))?;
 
-    let title = root_info.title.clone().unwrap_or_else(|| node_token.clone());
+    let title = root_info
+        .title
+        .clone()
+        .unwrap_or_else(|| node_token.clone());
     let has_child = root_info.has_child.unwrap_or(false);
-    let obj_type = WikiNodeType::from_str(&root_info.obj_type.clone().unwrap_or_default());
+    let obj_type = WikiNodeType::from_api_value(&root_info.obj_type.clone().unwrap_or_default());
 
     let mut root = WikiNode {
         node_token: node_token.clone(),
@@ -49,7 +61,8 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
 
     // 递归遍历子节点
     if has_child {
-        root.children = traverse_children(&space_id, &node_token, 1)?;
+        let mut visited = HashSet::from([node_token.clone()]);
+        root.children = traverse_children(&space_id, &node_token, 1, &mut visited)?;
     }
 
     Ok(root)
@@ -58,7 +71,18 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
 /// 递归遍历子节点
 ///
 /// `depth`: 当前子节点的深度（根节点 depth=0，其子节点 depth=1）
-fn traverse_children(space_id: &str, parent_token: &str, depth: usize) -> AppResult<Vec<WikiNode>> {
+fn traverse_children(
+    space_id: &str,
+    parent_token: &str,
+    depth: usize,
+    visited: &mut HashSet<String>,
+) -> AppResult<Vec<WikiNode>> {
+    if depth > MAX_WIKI_DEPTH {
+        return Err(AppError::Extract(format!(
+            "Wiki 目录深度超过限制 {}",
+            MAX_WIKI_DEPTH
+        )));
+    }
     let items = lark::wiki_node_list(space_id, parent_token)?;
 
     let mut nodes: Vec<WikiNode> = items
@@ -68,7 +92,7 @@ fn traverse_children(space_id: &str, parent_token: &str, depth: usize) -> AppRes
             let node_token = item.node_token.clone().unwrap_or_default();
             let title = item.title.clone().unwrap_or_else(|| node_token.clone());
             let has_child = item.has_child.unwrap_or(false);
-            let obj_type = WikiNodeType::from_str(&item.obj_type.clone().unwrap_or_default());
+            let obj_type = WikiNodeType::from_api_value(&item.obj_type.clone().unwrap_or_default());
 
             WikiNode {
                 node_token,
@@ -76,7 +100,10 @@ fn traverse_children(space_id: &str, parent_token: &str, depth: usize) -> AppRes
                 obj_type,
                 has_child,
                 obj_token: item.obj_token.clone(),
-                position: item.position.unwrap_or(idx as i64) as usize,
+                position: item
+                    .position
+                    .and_then(|p| usize::try_from(p).ok())
+                    .unwrap_or(idx),
                 depth,
                 children: vec![],
             }
@@ -85,8 +112,25 @@ fn traverse_children(space_id: &str, parent_token: &str, depth: usize) -> AppRes
 
     // 对有子节点的节点递归遍历
     for node in &mut nodes {
+        if node.node_token.is_empty() {
+            return Err(AppError::LarkCliResponse(
+                "Wiki 节点缺少 node_token".to_string(),
+            ));
+        }
+        if !visited.insert(node.node_token.clone()) {
+            return Err(AppError::Extract(format!(
+                "检测到重复或循环 Wiki 节点: {}",
+                node.node_token
+            )));
+        }
+        if visited.len() > MAX_WIKI_NODES {
+            return Err(AppError::Extract(format!(
+                "Wiki 节点数量超过限制 {}",
+                MAX_WIKI_NODES
+            )));
+        }
         if node.has_child {
-            let children = traverse_children(space_id, &node.node_token, depth + 1)?;
+            let children = traverse_children(space_id, &node.node_token, depth + 1, visited)?;
             node.children = children;
         }
     }
@@ -193,7 +237,7 @@ fn collect_docs_with_path<'a>(
     selected_tokens: Option<&[String]>,
 ) -> Vec<DocWithPath<'a>> {
     let mut docs = Vec::new();
-    collect_docs_recursive(node, &PathBuf::new(), selected_tokens, &mut docs);
+    collect_docs_recursive(node, &PathBuf::new(), selected_tokens, false, &mut docs);
     docs
 }
 
@@ -202,14 +246,19 @@ fn collect_docs_recursive<'a>(
     node: &'a WikiNode,
     current_path: &Path,
     selected_tokens: Option<&[String]>,
+    ancestor_selected: bool,
     docs: &mut Vec<DocWithPath<'a>>,
 ) {
+    let directly_selected = selected_tokens
+        .map(|tokens| tokens.contains(&node.node_token))
+        .unwrap_or(true);
+    let subtree_selected = ancestor_selected || directly_selected;
     // 检查当前节点是否在选中列表中（如果有 selected_tokens）
     let is_selected = match selected_tokens {
         None => true, // 没有限制，全部选中
         Some(tokens) => {
             // 检查该节点或其子树中是否有选中的节点
-            is_node_or_descendant_selected(node, tokens)
+            subtree_selected || is_node_or_descendant_selected(node, tokens)
         }
     };
 
@@ -220,13 +269,8 @@ fn collect_docs_recursive<'a>(
     // 如果是文档节点，收集
     if matches!(node.obj_type, WikiNodeType::Doc) {
         // 如果有 selected_tokens，检查当前节点是否被选中
-        if let Some(tokens) = selected_tokens {
-            if !tokens.contains(&node.node_token) {
-                // 当前文档未被选中，跳过
-                // 但不 return，因为可能子节点中也不需要（已在 is_selected 中检查）
-                // 实际上文档节点不应有子节点，所以直接 return
-                return;
-            }
+        if selected_tokens.is_some() && !subtree_selected {
+            return;
         }
 
         docs.push((node, current_path.to_path_buf()));
@@ -242,7 +286,7 @@ fn collect_docs_recursive<'a>(
             // 非根节点的文件夹节点，创建子目录
             current_path.join(markdown::prefixed_filename(node.position, &node.title))
         };
-        collect_docs_recursive(child, &child_path, selected_tokens, docs);
+        collect_docs_recursive(child, &child_path, selected_tokens, subtree_selected, docs);
     }
 }
 
@@ -261,7 +305,7 @@ fn is_node_or_descendant_selected(node: &WikiNode, selected_tokens: &[String]) -
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::collect_docs_with_path;
     use crate::models::{WikiNode, WikiNodeType};
 
     #[test]
@@ -308,5 +352,43 @@ mod tests {
         };
 
         assert_eq!(tree.count_docs(), 2);
+    }
+
+    #[test]
+    fn selecting_folder_includes_descendant_documents() {
+        let doc = WikiNode {
+            node_token: "doc".into(),
+            title: "Doc".into(),
+            obj_type: WikiNodeType::Doc,
+            has_child: false,
+            obj_token: None,
+            position: 0,
+            depth: 2,
+            children: vec![],
+        };
+        let folder = WikiNode {
+            node_token: "folder".into(),
+            title: "Folder".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 1,
+            children: vec![doc],
+        };
+        let root = WikiNode {
+            node_token: "root".into(),
+            title: "Root".into(),
+            obj_type: WikiNodeType::Folder,
+            has_child: true,
+            obj_token: None,
+            position: 0,
+            depth: 0,
+            children: vec![folder],
+        };
+        let selected = vec!["folder".to_string()];
+        let docs = collect_docs_with_path(&root, Some(&selected));
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].0.node_token, "doc");
     }
 }

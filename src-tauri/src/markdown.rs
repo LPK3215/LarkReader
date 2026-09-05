@@ -19,8 +19,14 @@ pub fn extract_images(content: &str) -> Vec<ImageRef> {
     let mut images = Vec::new();
 
     for caps in re.captures_iter(content) {
-        let alt = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-        let url = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let alt = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let url = caps
+            .get(2)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
 
         // 从 URL 中提取 file_token
         // URL 格式: https://feishu.cn/file/<file_token> 或其他格式
@@ -55,6 +61,7 @@ fn extract_file_token(url: &str) -> String {
 /// 将 Markdown 中的远程图片 URL 替换为本地相对路径
 ///
 /// - `url_map`: 远程 URL → 本地相对路径 的映射
+///
 /// 返回替换后的 Markdown 内容
 pub fn replace_image_urls(content: &str, url_map: &[(String, String)]) -> String {
     let mut result = content.to_string();
@@ -74,6 +81,23 @@ pub fn safe_filename(name: &str) -> String {
     let cleaned = re.replace_all(name, "_").to_string();
     let trimmed = cleaned.trim().trim_end_matches('.').to_string();
     // 安全截断到 100 个字符（不切断多字节字符）
+    let trimmed = if trimmed.is_empty() {
+        "untitled".to_string()
+    } else {
+        trimmed
+    };
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    let trimmed = if reserved
+        .iter()
+        .any(|name| trimmed.eq_ignore_ascii_case(name))
+    {
+        format!("_{}", trimmed)
+    } else {
+        trimmed
+    };
     if trimmed.chars().count() > 100 {
         trimmed.chars().take(100).collect()
     } else {

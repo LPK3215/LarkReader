@@ -13,10 +13,7 @@ use crate::models::{DeviceInfo, EnvStatus, LoginResult};
 
 /// 检测 Node.js 是否安装，返回版本号
 pub fn check_node() -> Option<String> {
-    let output = Command::new("node")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new("node").arg("--version").output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -96,8 +93,8 @@ pub fn check_env() -> EnvStatus {
     if !identity.is_empty() {
         // 只有 identity == "user" 且 token_status 为 ready/needs_refresh 才算用户已登录
         // identity == "bot" 表示应用身份可用，但用户未登录
-        status.logged_in = identity == "user"
-            && (token_status == "ready" || token_status == "needs_refresh");
+        status.logged_in =
+            identity == "user" && (token_status == "ready" || token_status == "needs_refresh");
         status.token_status = Some(token_status);
         status.user_name = user_name;
     }
@@ -201,8 +198,8 @@ pub fn complete_login(device_code: &str) -> AppResult<LoginResult> {
         Ok(_stdout) => {
             // 验证登录是否成功
             let (identity, token_status, user_name) = lark::whoami()?;
-            let success = !identity.is_empty()
-                && (token_status == "ready" || token_status == "needs_refresh");
+            let success =
+                identity == "user" && (token_status == "ready" || token_status == "needs_refresh");
 
             Ok(LoginResult {
                 success,

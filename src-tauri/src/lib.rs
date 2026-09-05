@@ -23,7 +23,8 @@ pub fn run() {
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
         .compact()
-        .init();
+        .try_init()
+        .ok();
 
     // 加载设置
     let settings = load_settings_or_default();

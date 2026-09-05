@@ -4,7 +4,9 @@
 //! subprocess.run → json.loads → 检查 ok → 取 data
 //! 不加多余的 --format json，不加 --overwrite，简单直接。
 
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
+use wait_timeout::ChildExt;
 
 use crate::error::{AppError, AppResult};
 use crate::models::LarkResponse;
@@ -47,10 +49,23 @@ fn extract_json(stdout: &str) -> &str {
 /// - 检查退出码，非零则报错
 /// - 退出码为 0 时检查 JSON 的 ok 字段
 pub fn run_lark(args: &[&str]) -> AppResult<String> {
-    let output = build_command()
+    const TIMEOUT_SECS: u64 = 120;
+    let mut child = build_command()
         .args(args)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| AppError::LarkCliNotFound(e.to_string()))?;
+    if child
+        .wait_timeout(Duration::from_secs(TIMEOUT_SECS))
+        .map_err(AppError::Io)?
+        .is_none()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(AppError::CommandTimeout(TIMEOUT_SECS));
+    }
+    let output = child.wait_with_output().map_err(AppError::Io)?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -112,7 +127,10 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
                     format!("飞书认证失败：{}，请重新登录。", message)
                 }
                 ("permission", _) => {
-                    format!("权限不足：{}，请确认你的飞书账号有该文档的阅读权限。", message)
+                    format!(
+                        "权限不足：{}，请确认你的飞书账号有该文档的阅读权限。",
+                        message
+                    )
                 }
                 ("rate_limit", _) => "请求过于频繁，请稍后再试。".to_string(),
                 ("not_found", _) => "文档不存在或链接无效，请检查链接是否正确。".to_string(),
@@ -184,14 +202,9 @@ pub fn config_show() -> AppResult<Option<(String, String)>> {
     let resp: crate::models::ConfigResponse =
         serde_json::from_str(json_str).map_err(|e| AppError::JsonParse(e.to_string()))?;
 
-    if resp.app_id.is_some() {
-        Ok(Some((
-            resp.app_id.unwrap(),
-            resp.brand.unwrap_or_default(),
-        )))
-    } else {
-        Ok(None)
-    }
+    Ok(resp
+        .app_id
+        .map(|app_id| (app_id, resp.brand.unwrap_or_default())))
 }
 
 /// 执行 `lark-cli config init --new --brand feishu --lang zh`
@@ -232,7 +245,14 @@ pub fn auth_login_with_device_code(device_code: &str) -> AppResult<String> {
 /// 返回文档的 Markdown 正文
 pub fn docs_fetch(url: &str) -> AppResult<String> {
     let data = run_lark_get_data(&[
-        "docs", "+fetch", "--doc", url, "--doc-format", "markdown", "--as", "user",
+        "docs",
+        "+fetch",
+        "--doc",
+        url,
+        "--doc-format",
+        "markdown",
+        "--as",
+        "user",
     ])?;
 
     // 解析 data.document.content
@@ -249,7 +269,14 @@ pub fn docs_fetch(url: &str) -> AppResult<String> {
 /// 返回图片保存路径
 pub fn docs_media_preview(token: &str, output_path: &str) -> AppResult<String> {
     let data = run_lark_get_data(&[
-        "docs", "+media-preview", "--token", token, "--output", output_path, "--as", "user",
+        "docs",
+        "+media-preview",
+        "--token",
+        token,
+        "--output",
+        output_path,
+        "--as",
+        "user",
     ])?;
 
     let media_data: crate::models::MediaPreviewData =
@@ -265,7 +292,14 @@ pub fn docs_media_preview(token: &str, output_path: &str) -> AppResult<String> {
 /// 返回节点详情（space_id、obj_token、has_child 等）
 pub fn wiki_node_get(node_token: &str) -> AppResult<crate::models::NodeGetInfo> {
     let data = run_lark_get_data(&[
-        "wiki", "+node-get", "--node-token", node_token, "--as", "user", "--format", "json",
+        "wiki",
+        "+node-get",
+        "--node-token",
+        node_token,
+        "--as",
+        "user",
+        "--format",
+        "json",
     ])?;
 
     serde_json::from_value(data).map_err(|e| AppError::JsonParse(e.to_string()))

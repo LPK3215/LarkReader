@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 /// 环境检测结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EnvStatus {
     /// Node.js 是否已安装
     pub node_installed: bool,
@@ -29,22 +29,6 @@ pub struct EnvStatus {
     pub user_name: Option<String>,
     /// token 状态（ready / needs_refresh / none）
     pub token_status: Option<String>,
-}
-
-impl Default for EnvStatus {
-    fn default() -> Self {
-        Self {
-            node_installed: false,
-            node_version: None,
-            lark_cli_installed: false,
-            lark_cli_version: None,
-            app_configured: false,
-            app_id: None,
-            logged_in: false,
-            user_name: None,
-            token_status: None,
-        }
-    }
 }
 
 // ============================================================================
@@ -132,7 +116,7 @@ pub enum WikiNodeType {
 
 impl WikiNodeType {
     /// 从字符串解析节点类型
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_api_value(s: &str) -> Self {
         match s {
             "doc" | "docx" => Self::Doc,
             "sheet" => Self::Sheet,
@@ -287,6 +271,22 @@ pub struct Settings {
     pub concurrency: usize,
     /// 是否下载图片
     pub download_images: bool,
+}
+
+impl Settings {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.output_dir.trim().is_empty() {
+            return Err("输出目录不能为空".to_string());
+        }
+        if !(1..=32).contains(&self.concurrency) {
+            return Err("图片并发数必须在 1 到 32 之间".to_string());
+        }
+        let path = std::path::Path::new(&self.output_dir);
+        if path.exists() && !path.is_dir() {
+            return Err("输出路径必须是目录，不能是普通文件".to_string());
+        }
+        Ok(())
+    }
 }
 
 impl Default for Settings {

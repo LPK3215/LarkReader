@@ -30,20 +30,39 @@ fn config_path() -> std::path::PathBuf {
     dir.join("settings.json")
 }
 
-/// 加载设置（如果配置文件不存在，返回默认值）
-fn load_settings() -> Settings {
-    match std::fs::read_to_string(config_path()) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Settings::default(),
-    }
-}
-
 /// 保存设置到本地文件
 fn save_settings(settings: &Settings) -> Result<(), AppError> {
+    settings.validate().map_err(AppError::InvalidSetting)?;
     let content = serde_json::to_string_pretty(settings)
         .map_err(|e| AppError::Other(format!("设置序列化失败: {}", e)))?;
-    std::fs::write(config_path(), content)?;
+    let path = config_path();
+    let temp_path = path.with_extension("json.tmp");
+    let backup_path = path.with_extension("json.bak");
+    std::fs::write(&temp_path, content)?;
+    if path.exists() {
+        if backup_path.exists() {
+            std::fs::remove_file(&backup_path)?;
+        }
+        std::fs::rename(&path, &backup_path)?;
+    }
+    if let Err(error) = std::fs::rename(&temp_path, &path) {
+        if backup_path.exists() {
+            let _ = std::fs::rename(&backup_path, &path);
+        }
+        return Err(error.into());
+    }
+    if backup_path.exists() {
+        std::fs::remove_file(backup_path)?;
+    }
     Ok(())
+}
+
+fn read_settings(state: &State<'_, AppState>) -> Result<Settings, AppError> {
+    state
+        .settings
+        .lock()
+        .map(|settings| settings.clone())
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))
 }
 
 // ============================================================================
@@ -131,7 +150,7 @@ pub async fn extract_doc(
     output_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ExtractResult, AppError> {
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = read_settings(&state)?;
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     std::fs::create_dir_all(&dir)?;
     extract::extract_doc_async(&url, &dir, &settings).await
@@ -139,18 +158,20 @@ pub async fn extract_doc(
 
 /// 获取当前设置
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> Settings {
-    state.settings.lock().unwrap().clone()
+pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, AppError> {
+    read_settings(&state)
 }
 
 /// 保存设置
 #[tauri::command]
 pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), AppError> {
-    {
-        let mut current = state.settings.lock().unwrap();
-        *current = settings.clone();
-    }
-    save_settings(&settings)
+    save_settings(&settings)?;
+    let mut current = state
+        .settings
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    *current = settings;
+    Ok(())
 }
 
 // ============================================================================
@@ -175,7 +196,7 @@ pub async fn extract_wiki(
     selected_tokens: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<WikiExtractResult, AppError> {
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = read_settings(&state)?;
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     std::fs::create_dir_all(&dir)?;
     wiki::extract_wiki(&wiki_url, &dir, &settings, selected_tokens.as_deref()).await

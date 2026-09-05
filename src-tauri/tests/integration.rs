@@ -2,14 +2,20 @@
 //!
 //! 运行方式: cargo test --test integration -- --nocapture
 
-use lark_reader_lib::{env, lark, extract, markdown, models};
+use lark_reader_lib::{env, extract, lark, markdown, models};
 
 #[test]
 fn test_01_check_env_after_logout() {
     let status = env::check_env();
     println!("=== 环境检测结果 ===");
-    println!("Node.js: {} ({:?})", status.node_installed, status.node_version);
-    println!("lark-cli: {} ({:?})", status.lark_cli_installed, status.lark_cli_version);
+    println!(
+        "Node.js: {} ({:?})",
+        status.node_installed, status.node_version
+    );
+    println!(
+        "lark-cli: {} ({:?})",
+        status.lark_cli_installed, status.lark_cli_version
+    );
     println!("应用配置: {} ({:?})", status.app_configured, status.app_id);
     println!("已登录: {}", status.logged_in);
     println!("用户名: {:?}", status.user_name);
@@ -18,8 +24,11 @@ fn test_01_check_env_after_logout() {
     // lark-cli 应该已安装
     assert!(status.node_installed, "Node.js 应该已安装");
     assert!(status.lark_cli_installed, "lark-cli 应该已安装");
-    assert!(status.app_configured, "飞书应用应该已配置（config show 应该能返回 appId）");
-    
+    assert!(
+        status.app_configured,
+        "飞书应用应该已配置（config show 应该能返回 appId）"
+    );
+
     // 退出登录后应该显示未登录（identity=bot, tokenStatus=ready，但 logged_in 应为 false）
     println!("\n=== 退出登录后状态 ===");
     println!("logged_in = {} (预期 false)", status.logged_in);
@@ -41,7 +50,7 @@ fn test_03_config_show() {
     println!("=== config show ===");
     println!("{:?}", config);
     assert!(config.is_ok(), "config show 应该成功");
-    
+
     let config = config.unwrap();
     assert!(config.is_some(), "应用配置应该存在");
     let (app_id, brand) = config.unwrap();
@@ -56,7 +65,7 @@ fn test_04_whoami() {
     println!("=== whoami ===");
     println!("{:?}", result);
     assert!(result.is_ok());
-    
+
     let (identity, token_status, user_name) = result.unwrap();
     println!("identity: {}", identity);
     println!("token_status: {}", token_status);
@@ -105,8 +114,16 @@ fn test_07_prefixed_filename() {
 #[test]
 fn test_08_parse_node_token() {
     println!("=== URL 解析 ===");
-    assert_eq!(extract::parse_node_token("https://gcnyv4rcw1jv.feishu.cn/wiki/QJFEw6cH0iSry4kRUcMcDttfn4e"), "QJFEw6cH0iSry4kRUcMcDttfn4e");
-    assert_eq!(extract::parse_node_token("QJFEw6cH0iSry4kRUcMcDttfn4e"), "QJFEw6cH0iSry4kRUcMcDttfn4e");
+    assert_eq!(
+        extract::parse_node_token(
+            "https://gcnyv4rcw1jv.feishu.cn/wiki/QJFEw6cH0iSry4kRUcMcDttfn4e"
+        ),
+        "QJFEw6cH0iSry4kRUcMcDttfn4e"
+    );
+    assert_eq!(
+        extract::parse_node_token("QJFEw6cH0iSry4kRUcMcDttfn4e"),
+        "QJFEw6cH0iSry4kRUcMcDttfn4e"
+    );
     println!("全部通过");
 }
 
@@ -115,7 +132,7 @@ fn test_09_build_wiki_url() {
     println!("=== Wiki URL 构造 ===");
     let url = extract::build_wiki_url("ABC123");
     assert_eq!(url, "https://feishu.cn/wiki/ABC123");
-    
+
     let url2 = extract::build_wiki_url("https://xxx.feishu.cn/wiki/ABC123");
     assert_eq!(url2, "https://xxx.feishu.cn/wiki/ABC123");
     println!("全部通过");
@@ -128,7 +145,7 @@ fn test_10_settings_default() {
     println!("output_dir: {}", settings.output_dir);
     println!("concurrency: {}", settings.concurrency);
     println!("download_images: {}", settings.download_images);
-    
+
     assert!(!settings.output_dir.is_empty());
     assert_eq!(settings.concurrency, 5);
     assert!(settings.download_images);

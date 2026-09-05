@@ -15,9 +15,18 @@ fn test_new_user_step1_check_env() {
 
     let status = env::check_env();
 
-    println!("Node.js:    {}  版本: {:?}", status.node_installed, status.node_version);
-    println!("lark-cli:   {}  版本: {:?}", status.lark_cli_installed, status.lark_cli_version);
-    println!("应用配置:   {}  AppID: {:?}", status.app_configured, status.app_id);
+    println!(
+        "Node.js:    {}  版本: {:?}",
+        status.node_installed, status.node_version
+    );
+    println!(
+        "lark-cli:   {}  版本: {:?}",
+        status.lark_cli_installed, status.lark_cli_version
+    );
+    println!(
+        "应用配置:   {}  AppID: {:?}",
+        status.app_configured, status.app_id
+    );
     println!("已登录:     {}", status.logged_in);
     println!("用户名:     {:?}", status.user_name);
     println!("Token状态:  {:?}", status.token_status);
@@ -26,7 +35,7 @@ fn test_new_user_step1_check_env() {
     assert!(status.node_installed, "Node.js 应该已安装");
     assert!(status.lark_cli_installed, "lark-cli 应该已安装");
     assert!(status.app_configured, "飞书应用应该已配置");
-    
+
     // 关键验证：未登录状态下 logged_in 应该是 false
     if !status.logged_in {
         println!("\n✅ 正确检测到用户未登录");
@@ -62,22 +71,25 @@ fn test_new_user_step2_preview_doc_without_login() {
             println!("❌ 预览失败（预期行为）");
             println!("   错误类型: {:?}", e);
             println!("   错误信息: {}", e);
-            
+
             let err_str = e.to_string();
             println!("\n   --- 错误友好度分析 ---");
-            
+
             if err_str.contains("未登录") || err_str.contains("请重新登录") {
                 println!("   ✅ 错误信息友好：明确提示用户需要登录");
             } else if err_str.contains("权限") {
                 println!("   ⚠️ 错误信息提到权限，但没有明确说「请先登录」");
-            } else if err_str.contains("token") || err_str.contains("auth") || err_str.contains("{\"") {
+            } else if err_str.contains("token")
+                || err_str.contains("auth")
+                || err_str.contains("{\"")
+            {
                 println!("   ❌ 错误信息不友好，包含原始 JSON 或英文");
                 println!("      当前错误: {}", err_str);
             } else {
                 println!("   ⚠️ 错误信息可能需要优化");
                 println!("      当前错误: {}", err_str);
             }
-            
+
             // 关键验证：错误信息应该是中文友好提示，不是原始 JSON
             assert!(
                 err_str.contains("未登录") || err_str.contains("请重新登录"),
@@ -125,7 +137,10 @@ fn test_new_user_step3_extract_doc_without_login() {
                 println!("   ✅ 错误信息友好：明确提示用户需要登录");
             } else if err_str.contains("权限") {
                 println!("   ⚠️ 错误信息提到权限，但没有明确说「请先登录」");
-            } else if err_str.contains("token") || err_str.contains("auth") || err_str.contains("{\"") {
+            } else if err_str.contains("token")
+                || err_str.contains("auth")
+                || err_str.contains("{\"")
+            {
                 println!("   ❌ 错误信息不友好，包含原始 JSON 或英文");
                 println!("      当前错误: {}", err_str);
             } else {
@@ -155,7 +170,16 @@ fn test_new_user_step4_lark_cli_error_format() {
 
     // 直接用 std::process::Command 看原始输出
     let output = std::process::Command::new("lark-cli.cmd")
-        .args(["docs", "+fetch", "--doc", "https://gcnyv4rcw1jv.feishu.cn/wiki/QJFEw6cH0iSry4kRUcMcDttfn4e", "--doc-format", "markdown", "--as", "user"])
+        .args([
+            "docs",
+            "+fetch",
+            "--doc",
+            "https://gcnyv4rcw1jv.feishu.cn/wiki/QJFEw6cH0iSry4kRUcMcDttfn4e",
+            "--doc-format",
+            "markdown",
+            "--as",
+            "user",
+        ])
         .env_remove("HERMES_HOME")
         .output();
 
@@ -165,7 +189,10 @@ fn test_new_user_step4_lark_cli_error_format() {
             let stderr = String::from_utf8_lossy(&out.stderr);
             println!("退出码: {:?}", out.status.code());
             println!("stdout 长度: {}", stdout.len());
-            println!("stdout 前3字节: {:?}", &out.stdout[..3.min(out.stdout.len())]);
+            println!(
+                "stdout 前3字节: {:?}",
+                &out.stdout[..3.min(out.stdout.len())]
+            );
             let stdout_preview: String = stdout.chars().take(200).collect();
             println!("stdout 内容前200字符: {}", stdout_preview);
             println!("stderr 长度: {}", stderr.len());
@@ -173,7 +200,7 @@ fn test_new_user_step4_lark_cli_error_format() {
                 let stderr_preview: String = stderr.chars().take(200).collect();
                 println!("stderr 内容: {}", stderr_preview);
             }
-            
+
             // 尝试解析 JSON
             let trimmed = stdout.trim();
             let json_start = trimmed.find('{');

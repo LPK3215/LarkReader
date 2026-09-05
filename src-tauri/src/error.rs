@@ -56,6 +56,15 @@ pub enum AppError {
     #[error("设置无效: {0}")]
     InvalidSetting(String),
 
+    #[error("输入无效: {0}")]
+    InvalidInput(String),
+
+    #[error("应用状态不可用: {0}")]
+    StateUnavailable(String),
+
+    #[error("外部命令执行超时（{0} 秒）")]
+    CommandTimeout(u64),
+
     /// 其他未分类的错误
     #[error("{0}")]
     Other(String),
