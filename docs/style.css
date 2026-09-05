@@ -398,6 +398,14 @@ pre { margin: 0; }
   font-size: 13px;
   color: var(--fg-muted);
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chip-ico {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .hero-stats {
@@ -460,10 +468,14 @@ pre { margin: 0; }
   font-size: 24px;
   margin-bottom: 16px;
 }
-.scene-ico-1 { background: rgba(51, 112, 255, 0.12); }
-.scene-ico-2 { background: rgba(99, 153, 34, 0.12); }
-.scene-ico-3 { background: rgba(127, 119, 221, 0.12); }
-.scene-ico-4 { background: rgba(186, 117, 23, 0.12); }
+.scene-ico-1 { background: rgba(51, 112, 255, 0.12); color: #3370ff; }
+.scene-ico-2 { background: rgba(99, 153, 34, 0.12); color: #639922; }
+.scene-ico-3 { background: rgba(127, 119, 221, 0.12); color: #7f77dd; }
+.scene-ico-4 { background: rgba(186, 117, 23, 0.12); color: #ba7517; }
+.scene-ico svg {
+  width: 24px;
+  height: 24px;
+}
 .scene-card h3 {
   font-size: 17px;
   font-weight: 700;

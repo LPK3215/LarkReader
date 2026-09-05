@@ -17,6 +17,9 @@ pnpm-lock.yaml
 !docs/e2e-download-case/06_附件下载/04_app.log
 # Local `tauri dev` run helper artifacts (pid of the detached dev process)
 /dev-run.pid
+
+# Icon generation temp output
+/tmp/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
