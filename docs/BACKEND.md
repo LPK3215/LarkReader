@@ -174,6 +174,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `reader.rs` | 本地阅读：目录导航、md 文本读取、二进制资源 data URL、查找首篇文档（纯本地，不依赖登录/网络） |
 | `models.rs` | 可序列化数据模型（含 `WikiNodeType::File`、`TaskPhase::ExportingFile`） |
 | `error.rs` | 结构化统一错误协议 |
+| `logger.rs` | 结构化运行日志与日志文件管理 |
 | `lib.rs` | 应用初始化、状态恢复和命令注册 |
 
 ## 6. 当前验证状态
