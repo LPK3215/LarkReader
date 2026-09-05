@@ -9,7 +9,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)](#-验证与实测)
+[![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen)](#-验证与实测)
 [![lark-cli](https://img.shields.io/badge/lark--cli-1.0.93-purple)](./docs/BACKEND.md)
 
 **飞书文档 · 本地阅读与导出工具**
@@ -146,7 +146,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           23 项通过
+cargo test --lib                           24 项通过
 npm run build                              通过
 ```
 

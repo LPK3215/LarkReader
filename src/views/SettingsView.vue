@@ -9,10 +9,17 @@
 // 保存按钮：把当前 settings 草稿写盘；恢复默认：把草稿重置为 DEFAULT，再写盘。
 // ============================================================================
 
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useSettingsStore, DEFAULT_SETTINGS } from "../stores/settings";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
+import { message } from "../composables/useMessage";
+import {
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  getCurrentVersion,
+  type UpdateProgress,
+} from "../api/updater";
 
 const settings = useSettingsStore();
 
@@ -65,8 +72,66 @@ function onDirPick(path: string) {
   void settings.refreshPreflight(path);
 }
 
+// ---- 软件更新 ----
+const checking = ref(false);
+const installing = ref(false);
+const checkError = ref("");
+const currentVersion = ref("");
+const nextVersion = ref("");
+type UpdateUiState = "idle" | "fresh" | "hasUpdate";
+const updateState = ref<UpdateUiState>("idle");
+const installProgress = ref<UpdateProgress | null>(null);
+
+const installPercent = computed(() => {
+  const p = installProgress.value;
+  if (!p || !p.total) return null;
+  return p.total > 0 ? Math.min(100, Math.round((p.downloaded / p.total) * 100)) : 0;
+});
+
+async function onCheckUpdate() {
+  if (checking.value || installing.value) return;
+  checking.value = true;
+  updateState.value = "idle";
+  checkError.value = "";
+  try {
+    const result = await checkForUpdate();
+    currentVersion.value = result.currentVersion;
+    if (result.kind === "available") {
+      nextVersion.value = result.nextVersion;
+      updateState.value = "hasUpdate";
+    } else if (result.kind === "error") {
+      checkError.value = result.message;
+    } else {
+      updateState.value = "fresh";
+    }
+  } finally {
+    checking.value = false;
+  }
+}
+
+async function onInstallUpdate() {
+  if (installing.value) return;
+  installing.value = true;
+  installProgress.value = { downloaded: 0, finished: false };
+  checkError.value = "";
+  try {
+    await downloadAndInstallUpdate((progress) => {
+      installProgress.value = progress;
+    });
+    // mac / Linux：安装完成并 relaunch，正常不会走到这里之外；若到达则说明没触发重启
+    message.info("新版本已安装，应用即将重启");
+  } catch (err) {
+    checkError.value = err instanceof Error ? err.message : String(err);
+    message.warning("更新失败，请稍后重试");
+  } finally {
+    installing.value = false;
+  }
+}
+
 onMounted(async () => {
   await settings.load();
+  const version = await getCurrentVersion();
+  if (version) currentVersion.value = version;
 });
 </script>
 

@@ -48,6 +48,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // 应用内更新：前端 Settings 手动检查 + 启动时静默检测（配置见 tauri.conf.json）
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             settings: Mutex::new(settings),
             tasks: Arc::new(Mutex::new(HashMap::new())),

@@ -59,17 +59,12 @@ fn retry_backoff_ms(attempt: usize) -> u64 {
 /// - `FullSpace`（C 模式）：如果传入节点没有子节点，自动展开整个知识库
 ///   （列出 space 下全部顶层节点，逐个递归）。A 模式的超集——A 能拿到的
 ///   C 全能拿到，A 拿不到的兄弟节点 C 也能拿到。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScanMode {
+    #[default]
     Auto,
     FullSpace,
-}
-
-impl Default for ScanMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// 获取 Wiki 节点树（A 模式，只导出传入节点及其子树）
@@ -202,9 +197,7 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
             }
 
             // 按 position 排序，确保顺序与飞书一致
-            virtual_root
-                .children
-                .sort_by_key(|n| n.position);
+            virtual_root.children.sort_by_key(|n| n.position);
 
             return Ok(virtual_root);
         }
@@ -444,10 +437,7 @@ pub async fn extract_wiki_tree_controlled(
                 DOC_RETRY_LIMIT,
                 error
             ));
-            tokio::time::sleep(std::time::Duration::from_millis(
-                retry_backoff_ms(retried),
-            ))
-            .await;
+            tokio::time::sleep(std::time::Duration::from_millis(retry_backoff_ms(retried))).await;
         };
 
         // 用户在本篇导出期间点了取消：这篇既不算成功也不算失败。

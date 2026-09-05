@@ -75,39 +75,58 @@ function lineLevel(line: string): string {
   return "info";
 }
 
+/** 最近一次成功读取的文件签名，用于跳过内容未变化的重读 */
+let lastFetchSig = "";
+
 async function loadFilesList() {
   files.value = await logApi.listLogFiles();
   const exists = files.value.some((file) => file.name === activeName.value);
   if (!exists) {
     activeName.value = files.value[0]?.name ?? null;
+    // 当前文件被轮转/删除后必须重读（哪怕签名恰好相同）
+    lastFetchSig = "";
   }
 }
 
-async function loadActiveContent() {
+/**
+ * 读取当前文件内容。
+ * @param skipIfUnchanged 文件签名（名字+大小+修改时间）未变时跳过 IPC 整读
+ */
+async function loadActiveContent(skipIfUnchanged = false) {
   if (!activeName.value) {
     content.value = "";
     truncated.value = false;
     return;
   }
+  const meta = files.value.find((file) => file.name === activeName.value);
+  const sig = meta ? `${meta.name}|${meta.size_bytes}|${meta.modified_at}` : "";
+  if (skipIfUnchanged && sig && sig === lastFetchSig) return;
   const data = await logApi.readLogFile(activeName.value);
   truncated.value = data.truncated;
+  lastFetchSig = sig;
   if (content.value !== data.content) {
     content.value = data.content;
   }
 }
 
-async function refreshAll(silent = false) {
+/** 刷新序号：切文件/手动刷新会作废旧的在途请求，避免旧文件内容覆盖新选择 */
+let refreshSeq = 0;
+
+async function refreshAll(silent = false, skipIfUnchanged = false) {
+  const seq = ++refreshSeq;
   if (!silent) busy.value = true;
   errorText.value = "";
   try {
     await loadFilesList();
-    await loadActiveContent();
+    if (seq !== refreshSeq) return; // 已被更新的刷新取代
+    await loadActiveContent(skipIfUnchanged);
   } catch (err) {
+    if (seq !== refreshSeq) return;
     errorText.value = String(err);
     // 自动刷新中偶发的瞬时读取失败不清空已有内容，避免整屏闪烁/丢日志
     if (!content.value) content.value = "";
   } finally {
-    if (!silent) busy.value = false;
+    if (seq === refreshSeq && !silent) busy.value = false;
   }
 }
 
@@ -157,7 +176,8 @@ function syncTimer() {
   }
   if (follow.value) {
     timer = window.setInterval(() => {
-      void refreshAll(true);
+      // 空闲时（文件未变化）跳过整读，只在真正有增长时才取内容
+      void refreshAll(true, true);
     }, 2000);
   }
 }

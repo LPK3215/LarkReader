@@ -12,6 +12,7 @@
 import { computed, ref } from "vue";
 import { useTaskStore } from "../stores/task";
 import { useSettingsStore } from "../stores/settings";
+import type { ScanMode } from "../api/wiki";
 import NodeTree from "../components/NodeTree.vue";
 import TaskPanel from "../components/TaskPanel.vue";
 import ResultCard from "../components/ResultCard.vue";
@@ -22,6 +23,7 @@ const task = useTaskStore();
 const settings = useSettingsStore();
 
 const inputUrl = ref("");
+const scanMode = ref<ScanMode>("auto");
 
 const treeNodes = computed(() => (task.tree ? [task.tree] : []));
 
@@ -34,7 +36,7 @@ const sideTitle = computed(() => {
 async function onScan() {
   const url = inputUrl.value.trim();
   if (!url || task.scanning) return;
-  await task.scan(url);
+  await task.scan(url, scanMode.value);
 }
 
 /** 回车扫描：输入法组词回车不算 */
@@ -102,6 +104,27 @@ function openResultDir() {
             />
             {{ task.scanning ? "扫描中…" : "扫描结构" }}
           </button>
+        </div>
+
+        <div class="lr-work__modeselect">
+          <label class="lr-work__radio">
+            <input
+              v-model="scanMode"
+              type="radio"
+              value="auto"
+              :disabled="task.scanning"
+            />
+            <span>仅导出本节点及子树</span>
+          </label>
+          <label class="lr-work__radio">
+            <input
+              v-model="scanMode"
+              type="radio"
+              value="full_space"
+              :disabled="task.scanning"
+            />
+            <span>展开整个知识库（含兄弟节点）</span>
+          </label>
         </div>
 
         <p class="lr-work__emptynote">
@@ -321,6 +344,31 @@ function openResultDir() {
   margin-top: var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
+}
+
+.lr-work__modeselect {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-2);
+  margin-top: var(--lr-space-3);
+  padding: var(--lr-space-3);
+  border-radius: var(--lr-radius-md);
+  background: var(--lr-bg-subtle);
+}
+
+.lr-work__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-secondary);
+  cursor: pointer;
+}
+
+.lr-work__radio input {
+  accent-color: var(--lr-primary);
+  cursor: pointer;
 }
 
 /* ---- 顶部链接条 ---- */
