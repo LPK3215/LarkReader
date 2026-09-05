@@ -156,7 +156,7 @@ npm run build                              通过
 <img src="./docs/assets/e2e-coverage.svg" alt="E2E 覆盖统计" width="100%"/>
 </div>
 
-- 真实大库【百战程序员】：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
+- 实测大型知识库（A）：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
 - E2E 测试库 8 个顶层节点：**38 项成功 / 0 失败 / 0 跳过**，产物 42 文件、18 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
 - 父文档带子页面整棵导出、空文档 / 超长标题 / 特殊字符文件名清洗与还原、重复导出自动编号。
 
