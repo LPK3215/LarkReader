@@ -4,7 +4,8 @@
 // 4 步：环境体检 → 登录飞书 → 输出目录 → 完成
 //
 // 步骤 1：checkEnv 把 EnvStatus 映射成 4 条 CheckItem；缺 lark-cli 时显示"安装"
-// 步骤 2：startLogin → 浏览器授权 → completeLogin 轮询（3s 一次，最长 5 分钟）
+// 步骤 2：startLogin 拿设备码 → 浏览器授权 → completeLogin 单次阻塞等待授权完成
+//         （后端跑 `lark-cli auth login --device-code`，最长约 10 分钟；勿并发轮询）
 // 步骤 3：复用 settings store 的 pickDir()，选择完后预检可写性
 // 步骤 4：finish() 跳 /workspace
 //
@@ -35,9 +36,6 @@ export interface CheckItem {
 
 export type LoginState = "idle" | "awaiting" | "done" | "failed";
 
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000;
-
 export const useOnboardingStore = defineStore("onboarding", () => {
   const step = ref(0);
   const checking = ref(false);
@@ -52,9 +50,6 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const verificationUrl = ref("");
   const userName = ref<string | null>(null);
   const loginError = ref<string | null>(null);
-
-  let pollHandle: number | null = null;
-  let pollStartedAt = 0;
 
   /** 把 EnvStatus 翻译成 UI 列表。 */
   function buildChecks(env: EnvStatus): CheckItem[] {
@@ -144,19 +139,30 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     }
   }
 
-  /** 步骤 2：发起设备码登录，弹出浏览器授权页。 */
+  /** 步骤 2：发起设备码登录，弹浏览器授权页，单次阻塞等待授权完成。 */
   async function beginLogin() {
+    if (loginState.value === "awaiting") return; // 已在等待授权，防止重复发起
     loginError.value = null;
     try {
       const info = await startLogin();
       deviceCode.value = info.device_code;
       verificationUrl.value = info.verification_url;
       loginState.value = "awaiting";
-      startPolling();
       try {
         await openUrl(info.verification_url);
       } catch {
         // 用户拒绝了打开外部链接的权限，授权码仍然显示在页面里
+      }
+      // 单次阻塞等待授权：后端运行 `lark-cli auth login --device-code <code>`
+      // 直到用户在浏览器完成授权（最长约 10 分钟）。不要改成并发轮询——
+      // lark-cli 每次重启该命令都会作废上一轮的 device code，并发等于永远无法登录。
+      const result = await completeLogin(deviceCode.value);
+      if (result.success) {
+        userName.value = result.user_name;
+        loginState.value = "done";
+      } else {
+        loginError.value = result.error ?? "登录失败，请重试";
+        loginState.value = "failed";
       }
     } catch (err) {
       loginError.value = String(err);
@@ -164,47 +170,12 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     }
   }
 
-  function startPolling() {
-    stopPolling();
-    pollStartedAt = Date.now();
-    pollHandle = window.setInterval(tick, POLL_INTERVAL_MS);
-  }
-
-  function stopPolling() {
-    if (pollHandle != null) {
-      window.clearInterval(pollHandle);
-      pollHandle = null;
-    }
-  }
-
-  async function tick() {
-    if (Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
-      stopPolling();
-      loginError.value = "授权超时，请在 5 分钟内完成浏览器授权";
-      loginState.value = "failed";
-      return;
-    }
-    if (!deviceCode.value) return;
-    try {
-      const result = await completeLogin(deviceCode.value);
-      if (result.success) {
-        userName.value = result.user_name;
-        loginState.value = "done";
-        stopPolling();
-      } else if (result.error && result.error !== "PENDING") {
-        // PENDING = 还在等用户授权；其他错误视为失败
-        loginError.value = result.error;
-        loginState.value = "failed";
-        stopPolling();
-      }
-    } catch (err) {
-      // 轮询失败通常为 transient；下一次继续试
-      console.warn("[onboarding.completeLogin]", err);
-    }
-  }
-
+  /** 取消登录：仅复位 UI 状态。
+   *
+   * 后端等待授权的阻塞进程无法中途终止，最长约 10 分钟后自行超时退出；
+   * 若在超时前重新登录，新会话与旧进程并存，旧进程超时后自动清理。
+   */
   function cancelLogin() {
-    stopPolling();
     loginState.value = "idle";
     deviceCode.value = "";
     verificationUrl.value = "";

@@ -155,15 +155,28 @@ pub fn start_login() -> Result<DeviceInfo, AppError> {
     env::start_login(&["docs", "drive", "wiki"])
 }
 
-/// 用 device_code 完成飞书登录（阻塞模式）
+/// 用 device_code 完成飞书登录（阻塞等待授权）
+///
+/// 内部运行 `lark-cli auth login --device-code <code>`，最长阻塞约 10 分钟
+/// 直到用户在浏览器完成授权。运行在独立线程，不占用 IPC 串行队列。
+/// 注意：不得并发发起多个该命令——lark-cli 每次重启会作废上一轮的 device code。
 #[tauri::command]
-pub fn complete_login(device_code: String) -> Result<LoginResult, AppError> {
-    env::complete_login(&device_code)
+pub async fn complete_login(device_code: String) -> Result<LoginResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || env::complete_login(&device_code))
+        .await
+        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?
 }
 
 /// 阻塞模式飞书登录（简化版，一步到位）
 #[tauri::command]
-pub fn login_feishu_blocking() -> Result<LoginResult, AppError> {
+pub async fn login_feishu_blocking() -> Result<LoginResult, AppError> {
+    tauri::async_runtime::spawn_blocking(login_feishu_blocking_impl)
+        .await
+        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?
+}
+
+/// login_feishu_blocking 的同步实现（在阻塞线程上运行）
+fn login_feishu_blocking_impl() -> Result<LoginResult, AppError> {
     // 先尝试非阻塞方式
     match env::start_login(&["docs", "drive", "wiki"]) {
         Ok(device_info) => {

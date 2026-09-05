@@ -6,8 +6,8 @@
 //   setup_lark_cli()             -> string（消息）
 //   init_app(brand, lang)        -> string（消息）
 //   start_login()                -> DeviceInfo（非阻塞，返回后前端打开浏览器）
-//   complete_login(deviceCode)   -> LoginResult
-//   login_feishu_blocking()      -> LoginResult（一步到位，Onboarding 用）
+//   complete_login(deviceCode)   -> LoginResult（单次阻塞等待授权，勿并发轮询）
+//   login_feishu_blocking()      -> LoginResult（一步到位阻塞登录，备用入口）
 // ============================================================================
 
 import { invoke } from "@tauri-apps/api/core";

@@ -350,8 +350,16 @@ pub fn auth_login_no_wait(domains: &[&str]) -> AppResult<String> {
 }
 
 /// 执行 `lark-cli auth login --device-code <code>`
+///
+/// lark-cli 自述最长阻塞约 10 分钟等待用户在浏览器完成授权；
+/// 超时上限 620s 略大于 lark-cli 内部上限，避免恰好临界误杀。
+/// 注意：该命令不可并发/重启执行——lark-cli 每次重启会作废上一轮的 device code。
 pub fn auth_login_with_device_code(device_code: &str) -> AppResult<String> {
-    run_lark_interactive(&["auth", "login", "--device-code", device_code])
+    run_lark_with_timeout(
+        &["auth", "login", "--device-code", device_code],
+        Duration::from_secs(620),
+        None,
+    )
 }
 
 /// 执行 `lark-cli docs +fetch --doc <url> --doc-format markdown --as user`
