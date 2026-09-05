@@ -1,0 +1,5 @@
+# Cargo build output. Cargo.lock is intentionally committed for this app.
+/target/
+
+# Tauri-generated capability schemas.
+/gen/schemas/
