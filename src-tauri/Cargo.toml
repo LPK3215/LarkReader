@@ -30,6 +30,7 @@ chrono = { version = "0.4", features = ["serde"] }
 wait-timeout = "0.2"
 uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
+rayon = "1"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

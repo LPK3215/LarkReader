@@ -36,6 +36,7 @@ pub fn run() {
         .manage(AppState {
             settings: Mutex::new(settings),
             tasks: Arc::new(Mutex::new(HashMap::new())),
+            completed_tasks: Arc::new(Mutex::new(HashMap::new())),
         })
         .invoke_handler(tauri::generate_handler![
             // P0 命令
@@ -55,6 +56,7 @@ pub fn run() {
             commands::get_progress,
             commands::cancel_task,
             commands::start_extract_wiki,
+            commands::get_task_result,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");

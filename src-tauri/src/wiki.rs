@@ -16,8 +16,8 @@ use crate::extract;
 use crate::lark;
 use crate::markdown;
 use crate::models::{
-    DocFailure, ExtractStatus, Progress, Settings, SkippedNode, TaskStatus, WikiExtractResult,
-    WikiNode, WikiNodeType,
+    DocFailure, ExtractStatus, Progress, Settings, SkippedNode, SpecialExport, TaskStatus,
+    WikiExtractResult, WikiNode, WikiNodeType,
 };
 
 const MAX_WIKI_DEPTH: usize = 64;
@@ -177,20 +177,39 @@ pub async fn extract_wiki_controlled(
     progress: Option<Arc<Mutex<Progress>>>,
     cancelled: Option<Arc<AtomicBool>>,
 ) -> AppResult<WikiExtractResult> {
-    // 获取目录树
     let tree = get_wiki_tree(wiki_url)?;
+    extract_wiki_tree_controlled(
+        tree,
+        output_dir,
+        settings,
+        selected_tokens,
+        progress,
+        cancelled,
+    )
+    .await
+}
+
+pub async fn extract_wiki_tree_controlled(
+    tree: WikiNode,
+    output_dir: &str,
+    settings: &Settings,
+    selected_tokens: Option<&[String]>,
+    progress: Option<Arc<Mutex<Progress>>>,
+    cancelled: Option<Arc<AtomicBool>>,
+) -> AppResult<WikiExtractResult> {
     let wiki_name = tree.title.clone();
 
     // 创建知识库根目录
-    let wiki_dir = unique_directory(Path::new(output_dir), &markdown::safe_filename(&wiki_name));
-    std::fs::create_dir_all(&wiki_dir)?;
+    let wiki_dir =
+        create_unique_directory(Path::new(output_dir), &markdown::safe_filename(&wiki_name))?;
 
     // 收集所有文档节点（保留目录路径）
     let docs = collect_docs_with_path(&tree, selected_tokens);
-    let special_nodes = collect_special_nodes(&tree, selected_tokens);
+    let relevant = selected_tokens.map(|tokens| build_relevant_tokens(&tree, tokens));
+    let special_nodes = collect_special_nodes(&tree, selected_tokens, relevant.as_ref());
     let mut skipped = Vec::new();
 
-    let total = docs.len();
+    let total = docs.len() + special_nodes.len();
     if let Some(progress) = &progress {
         let mut progress = progress
             .lock()
@@ -203,6 +222,7 @@ pub async fn extract_wiki_controlled(
     let mut success_count = 0usize;
     let mut failed_count = 0usize;
     let mut partial_count = 0usize;
+    let mut exports = Vec::new();
 
     for (node, dir_path) in &docs {
         if cancelled
@@ -235,11 +255,12 @@ pub async fn extract_wiki_controlled(
         }
 
         // 提取文档
-        match extract::extract_doc_with_title_async(
+        match extract::extract_doc_with_title_async_controlled(
             &doc_url,
             Some(&doc_title),
             full_dir.to_str().unwrap_or(""),
             settings,
+            cancelled.clone(),
         )
         .await
         {
@@ -283,25 +304,54 @@ pub async fn extract_wiki_controlled(
             break;
         }
         let safe = markdown::prefixed_filename(node.position, &node.title);
-        let result = match node.obj_type {
+        if let Some(progress) = &progress {
+            let mut progress = progress
+                .lock()
+                .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+            progress.current_doc = Some(node.title.clone());
+        }
+        let result: AppResult<Vec<String>> = match node.obj_type {
             WikiNodeType::Sheet => {
                 let path = wiki_dir.join(format!("{}.xlsx", safe));
-                lark::sheets_export(
+                lark::sheets_export_controlled(
                     &extract::build_wiki_url(&node.node_token),
                     &path.to_string_lossy(),
+                    cancelled.as_deref(),
                 )
-                .map(|_| ())
+                .map(|saved| vec![saved])
             }
-            WikiNodeType::Bitable => export_bitable(node, &wiki_dir.join(&safe)),
+            WikiNodeType::Bitable => {
+                export_bitable(node, &wiki_dir.join(&safe), cancelled.as_deref())
+            }
             _ => Err(AppError::Extract("当前 CLI 不支持该节点类型".to_string())),
         };
-        if let Err(error) = result {
-            skipped.push(SkippedNode {
-                title: node.title.clone(),
-                node_token: node.node_token.clone(),
-                obj_type: node.obj_type.clone(),
-                reason: error.to_string(),
-            });
+        match result {
+            Ok(paths) => {
+                success_count += 1;
+                exports.push(SpecialExport {
+                    title: node.title.clone(),
+                    node_token: node.node_token.clone(),
+                    obj_type: node.obj_type.clone(),
+                    paths,
+                });
+            }
+            Err(error) => {
+                failed_count += 1;
+                skipped.push(SkippedNode {
+                    title: node.title.clone(),
+                    node_token: node.node_token.clone(),
+                    obj_type: node.obj_type.clone(),
+                    reason: error.to_string(),
+                });
+            }
+        }
+        if let Some(progress) = &progress {
+            let mut progress = progress
+                .lock()
+                .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+            progress.done += 1;
+            progress.success_count = success_count + partial_count;
+            progress.failed_count = failed_count;
         }
     }
     let skipped_count = skipped.len();
@@ -327,35 +377,44 @@ pub async fn extract_wiki_controlled(
         failures,
         skipped_count,
         skipped,
+        exports,
     })
 }
 
-fn unique_directory(parent: &Path, name: &str) -> PathBuf {
-    let candidate = parent.join(name);
-    if !candidate.exists() {
-        return candidate;
-    }
-    for suffix in 2..=10_000 {
-        let candidate = parent.join(format!("{} ({})", name, suffix));
-        if !candidate.exists() {
-            return candidate;
+fn create_unique_directory(parent: &Path, name: &str) -> AppResult<PathBuf> {
+    std::fs::create_dir_all(parent)?;
+    for suffix in 1..=10_000 {
+        let directory_name = if suffix == 1 {
+            name.to_string()
+        } else {
+            format!("{} ({})", name, suffix)
+        };
+        let candidate = parent.join(directory_name);
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
         }
     }
-    parent.join(format!("{}_{}", name, std::process::id()))
+    Err(AppError::Extract(
+        "无法创建不冲突的知识库导出目录".to_string(),
+    ))
 }
 
 fn collect_special_nodes<'a>(
     node: &'a WikiNode,
     selected_tokens: Option<&[String]>,
+    relevant_tokens: Option<&HashSet<String>>,
 ) -> Vec<&'a WikiNode> {
     let mut nodes = Vec::new();
-    collect_special_recursive(node, selected_tokens, false, &mut nodes);
+    collect_special_recursive(node, selected_tokens, relevant_tokens, false, &mut nodes);
     nodes
 }
 
 fn collect_special_recursive<'a>(
     node: &'a WikiNode,
     selected_tokens: Option<&[String]>,
+    relevant_tokens: Option<&HashSet<String>>,
     ancestor_selected: bool,
     nodes: &mut Vec<&'a WikiNode>,
 ) {
@@ -363,9 +422,9 @@ fn collect_special_recursive<'a>(
         .map(|tokens| tokens.contains(&node.node_token))
         .unwrap_or(true);
     let selected = ancestor_selected || directly_selected;
-    let relevant = selected_tokens
-        .map(|tokens| selected || is_node_or_descendant_selected(node, tokens))
-        .unwrap_or(true);
+    let relevant = selected_tokens.is_none()
+        || selected
+        || relevant_tokens.is_some_and(|tokens| tokens.contains(&node.node_token));
     if !relevant {
         return;
     }
@@ -378,14 +437,19 @@ fn collect_special_recursive<'a>(
         nodes.push(node);
     }
     for child in &node.children {
-        collect_special_recursive(child, selected_tokens, selected, nodes);
+        collect_special_recursive(child, selected_tokens, relevant_tokens, selected, nodes);
     }
 }
 
-fn export_bitable(node: &WikiNode, output_dir: &Path) -> AppResult<()> {
+fn export_bitable(
+    node: &WikiNode,
+    output_dir: &Path,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<Vec<String>> {
     let base_token = node.obj_token.as_deref().unwrap_or(&node.node_token);
+    let mut paths = Vec::new();
     std::fs::create_dir_all(output_dir)?;
-    let data = lark::base_table_list(base_token)?;
+    let data = lark::base_table_list_controlled(base_token, cancelled)?;
     let tables = data
         .get("items")
         .or_else(|| data.get("tables"))
@@ -399,9 +463,20 @@ fn export_bitable(node: &WikiNode, output_dir: &Path) -> AppResult<()> {
             .ok_or_else(|| AppError::LarkCliResponse("数据表缺少 table_id".to_string()))?;
         let name = table.get("name").and_then(|v| v.as_str()).unwrap_or(id);
         let filename = format!("{:02}_{}.ndjson", index + 1, markdown::safe_filename(name));
-        lark::base_records_export(base_token, id, &output_dir.join(filename).to_string_lossy())?;
+        let path = output_dir.join(filename);
+        lark::base_records_export_controlled(base_token, id, &path.to_string_lossy(), cancelled)?;
+        paths.push(path.to_string_lossy().to_string());
     }
-    Ok(())
+    Ok(paths)
+}
+
+pub fn count_selected_exportable_nodes(
+    tree: &WikiNode,
+    selected_tokens: Option<&[String]>,
+) -> usize {
+    let relevant = selected_tokens.map(|tokens| build_relevant_tokens(tree, tokens));
+    collect_docs_with_path(tree, selected_tokens).len()
+        + collect_special_nodes(tree, selected_tokens, relevant.as_ref()).len()
 }
 
 /// 文档节点及其在目录树中的相对路径
@@ -496,19 +571,6 @@ fn collect_docs_recursive<'a>(
             docs,
         );
     }
-}
-
-/// 检查节点本身或其子树中是否有被选中的节点
-fn is_node_or_descendant_selected(node: &WikiNode, selected_tokens: &[String]) -> bool {
-    if selected_tokens.contains(&node.node_token) {
-        return true;
-    }
-    for child in &node.children {
-        if is_node_or_descendant_selected(child, selected_tokens) {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

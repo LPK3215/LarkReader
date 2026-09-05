@@ -12,11 +12,14 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::error::{AppError, AppResult};
 use crate::lark;
 use crate::markdown;
 use crate::models::{ExtractResult, ExtractStatus, PreviewResult, Settings};
+use rayon::prelude::*;
 
 /// 从飞书 URL 中提取 node_token
 ///
@@ -131,6 +134,16 @@ pub fn extract_doc_with_title(
     output_dir: &str,
     settings: &Settings,
 ) -> AppResult<ExtractResult> {
+    extract_doc_with_title_controlled(url, title, output_dir, settings, None)
+}
+
+fn extract_doc_with_title_controlled(
+    url: &str,
+    title: Option<&str>,
+    output_dir: &str,
+    settings: &Settings,
+    cancelled: Option<Arc<AtomicBool>>,
+) -> AppResult<ExtractResult> {
     let wiki_url = normalize_wiki_url(url)?;
     let doc_title = match title {
         Some(t) => t.to_string(),
@@ -147,7 +160,7 @@ pub fn extract_doc_with_title(
     };
 
     // 1. 获取文档正文
-    let content = lark::docs_fetch(&wiki_url)?;
+    let content = lark::docs_fetch_controlled(&wiki_url, cancelled.as_deref())?;
 
     // 2. 提取图片引用
     let images = markdown::extract_images(&content);
@@ -171,50 +184,60 @@ pub fn extract_doc_with_title(
     let mut images_downloaded = 0usize;
     let mut images_failed = 0usize;
     let mut content = content;
+    let mut url_map = Vec::new();
 
     // 4. 下载图片（串行，和 Python 参考代码一样）
     if settings.download_images && image_count > 0 {
         fs::create_dir_all(&img_dir)?;
         let mut processed_urls = HashSet::new();
+        let unique_images: Vec<_> = images
+            .iter()
+            .enumerate()
+            .filter(|(_, image)| processed_urls.insert(image.url.clone()))
+            .map(|(index, image)| (index, image.clone()))
+            .collect();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(settings.concurrency.min(unique_images.len()).max(1))
+            .build()
+            .map_err(|error| AppError::Other(format!("创建图片下载线程池失败: {}", error)))?;
+        let download_results: Vec<_> = pool.install(|| {
+            unique_images
+                .par_iter()
+                .map(|(i, img)| {
+                    if cancelled
+                        .as_ref()
+                        .is_some_and(|flag| flag.load(Ordering::Relaxed))
+                    {
+                        return (
+                            *i,
+                            img.clone(),
+                            Err(AppError::Extract("任务已取消".to_string())),
+                        );
+                    }
+                    let output_base = img_dir.join(format!("img_{:02}", i + 1));
+                    let output_base_str = output_base.to_string_lossy().to_string();
+                    let first = lark::docs_media_preview_controlled(
+                        &img.file_token,
+                        &output_base_str,
+                        cancelled.as_deref(),
+                    );
+                    let result = if first.is_err() {
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        lark::docs_media_preview_controlled(
+                            &img.file_token,
+                            &output_base_str,
+                            cancelled.as_deref(),
+                        )
+                    } else {
+                        first
+                    };
+                    (*i, img.clone(), result)
+                })
+                .collect()
+        });
 
-        for (i, img) in images.iter().enumerate() {
-            if !processed_urls.insert(img.url.clone()) {
-                continue;
-            }
+        for (i, img, media_result) in download_results {
             let token = &img.file_token;
-            let output_base = img_dir.join(format!("img_{:02}", i + 1));
-            let output_base_str = output_base.to_string_lossy().to_string();
-
-            // 清理可能存在的旧文件（lark-cli 不支持 --overwrite，遇到已存在文件会报错）
-            // 删除所有 img_XX.* 格式的文件
-            if let Ok(entries) = fs::read_dir(&img_dir) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with(&format!("img_{:02}", i + 1)) {
-                        let _ = fs::remove_file(entry.path());
-                    }
-                }
-            }
-
-            // 调用 lark-cli docs +media-preview（失败时重试一次）
-            let media_result = lark::docs_media_preview(token, &output_base_str);
-            let media_result = if media_result.is_err() {
-                // 等待 1 秒后重试
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                // 重试前清理旧文件
-                if let Ok(entries) = fs::read_dir(&img_dir) {
-                    for entry in entries.flatten() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if name.starts_with(&format!("img_{:02}", i + 1)) {
-                            let _ = fs::remove_file(entry.path());
-                        }
-                    }
-                }
-                lark::docs_media_preview(token, &output_base_str)
-            } else {
-                media_result
-            };
-
             match media_result {
                 Ok(saved_path) => {
                     let saved = PathBuf::from(&saved_path);
@@ -270,7 +293,7 @@ pub fn extract_doc_with_title(
 
                     // 替换 Markdown 中的远程 URL → 本地相对路径
                     let local_ref = format!("{}/img_{:02}{}", img_dir_name, i + 1, ext);
-                    content = content.replace(&img.url, &local_ref);
+                    url_map.push((img.url.clone(), local_ref));
                     images_downloaded += 1;
                 }
                 Err(e) => {
@@ -291,6 +314,7 @@ pub fn extract_doc_with_title(
                 }
             }
         }
+        content = markdown::replace_image_urls(&content, &url_map);
     }
 
     // 5. 保存 .md 文件
@@ -372,13 +396,23 @@ pub async fn extract_doc_with_title_async(
     output_dir: &str,
     settings: &Settings,
 ) -> AppResult<ExtractResult> {
+    extract_doc_with_title_async_controlled(url, title, output_dir, settings, None).await
+}
+
+pub async fn extract_doc_with_title_async_controlled(
+    url: &str,
+    title: Option<&str>,
+    output_dir: &str,
+    settings: &Settings,
+    cancelled: Option<Arc<AtomicBool>>,
+) -> AppResult<ExtractResult> {
     let url = url.to_string();
     let title = title.map(|s| s.to_string());
     let output_dir = output_dir.to_string();
     let settings = settings.clone();
 
     tokio::task::spawn_blocking(move || {
-        extract_doc_with_title(&url, title.as_deref(), &output_dir, &settings)
+        extract_doc_with_title_controlled(&url, title.as_deref(), &output_dir, &settings, cancelled)
     })
     .await
     .map_err(|e| AppError::Other(format!("任务执行失败: {}", e)))?

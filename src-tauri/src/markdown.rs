@@ -68,9 +68,26 @@ fn extract_file_token(url: &str) -> String {
 ///
 /// 返回替换后的 Markdown 内容
 pub fn replace_image_urls(content: &str, url_map: &[(String, String)]) -> String {
+    let mappings: std::collections::HashMap<&str, &str> = url_map
+        .iter()
+        .map(|(remote, local)| (remote.as_str(), local.as_str()))
+        .collect();
+    let mut replacements = Vec::new();
+    for (event, span) in Parser::new(content).into_offset_iter() {
+        if let Event::Start(Tag::Image { dest_url, .. }) = event {
+            let source = &content[span.clone()];
+            let destination = dest_url.as_ref();
+            if let Some(local) = mappings.get(destination) {
+                if let Some(relative) = source.find(destination) {
+                    let start = span.start + relative;
+                    replacements.push((start..start + destination.len(), (*local).to_string()));
+                }
+            }
+        }
+    }
     let mut result = content.to_string();
-    for (remote_url, local_path) in url_map {
-        result = result.replace(remote_url, local_path);
+    for (span, local) in replacements.into_iter().rev() {
+        result.replace_range(span, &local);
     }
     result
 }
@@ -159,6 +176,19 @@ mod tests {
             )],
         );
         assert_eq!(replaced, "![img](images/img_01.png)");
+    }
+
+    #[test]
+    fn test_replace_encoded_image_url_by_source_span() {
+        let content = "![encoded](https://feishu.cn/file/token%20name)";
+        let replaced = replace_image_urls(
+            content,
+            &[(
+                "https://feishu.cn/file/token%20name".to_string(),
+                "images/img_01.png".to_string(),
+            )],
+        );
+        assert_eq!(replaced, "![encoded](images/img_01.png)");
     }
 
     #[test]

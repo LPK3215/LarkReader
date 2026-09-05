@@ -217,6 +217,16 @@ pub struct WikiExtractResult {
     pub skipped_count: usize,
     /// 被跳过的节点及原因
     pub skipped: Vec<SkippedNode>,
+    /// Sheet/Bitable 等特殊资源的成功导出结果
+    pub exports: Vec<SpecialExport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecialExport {
+    pub title: String,
+    pub node_token: String,
+    pub obj_type: WikiNodeType,
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +273,14 @@ pub struct Progress {
     pub errors: Vec<String>,
     /// 任务当前状态
     pub status: TaskStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiTaskResult {
+    pub task_id: String,
+    pub progress: Progress,
+    pub result: Option<WikiExtractResult>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

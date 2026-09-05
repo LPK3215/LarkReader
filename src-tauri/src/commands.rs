@@ -15,7 +15,7 @@ use crate::error::AppError;
 use crate::extract;
 use crate::models::{
     DeviceInfo, EnvStatus, ExtractResult, LoginResult, PreviewResult, Progress, Settings,
-    TaskStatus, WikiExtractResult, WikiNode,
+    TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -23,6 +23,7 @@ use crate::wiki;
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub tasks: Arc<Mutex<HashMap<String, TaskControl>>>,
+    pub completed_tasks: Arc<Mutex<HashMap<String, WikiTaskResult>>>,
 }
 
 pub struct TaskControl {
@@ -213,17 +214,39 @@ pub async fn extract_wiki(
 
 #[tauri::command]
 pub fn get_progress(task_id: String, state: State<'_, AppState>) -> Result<Progress, AppError> {
-    let tasks = state
+    if let Some(task) = state
         .tasks
         .lock()
-        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
-    let task = tasks
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?
         .get(&task_id)
-        .ok_or_else(|| AppError::InvalidInput("任务不存在".to_string()))?;
-    task.progress
+    {
+        return task
+            .progress
+            .lock()
+            .map(|p| p.clone())
+            .map_err(|e| AppError::StateUnavailable(e.to_string()));
+    }
+    state
+        .completed_tasks
         .lock()
-        .map(|p| p.clone())
-        .map_err(|e| AppError::StateUnavailable(e.to_string()))
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?
+        .get(&task_id)
+        .map(|task| task.progress.clone())
+        .ok_or_else(|| AppError::InvalidInput("任务不存在".to_string()))
+}
+
+#[tauri::command]
+pub fn get_task_result(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<WikiTaskResult, AppError> {
+    let mut completed = state
+        .completed_tasks
+        .lock()
+        .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
+    completed
+        .remove(&task_id)
+        .ok_or_else(|| AppError::InvalidInput("任务尚未完成、已领取或不存在".to_string()))
 }
 
 #[tauri::command]
@@ -250,7 +273,9 @@ pub async fn start_extract_wiki(
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     std::fs::create_dir_all(&dir)?;
     let task_id = Uuid::new_v4().to_string();
-    let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), 0)));
+    let tree = wiki::get_wiki_tree(&wiki_url)?;
+    let total = wiki::count_selected_exportable_nodes(&tree, selected_tokens.as_deref());
+    let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), total)));
     let cancelled = Arc::new(AtomicBool::new(false));
     state
         .tasks
@@ -264,13 +289,14 @@ pub async fn start_extract_wiki(
             },
         );
     let tasks = state.tasks.clone();
+    let completed_tasks = state.completed_tasks.clone();
     let task_id_for_run = task_id.clone();
     tauri::async_runtime::spawn(async move {
         if let Ok(mut p) = progress.lock() {
             p.status = TaskStatus::Running;
         }
-        let result = crate::wiki::extract_wiki_controlled(
-            &wiki_url,
+        let result = crate::wiki::extract_wiki_tree_controlled(
+            tree,
             &dir,
             &settings,
             selected_tokens.as_deref(),
@@ -285,11 +311,40 @@ pub async fn start_extract_wiki(
                 p.status = TaskStatus::Completed;
             } else {
                 p.status = TaskStatus::Failed;
-                p.errors
-                    .push(result.err().map(|e| e.to_string()).unwrap_or_default());
+                if let Err(error) = &result {
+                    p.errors.push(error.to_string());
+                }
             }
         }
-        let _ = (tasks, task_id_for_run);
+        let final_progress = progress
+            .lock()
+            .map(|p| p.clone())
+            .unwrap_or_else(|_| Progress::new(task_id_for_run.clone(), 0));
+        let task_result = match result {
+            Ok(result) => WikiTaskResult {
+                task_id: task_id_for_run.clone(),
+                progress: final_progress,
+                result: Some(result),
+                error: None,
+            },
+            Err(error) => WikiTaskResult {
+                task_id: task_id_for_run.clone(),
+                progress: final_progress,
+                result: None,
+                error: Some(error.to_string()),
+            },
+        };
+        if let Ok(mut completed) = completed_tasks.lock() {
+            if completed.len() >= 100 {
+                if let Some(key) = completed.keys().next().cloned() {
+                    completed.remove(&key);
+                }
+            }
+            completed.insert(task_id_for_run.clone(), task_result);
+        }
+        if let Ok(mut tasks) = tasks.lock() {
+            tasks.remove(&task_id_for_run);
+        }
     });
     Ok(task_id)
 }

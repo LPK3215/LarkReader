@@ -6,7 +6,9 @@
 
 use std::io::Read;
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use std::time::Instant;
 use wait_timeout::ChildExt;
 
 use crate::error::{AppError, AppResult};
@@ -49,7 +51,11 @@ fn extract_json(stdout: &str) -> &str {
 /// - 自动清除 HERMES_HOME 等干扰变量
 /// - 检查退出码，非零则报错
 /// - 退出码为 0 时检查 JSON 的 ok 字段
-fn run_lark_with_timeout(args: &[&str], timeout: Duration) -> AppResult<String> {
+fn run_lark_with_timeout(
+    args: &[&str],
+    timeout: Duration,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
     let mut child = build_command()
         .args(args)
         .stdout(Stdio::piped())
@@ -72,16 +78,29 @@ fn run_lark_with_timeout(args: &[&str], timeout: Duration) -> AppResult<String> 
         let mut bytes = Vec::new();
         stderr_pipe.read_to_end(&mut bytes).map(|_| bytes)
     });
-    let status: ExitStatus =
-        if let Some(status) = child.wait_timeout(timeout).map_err(AppError::Io)? {
-            status
-        } else {
+    let started = Instant::now();
+    let status: ExitStatus = loop {
+        if cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(AppError::Extract("任务已取消".to_string()));
+        }
+        if let Some(status) = child
+            .wait_timeout(Duration::from_millis(200))
+            .map_err(AppError::Io)?
+        {
+            break status;
+        }
+        if started.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
             return Err(AppError::CommandTimeout(timeout.as_secs()));
-        };
+        }
+    };
     let stdout = stdout_reader
         .join()
         .map_err(|_| AppError::Other("读取 stdout 的线程异常退出".to_string()))??;
@@ -120,15 +139,15 @@ fn run_lark_with_timeout(args: &[&str], timeout: Duration) -> AppResult<String> 
 }
 
 pub fn run_lark(args: &[&str]) -> AppResult<String> {
-    run_lark_with_timeout(args, Duration::from_secs(120))
+    run_lark_with_timeout(args, Duration::from_secs(120), None)
 }
 
 fn run_lark_quick(args: &[&str]) -> AppResult<String> {
-    run_lark_with_timeout(args, Duration::from_secs(15))
+    run_lark_with_timeout(args, Duration::from_secs(15), None)
 }
 
 fn run_lark_interactive(args: &[&str]) -> AppResult<String> {
-    run_lark_with_timeout(args, Duration::from_secs(600))
+    run_lark_with_timeout(args, Duration::from_secs(600), None)
 }
 
 /// 执行 lark-cli 命令，解析 JSON，返回 data 字段
@@ -306,16 +325,29 @@ pub fn auth_login_with_device_code(device_code: &str) -> AppResult<String> {
 /// 对应 Python: fetch_doc(node_token)
 /// 返回文档的 Markdown 正文
 pub fn docs_fetch(url: &str) -> AppResult<String> {
-    let data = run_lark_get_data(&[
-        "docs",
-        "+fetch",
-        "--doc",
-        url,
-        "--doc-format",
-        "markdown",
-        "--as",
-        "user",
-    ])?;
+    docs_fetch_controlled(url, None)
+}
+
+pub fn docs_fetch_controlled(url: &str, cancelled: Option<&AtomicBool>) -> AppResult<String> {
+    let stdout = run_lark_with_timeout(
+        &[
+            "docs",
+            "+fetch",
+            "--doc",
+            url,
+            "--doc-format",
+            "markdown",
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
 
     // 解析 data.document.content
     let fetch_data: crate::models::FetchDocData =
@@ -330,16 +362,33 @@ pub fn docs_fetch(url: &str) -> AppResult<String> {
 /// 命令参数与 Python 参考代码完全一致：不加 --format json，不加 --overwrite
 /// 返回图片保存路径
 pub fn docs_media_preview(token: &str, output_path: &str) -> AppResult<String> {
-    let data = run_lark_get_data(&[
-        "docs",
-        "+media-preview",
-        "--token",
-        token,
-        "--output",
-        output_path,
-        "--as",
-        "user",
-    ])?;
+    docs_media_preview_controlled(token, output_path, None)
+}
+
+pub fn docs_media_preview_controlled(
+    token: &str,
+    output_path: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
+    let stdout = run_lark_with_timeout(
+        &[
+            "docs",
+            "+media-preview",
+            "--token",
+            token,
+            "--output",
+            output_path,
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
 
     let media_data: crate::models::MediaPreviewData =
         serde_json::from_value(data).map_err(|e| AppError::JsonParse(e.to_string()))?;
@@ -350,18 +399,35 @@ pub fn docs_media_preview(token: &str, output_path: &str) -> AppResult<String> {
 }
 
 pub fn sheets_export(url: &str, output_path: &str) -> AppResult<String> {
-    let data = run_lark_get_data(&[
-        "sheets",
-        "+workbook-export",
-        "--url",
-        url,
-        "--file-extension",
-        "xlsx",
-        "--output-path",
-        output_path,
-        "--as",
-        "user",
-    ])?;
+    sheets_export_controlled(url, output_path, None)
+}
+
+pub fn sheets_export_controlled(
+    url: &str,
+    output_path: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
+    let stdout = run_lark_with_timeout(
+        &[
+            "sheets",
+            "+workbook-export",
+            "--url",
+            url,
+            "--file-extension",
+            "xlsx",
+            "--output-path",
+            output_path,
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
     Ok(data
         .get("saved_path")
         .or_else(|| data.get("output_path"))
@@ -371,14 +437,29 @@ pub fn sheets_export(url: &str, output_path: &str) -> AppResult<String> {
 }
 
 pub fn base_table_list(base_token: &str) -> AppResult<serde_json::Value> {
-    run_lark_get_data(&[
-        "base",
-        "+table-list",
-        "--base-token",
-        base_token,
-        "--as",
-        "user",
-    ])
+    base_table_list_controlled(base_token, None)
+}
+
+pub fn base_table_list_controlled(
+    base_token: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<serde_json::Value> {
+    let stdout = run_lark_with_timeout(
+        &[
+            "base",
+            "+table-list",
+            "--base-token",
+            base_token,
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    resp.data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))
 }
 
 pub fn base_records_export(
@@ -386,21 +467,34 @@ pub fn base_records_export(
     table_id: &str,
     output_path: &str,
 ) -> AppResult<String> {
-    run_lark(&[
-        "base",
-        "+record-list",
-        "--base-token",
-        base_token,
-        "--table-id",
-        table_id,
-        "--format",
-        "ndjson",
-        "--output",
-        output_path,
-        "--overwrite",
-        "--as",
-        "user",
-    ])?;
+    base_records_export_controlled(base_token, table_id, output_path, None)
+}
+
+pub fn base_records_export_controlled(
+    base_token: &str,
+    table_id: &str,
+    output_path: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
+    run_lark_with_timeout(
+        &[
+            "base",
+            "+record-list",
+            "--base-token",
+            base_token,
+            "--table-id",
+            table_id,
+            "--format",
+            "ndjson",
+            "--output",
+            output_path,
+            "--overwrite",
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+    )?;
     Ok(output_path.to_string())
 }
 
