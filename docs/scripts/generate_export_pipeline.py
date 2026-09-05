@@ -147,7 +147,7 @@ def build() -> str:
                     [f'图片并发下载（{DATA["concurrency"]}）并本地化 URL',
                      "同名自动 (2)(3) 编号，不覆盖"], C["green"]))
     p.extend(branch(r2x[1], r2y, r2w, r2h, "Sheet", "→ XLSX",
-                    ["整表导出，保留数值与表头", "写命令走 cwd 白名单规避"], C["orange"]))
+                    ["整表导出，保留数值与表头", "写命令受 cwd 白名单约束"], C["orange"]))
     p.extend(branch(r2x[2], r2y, r2w, r2h, "Bitable", "→ NDJSON",
                     ["每张数据表一份 NDJSON", "附带同表名 .manifest.json 元数据"], C["purple"]))
     p.extend(branch(r2x[3], r2y, r2w, r2h, "File 附件", "→ 原样字节",

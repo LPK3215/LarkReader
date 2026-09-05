@@ -44,7 +44,7 @@
 <text x="348" y="266" font-size="14" fill="#FFB454" font-weight="700" text-anchor="start">Sheet</text>
 <text x="348" y="290" font-size="15.5" fill="#FFFFFF" font-weight="600" text-anchor="start">→ XLSX</text>
 <text x="348" y="312" font-size="11" fill="#93A6BD" font-weight="400" text-anchor="start">整表导出，保留数值与表头</text>
-<text x="348" y="328" font-size="11" fill="#93A6BD" font-weight="400" text-anchor="start">写命令走 cwd 白名单规避</text>
+<text x="348" y="328" font-size="11" fill="#93A6BD" font-weight="400" text-anchor="start">写命令受 cwd 白名单约束</text>
 <rect x="620" y="238" width="250" height="100" rx="12" ry="12" fill="#16212F" stroke="#A97BFF" stroke-width="1"/>
 <rect x="620" y="238" width="4" height="100" rx="2" fill="#A97BFF"/>
 <text x="638" y="266" font-size="14" fill="#A97BFF" font-weight="700" text-anchor="start">Bitable</text>

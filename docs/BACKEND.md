@@ -173,7 +173,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 |---|---|
 | `commands.rs` | Tauri 接口、设置存储、任务生命周期与历史 |
 | `env.rs` | Node/CLI/配置/登录检测与初始化 |
-| `lark.rs` | lark-cli 执行、超时、取消、重试、JSON 解析，以及写命令的 cwd 白名单规避 |
+| `lark.rs` | lark-cli 执行、超时、取消、重试、JSON 解析，以及写命令的 cwd 白名单约束 |
 | `extract.rs` | 单文档预览、导出、图片下载、事务提交和输出路径词法清理 |
 | `wiki.rs` | Wiki 遍历、选择、目录映射与批量导出（Doc/Sheet/Bitable/File 分流） |
 | `markdown.rs` | 图片解析、URL 替换和安全文件名 |
