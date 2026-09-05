@@ -19,6 +19,7 @@ pub struct EnvStatus {
     pub lark_cli_installed: bool,
     /// lark-cli 版本号
     pub lark_cli_version: Option<String>,
+    pub lark_cli_compatible: bool,
     /// 飞书应用是否已配置（config show 成功）
     pub app_configured: bool,
     /// 飞书应用 ID

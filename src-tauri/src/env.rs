@@ -78,6 +78,19 @@ pub fn check_env() -> EnvStatus {
         lark_cli_version,
         ..Default::default()
     };
+    status.lark_cli_compatible = status
+        .lark_cli_version
+        .as_deref()
+        .is_some_and(|version| version.contains(SUPPORTED_LARK_CLI_VERSION));
+    if status.lark_cli_installed && !status.lark_cli_compatible {
+        status.check_errors.push(EnvCheckError {
+            component: "lark_cli_version".to_string(),
+            message: format!(
+                "当前版本不在已验证范围内，建议使用 lark-cli {}",
+                SUPPORTED_LARK_CLI_VERSION
+            ),
+        });
+    }
 
     // lark-cli 未安装，后面的检测无法进行
     if !status.lark_cli_installed {

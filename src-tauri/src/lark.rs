@@ -135,12 +135,41 @@ fn run_lark_interactive(args: &[&str]) -> AppResult<String> {
 ///
 /// 对应 Python: data = json.loads(result.stdout); data["data"]
 pub fn run_lark_get_data(args: &[&str]) -> AppResult<serde_json::Value> {
-    let stdout = run_lark(args)?;
-    let json_str = extract_json(&stdout);
-    let resp: LarkResponse = serde_json::from_str(json_str)
-        .map_err(|e| AppError::JsonParse(format!("JSON 解析失败: {}", e)))?;
-    resp.data
-        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))
+    let mut last_error = None;
+    for attempt in 0..3 {
+        match run_lark(args).and_then(|stdout| {
+            let json_str = extract_json(&stdout);
+            let resp: LarkResponse = serde_json::from_str(json_str)
+                .map_err(|e| AppError::JsonParse(format!("JSON 解析失败: {}", e)))?;
+            resp.data
+                .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))
+        }) {
+            Ok(data) => return Ok(data),
+            Err(error) if attempt < 2 && is_retryable_cli_error(&error) => {
+                last_error = Some(error);
+                std::thread::sleep(Duration::from_secs(1 << attempt));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| AppError::Other("命令重试失败".to_string())))
+}
+
+fn is_retryable_cli_error(error: &AppError) -> bool {
+    match error {
+        AppError::CommandTimeout(_) | AppError::Http(_) => true,
+        AppError::LarkCliError(message) | AppError::LarkCliResponse(message) => {
+            let message = message.to_ascii_lowercase();
+            message.contains("network")
+                || message.contains("connection")
+                || message.contains("rate")
+                || message.contains("too many")
+                || message.contains("temporar")
+                || message.contains("网络")
+                || message.contains("频繁")
+        }
+        _ => false,
+    }
 }
 
 /// 将 lark-cli 错误转换为用户友好的中文提示

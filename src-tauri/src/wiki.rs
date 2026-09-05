@@ -416,8 +416,33 @@ fn collect_docs_with_path<'a>(
     selected_tokens: Option<&[String]>,
 ) -> Vec<DocWithPath<'a>> {
     let mut docs = Vec::new();
-    collect_docs_recursive(node, &PathBuf::new(), selected_tokens, false, &mut docs);
+    let relevant = selected_tokens.map(|tokens| build_relevant_tokens(node, tokens));
+    collect_docs_recursive(
+        node,
+        &PathBuf::new(),
+        selected_tokens,
+        relevant.as_ref(),
+        false,
+        &mut docs,
+    );
     docs
+}
+
+fn build_relevant_tokens(node: &WikiNode, selected_tokens: &[String]) -> HashSet<String> {
+    fn visit(node: &WikiNode, selected: &HashSet<&str>, relevant: &mut HashSet<String>) -> bool {
+        let mut contains_selected = selected.contains(node.node_token.as_str());
+        for child in &node.children {
+            contains_selected |= visit(child, selected, relevant);
+        }
+        if contains_selected {
+            relevant.insert(node.node_token.clone());
+        }
+        contains_selected
+    }
+    let selected: HashSet<&str> = selected_tokens.iter().map(String::as_str).collect();
+    let mut relevant = HashSet::new();
+    visit(node, &selected, &mut relevant);
+    relevant
 }
 
 /// 递归收集文档节点
@@ -425,6 +450,7 @@ fn collect_docs_recursive<'a>(
     node: &'a WikiNode,
     current_path: &Path,
     selected_tokens: Option<&[String]>,
+    relevant_tokens: Option<&HashSet<String>>,
     ancestor_selected: bool,
     docs: &mut Vec<DocWithPath<'a>>,
 ) {
@@ -433,13 +459,9 @@ fn collect_docs_recursive<'a>(
         .unwrap_or(true);
     let subtree_selected = ancestor_selected || directly_selected;
     // 检查当前节点是否在选中列表中（如果有 selected_tokens）
-    let is_selected = match selected_tokens {
-        None => true, // 没有限制，全部选中
-        Some(tokens) => {
-            // 检查该节点或其子树中是否有选中的节点
-            subtree_selected || is_node_or_descendant_selected(node, tokens)
-        }
-    };
+    let is_selected = selected_tokens.is_none()
+        || subtree_selected
+        || relevant_tokens.is_some_and(|tokens| tokens.contains(&node.node_token));
 
     if !is_selected {
         return;
@@ -465,7 +487,14 @@ fn collect_docs_recursive<'a>(
             // 非根节点的文件夹节点，创建子目录
             current_path.join(markdown::prefixed_filename(node.position, &node.title))
         };
-        collect_docs_recursive(child, &child_path, selected_tokens, subtree_selected, docs);
+        collect_docs_recursive(
+            child,
+            &child_path,
+            selected_tokens,
+            relevant_tokens,
+            subtree_selected,
+            docs,
+        );
     }
 }
 
