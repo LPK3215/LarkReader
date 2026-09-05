@@ -362,6 +362,14 @@ pub fn auth_login_with_device_code(device_code: &str) -> AppResult<String> {
     )
 }
 
+/// 执行 `lark-cli auth logout --json`
+///
+/// 清除 lark-cli 保存的飞书登录凭据（token）。退出后 whoami / check_env
+/// 将返回未登录状态。普通写命令，短超时即可。
+pub fn auth_logout() -> AppResult<String> {
+    run_lark(&["auth", "logout", "--json"])
+}
+
 /// 执行 `lark-cli docs +fetch --doc <url> --doc-format markdown --as user`
 ///
 /// 对应 Python: fetch_doc(node_token)

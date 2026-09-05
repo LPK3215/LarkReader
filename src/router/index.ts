@@ -4,6 +4,7 @@
 //   /onboarding  环境体检 / 登录 / 默认输出目录引导，全屏无壳（meta.bare）
 //   /workspace   主工作台：贴链接 -> 扫树勾选 -> 下载
 //   /history     任务历史 + 打开产物目录
+//   /terminal    飞书终端：手动体检环境 / 登录 / 退出 / 切换账号
 //   /settings    设置
 //
 // 说明：Tauri 是本地桌面应用，用 createWebHashHistory 而非 history 模式，
@@ -34,6 +35,12 @@ const routes: RouteRecordRaw[] = [
     name: "history",
     component: () => import("../views/HistoryView.vue"),
     meta: { title: "任务历史" },
+  },
+  {
+    path: "/terminal",
+    name: "terminal",
+    component: () => import("../views/TerminalView.vue"),
+    meta: { title: "飞书终端" },
   },
   {
     path: "/settings",

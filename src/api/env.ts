@@ -8,6 +8,7 @@
 //   start_login()                -> DeviceInfo（非阻塞，返回后前端打开浏览器）
 //   complete_login(deviceCode)   -> LoginResult（单次阻塞等待授权，勿并发轮询）
 //   login_feishu_blocking()      -> LoginResult（一步到位阻塞登录，备用入口）
+//   logout()                     -> string（消息，清除 lark-cli token）
 // ============================================================================
 
 import { invoke } from "@tauri-apps/api/core";
@@ -35,4 +36,8 @@ export async function completeLogin(deviceCode: string): Promise<LoginResult> {
 
 export async function loginFeishuBlocking(): Promise<LoginResult> {
   return invoke<LoginResult>("login_feishu_blocking");
+}
+
+export async function logout(): Promise<string> {
+  return invoke<string>("logout");
 }

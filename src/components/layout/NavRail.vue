@@ -16,6 +16,7 @@ const items: NavItem[] = [
   { key: "workspace", label: "工作台", icon: "workbench", route: "/workspace" },
   { key: "history", label: "任务历史", icon: "history", route: "/history" },
   { key: "reader", label: "本地阅读（规划中）", icon: "book", route: "/reader", disabled: true },
+  { key: "terminal", label: "飞书终端", icon: "terminal", route: "/terminal" },
   { key: "settings", label: "设置", icon: "settings", route: "/settings" },
 ];
 </script>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 顶部应用栏（44px）：品牌区 + 环境状态胶囊 + 设置入口。
-// 环境状态由 stores/auth.ts 的 EnvStatus 推导（本轮为静态视觉骨架，先用 props 驱动）。
+// 环境状态由 App.vue 从 stores/auth.ts 的 EnvStatus 推导后经 props 传入。
+// 状态胶囊可点击，进入「飞书终端」页做手动体检/登录/退出。
 
 import AppIcon from "../AppIcon.vue";
 
@@ -15,7 +16,7 @@ withDefaults(
   { level: "ready", text: "环境正常", userName: null }
 );
 
-const emit = defineEmits<{ openSettings: [] }>();
+const emit = defineEmits<{ openSettings: []; openEnv: [] }>();
 </script>
 
 <template>
@@ -28,10 +29,15 @@ const emit = defineEmits<{ openSettings: [] }>();
     </div>
 
     <div class="lr-header__right">
-      <span class="lr-env" :class="`lr-env--${level}`">
+      <button
+        class="lr-env"
+        :class="`lr-env--${level}`"
+        title="查看飞书终端状态并手动管理"
+        @click="emit('openEnv')"
+      >
         <i class="lr-env__dot" />
         {{ text }}
-      </span>
+      </button>
 
       <span v-if="userName" class="lr-header__user lr-selectable">{{ userName }}</span>
 
@@ -89,10 +95,21 @@ const emit = defineEmits<{ openSettings: [] }>();
   height: 22px;
   padding: 0 10px;
   border-radius: 11px;
+  font-family: inherit;
   font-size: var(--lr-fs-secondary);
   background: var(--lr-success-soft);
   color: var(--lr-success);
   border: 0.5px solid var(--lr-success-border);
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.lr-env:hover {
+  filter: brightness(0.96);
+}
+
+.lr-env:active {
+  opacity: 0.85;
 }
 
 .lr-env--warning {

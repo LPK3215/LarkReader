@@ -262,6 +262,14 @@ pub fn complete_login(device_code: &str) -> AppResult<LoginResult> {
     }
 }
 
+/// 退出飞书登录（清除 lark-cli 保存的 token）
+///
+/// 执行 `lark-cli auth logout --json`。退出后再次体检（check_env / whoami）
+/// 即返回未登录状态；登出/切换账号前提示用户后续任务需要重新授权。
+pub fn logout() -> AppResult<String> {
+    lark::auth_logout().map(|_| "已退出飞书登录".to_string())
+}
+
 /// 从可能包含日志行的输出中提取 JSON
 fn extract_json(stdout: &str) -> &str {
     let trimmed = stdout.trim();

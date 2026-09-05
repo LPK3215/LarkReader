@@ -175,6 +175,12 @@ pub async fn login_feishu_blocking() -> Result<LoginResult, AppError> {
         .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?
 }
 
+/// 退出飞书登录（清除 lark-cli 保存的 token）
+#[tauri::command]
+pub fn logout() -> Result<String, AppError> {
+    env::logout()
+}
+
 /// login_feishu_blocking 的同步实现（在阻塞线程上运行）
 fn login_feishu_blocking_impl() -> Result<LoginResult, AppError> {
     // 先尝试非阻塞方式

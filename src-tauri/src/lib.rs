@@ -49,6 +49,7 @@ pub fn run() {
             commands::start_login,
             commands::complete_login,
             commands::login_feishu_blocking,
+            commands::logout,
             commands::preview_doc,
             commands::extract_doc,
             commands::get_settings,

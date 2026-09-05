@@ -62,6 +62,9 @@ const icons: Record<string, string[]> = {
   external: ["M14 4h6v6", "M20 4l-9 9", "M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"],
   plus: ["M12 5v14M5 12h14"],
   minus: ["M5 12h14"],
+  terminal: ["M4 17l6-5-6-5", "M12 19h8"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"],
+  user: ["M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4.5 21a7.5 7.5 0 0 1 15 0"],
 };
 </script>
 

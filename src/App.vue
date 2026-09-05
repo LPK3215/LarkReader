@@ -7,7 +7,7 @@
 // 全局任务条跨页面保留：切到历史或设置页也能看到进度并取消。
 // ============================================================================
 
-import { computed, watch } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AppHeader from "./components/layout/AppHeader.vue";
@@ -15,12 +15,14 @@ import NavRail from "./components/layout/NavRail.vue";
 import GlobalTaskBar from "./components/layout/GlobalTaskBar.vue";
 import { useTaskStore } from "./stores/task";
 import { useSettingsStore } from "./stores/settings";
+import { useAuthStore } from "./stores/auth";
 import { message as globalMessage } from "./composables/useMessage";
 
 const route = useRoute();
 const router = useRouter();
 const task = useTaskStore();
 const settings = useSettingsStore();
+const auth = useAuthStore();
 
 /** Onboarding 全屏无壳 */
 const bare = computed(() => route.meta.bare === true);
@@ -43,13 +45,32 @@ watch(
   }
 );
 
+/** 右上角胶囊背后需要一个真实状态源：首次进入非引导页时体检一次。
+ *  引导页完成跳转时也会触发（watch bare），避免顶栏一直停留在“检测中”。 */
+async function ensureEnv() {
+  if (auth.env || auth.refreshing) return;
+  await auth.refresh();
+}
+
 function goSettings() {
   router.push("/settings");
+}
+
+function goTerminal() {
+  router.push("/terminal");
 }
 
 function goWorkspace() {
   router.push("/workspace");
 }
+
+onMounted(() => {
+  if (!bare.value) void ensureEnv();
+});
+
+watch(bare, (isBare) => {
+  if (!isBare) void ensureEnv();
+});
 </script>
 
 <template>
@@ -58,7 +79,13 @@ function goWorkspace() {
 
   <!-- 正常外壳 -->
   <div v-else class="lr-shell">
-    <AppHeader level="ready" text="环境正常" @open-settings="goSettings" />
+    <AppHeader
+      :level="auth.overview.level"
+      :text="auth.overview.text"
+      :user-name="auth.userName"
+      @open-settings="goSettings"
+      @open-env="goTerminal"
+    />
 
     <div class="lr-shell__body">
       <NavRail />
