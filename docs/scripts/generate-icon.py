@@ -15,7 +15,21 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-ROOT = Path(__file__).resolve().parent.parent
+
+def find_repo_root(start: Path) -> Path:
+    """Walk up from `start` until a repo anchor (.git or Cargo.toml) is found.
+
+    Decoupled from the script's own depth so it works whether the script lives
+    at <root>/scripts/ or <root>/docs/scripts/.
+    """
+    cur = start.resolve()
+    for parent in [cur, *cur.parents]:
+        if (parent / ".git").is_dir() or (parent / "Cargo.toml").is_file():
+            return parent
+    return cur
+
+
+ROOT = find_repo_root(Path(__file__))
 OUT = ROOT / "tmp" / "lark-reader-1024.png"
 
 W = 1024
