@@ -11,11 +11,24 @@ use crate::error::{AppError, AppResult};
 use crate::lark;
 use crate::models::{DeviceInfo, EnvCheckError, EnvStatus, LoginResult};
 
+/// Windows 上隐藏子进程控制台窗口（CREATE_NO_WINDOW）。
+#[cfg(windows)]
+fn hide_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x08000000);
+}
+
+#[cfg(not(windows))]
+fn hide_window(_cmd: &mut Command) {}
+
 const SUPPORTED_LARK_CLI_VERSION: &str = "1.0.93";
 
 /// 检测 Node.js 是否安装，返回版本号
 pub fn check_node() -> Option<String> {
-    let output = Command::new("node").arg("--version").output().ok()?;
+    let mut cmd = Command::new("node");
+    cmd.arg("--version");
+    hide_window(&mut cmd);
+    let output = cmd.output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -155,12 +168,14 @@ pub fn install_lark_cli() -> AppResult<String> {
     }
 
     // 执行 npm install -g @larksuite/cli@latest
-    let output = Command::new("npm")
-        .args([
-            "install",
-            "-g",
-            &format!("@larksuite/cli@{}", SUPPORTED_LARK_CLI_VERSION),
-        ])
+    let mut npm_cmd = Command::new("npm");
+    npm_cmd.args([
+        "install",
+        "-g",
+        &format!("@larksuite/cli@{}", SUPPORTED_LARK_CLI_VERSION),
+    ]);
+    hide_window(&mut npm_cmd);
+    let output = npm_cmd
         .output()
         .map_err(|e| AppError::Other(format!("npm 执行失败: {}", e)))?;
 

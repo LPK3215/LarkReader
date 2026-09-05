@@ -20,6 +20,8 @@ use crate::models::LarkResponse;
 const ENV_TO_REMOVE: &[&str] = &["HERMES_HOME", "OPENCLAW_HOME", "LARK_CHANNEL"];
 
 /// 构造一个已清理干扰环境变量的 lark-cli Command
+///
+/// Windows 上额外设置 CREATE_NO_WINDOW，避免每次调用都弹出 cmd.exe 黑框。
 fn build_command() -> Command {
     let lark_bin = if cfg!(windows) {
         "lark-cli.cmd"
@@ -29,6 +31,12 @@ fn build_command() -> Command {
     let mut cmd = Command::new(lark_bin);
     for env in ENV_TO_REMOVE {
         cmd.env_remove(env);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW：禁止子进程创建可见控制台窗口
+        cmd.creation_flags(0x08000000);
     }
     #[cfg(unix)]
     {

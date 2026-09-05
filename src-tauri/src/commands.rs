@@ -176,14 +176,21 @@ fn clip_for_log(text: &str, max_chars: usize) -> String {
 
 /// 检测环境：Node.js / lark-cli / 飞书登录状态
 #[tauri::command]
-pub fn check_env() -> EnvStatus {
-    env::check_env()
+pub async fn check_env() -> EnvStatus {
+    tauri::async_runtime::spawn_blocking(env::check_env)
+        .await
+        .unwrap_or_else(|e| {
+            crate::logger::error(format!("环境检测任务异常: {e}"));
+            EnvStatus::default()
+        })
 }
 
 /// 自动安装 lark-cli
 #[tauri::command]
-pub fn setup_lark_cli() -> Result<String, AppError> {
-    env::install_lark_cli()
+pub async fn setup_lark_cli() -> Result<String, AppError> {
+    tauri::async_runtime::spawn_blocking(env::install_lark_cli)
+        .await
+        .map_err(|e| AppError::Other(format!("lark-cli 安装任务异常: {e}")))?
 }
 
 /// 在后台启动飞书应用创建向导（`config init --new`）并立即返回。
@@ -299,8 +306,10 @@ pub fn get_app_init_status(state: State<'_, AppState>) -> Result<AppInitStatus, 
 ///
 /// 返回 DeviceInfo，前端拿到后打开浏览器
 #[tauri::command]
-pub fn start_login() -> Result<DeviceInfo, AppError> {
-    let device_info = env::start_login()?;
+pub async fn start_login() -> Result<DeviceInfo, AppError> {
+    let device_info = tauri::async_runtime::spawn_blocking(env::start_login)
+        .await
+        .map_err(|e| AppError::Other(format!("登录发起任务异常: {e}")))??;
     crate::logger::info("发起飞书登录（设备码授权流程）");
     Ok(device_info)
 }
@@ -324,16 +333,20 @@ pub async fn complete_login(device_code: String) -> Result<LoginResult, AppError
 
 /// 退出飞书登录（清除 lark-cli 保存的 token）
 #[tauri::command]
-pub fn logout() -> Result<String, AppError> {
-    let result = env::logout()?;
+pub async fn logout() -> Result<String, AppError> {
+    let result = tauri::async_runtime::spawn_blocking(env::logout)
+        .await
+        .map_err(|e| AppError::Other(format!("退出登录任务异常: {e}")))??;
     crate::logger::info("退出飞书登录");
     Ok(result)
 }
 
 /// 预览文档：获取 Markdown 正文（不下载图片）
 #[tauri::command]
-pub fn preview_doc(url: String) -> Result<PreviewResult, AppError> {
-    extract::preview_doc(&url)
+pub async fn preview_doc(url: String) -> Result<PreviewResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || extract::preview_doc(&url))
+        .await
+        .map_err(|e| AppError::Other(format!("文档预览任务异常: {e}")))?
 }
 
 /// 提取单篇文档（正文 + 图片下载 + 保存 .md）
@@ -437,8 +450,16 @@ pub fn open_output_dir(path: String) -> Result<(), AppError> {
 /// 扫描结果会缓存到 `AppState.last_tree`，供后续 `count_exportable` 与
 /// `start_extract_wiki` 复用，避免同一棵树被扫描两次。
 #[tauri::command]
-pub fn get_wiki_tree(wiki_url: String, state: State<'_, AppState>) -> Result<WikiNode, AppError> {
-    let tree = wiki::get_wiki_tree(&wiki_url)?;
+pub async fn get_wiki_tree(
+    wiki_url: String,
+    state: State<'_, AppState>,
+) -> Result<WikiNode, AppError> {
+    let tree = tauri::async_runtime::spawn_blocking({
+        let wiki_url = wiki_url.clone();
+        move || wiki::get_wiki_tree(&wiki_url)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("扫描知识库任务异常: {e}")))??;
     if let Ok(mut cached) = state.last_tree.lock() {
         *cached = Some((wiki_url, tree.clone()));
     }
