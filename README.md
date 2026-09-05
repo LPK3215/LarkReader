@@ -79,17 +79,17 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 
 ```text
 LarkReader/
-├── src/                        # 前端（Vue 3 + TS，19 .vue + 18 .ts，7,161 行）
+├── src/                        # 前端（Vue 3 + TS，19 .vue + 19 .ts，约 7.8k 行）
 │   ├── api/                    #   IPC 封装与类型契约（8 模块，types.ts 为唯一类型源）
 │   ├── components/             #   业务组件（11 个，含 layout/ 布局组件）
 │   ├── composables/            #   组合式函数（useTaskProgress / useMessage）
 │   ├── stores/                 #   Pinia 状态（auth / task / settings / history / onboarding）
 │   ├── views/                  #   页面（Workspace / Reader / History / Logs / Terminal / Settings / Onboarding）
 │   └── styles/                 #   主题与组件样式
-├── src-tauri/                  # Rust 后端（Tauri 2，12 模块 / 5,120 行）
+├── src-tauri/                  # Rust 后端（Tauri 2，12 模块 / 约 5.0k 行）
 │   ├── src/                    #   commands / env / lark / extract / wiki / reader / markdown
 │   │                           #   models / error / logger / lib / main
-│   ├── tests/                  #   集成测试 6 套件（49 个用例，真实下载类需登录环境）
+│   ├── tests/                  #   集成测试 5 套件（真实下载类需登录环境）
 │   └── Cargo.toml
 ├── docs/
 │   ├── assets/                 # README 可视化资产（SVG，由脚本生成）
@@ -135,6 +135,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 
 | 文档 | 内容 |
 |---|---|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | **使用说明（面向最终用户）**：界面总览、首次引导、知识库下载/扫描模式、本地阅读、历史、日志、设置、更新、FAQ |
 | [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、26 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
 | [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |
 | [docs/FEISHU_AUTH.md](docs/FEISHU_AUTH.md) | 飞书自建应用创建、权限清单、登录链路说明 |
