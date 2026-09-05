@@ -199,6 +199,7 @@ pub async fn extract_wiki_tree_controlled(
     cancelled: Option<Arc<AtomicBool>>,
 ) -> AppResult<WikiExtractResult> {
     let wiki_name = tree.title.clone();
+    let started_at = std::time::Instant::now();
 
     // 创建知识库根目录
     let wiki_dir =
@@ -212,6 +213,14 @@ pub async fn extract_wiki_tree_controlled(
     let mut skipped = Vec::new();
 
     let total = docs.len() + special_nodes.len();
+    crate::logger::info(format!(
+        "知识库「{}」导出开始：文档 {} 篇，特殊资源 {} 个，共 {} 项，输出目录 {}",
+        wiki_name,
+        docs.len(),
+        special_nodes.len(),
+        total,
+        output_root
+    ));
     if let Some(progress) = &progress {
         let mut progress = progress
             .lock()
@@ -227,7 +236,7 @@ pub async fn extract_wiki_tree_controlled(
     let mut exports = Vec::new();
     let mut export_failures = Vec::new();
 
-    for (node, dir_path) in &docs {
+    for (doc_idx, (node, dir_path)) in docs.iter().enumerate() {
         if cancelled
             .as_ref()
             .is_some_and(|flag| flag.load(Ordering::Relaxed))
@@ -260,6 +269,7 @@ pub async fn extract_wiki_tree_controlled(
         }
 
         // 提取文档
+        let item_started = std::time::Instant::now();
         match extract::extract_doc_with_title_async_controlled(
             &doc_url,
             Some(&doc_title),
@@ -270,19 +280,60 @@ pub async fn extract_wiki_tree_controlled(
         .await
         {
             Ok(result) => {
+                let item_ms = item_started.elapsed().as_millis();
                 match result.status {
-                    ExtractStatus::Success => success_count += 1,
-                    ExtractStatus::Partial => partial_count += 1,
-                    ExtractStatus::Failed => failed_count += 1,
+                    ExtractStatus::Success => {
+                        success_count += 1;
+                        crate::logger::info(format!(
+                            "[{}/{}] 导出文档「{}」：成功（{}ms）",
+                            doc_idx + 1,
+                            docs.len(),
+                            node.title,
+                            item_ms
+                        ));
+                    }
+                    ExtractStatus::Partial => {
+                        partial_count += 1;
+                        crate::logger::warn(format!(
+                            "[{}/{}] 导出文档「{}」：部分成功（{}ms）{}",
+                            doc_idx + 1,
+                            docs.len(),
+                            node.title,
+                            item_ms,
+                            result
+                                .errors
+                                .first()
+                                .map(|error| format!("，原因：{error}"))
+                                .unwrap_or_default()
+                        ));
+                    }
+                    ExtractStatus::Failed => {
+                        failed_count += 1;
+                        crate::logger::warn(format!(
+                            "[{}/{}] 导出文档「{}」：失败（{}ms）",
+                            doc_idx + 1,
+                            docs.len(),
+                            node.title,
+                            item_ms
+                        ));
+                    }
                 }
                 results.push(result);
             }
-            Err(e) => {
+            Err(error) => {
                 failed_count += 1;
+                let message = error.to_string();
+                crate::logger::error(format!(
+                    "[{}/{}] 导出文档「{}」失败：{}",
+                    doc_idx + 1,
+                    docs.len(),
+                    node.title,
+                    message
+                ));
                 let failure = DocFailure {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
-                    error: e.to_string(),
+                    error: message,
                 };
                 failures.push(failure);
             }
@@ -302,7 +353,7 @@ pub async fn extract_wiki_tree_controlled(
         }
     }
 
-    for node in special_nodes {
+    for (spec_idx, node) in special_nodes.into_iter().enumerate() {
         if cancelled
             .as_ref()
             .is_some_and(|flag| flag.load(Ordering::Relaxed))
@@ -350,12 +401,21 @@ pub async fn extract_wiki_tree_controlled(
                 .map(|saved| vec![saved])
             }
             other => {
+                let reason = format!("当前版本暂不支持该节点类型: {:?}", other);
                 skipped.push(SkippedNode {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
                     obj_type: other.clone(),
-                    reason: format!("当前版本暂不支持该节点类型: {:?}", other),
+                    reason: reason.clone(),
                 });
+                crate::logger::warn(format!(
+                    "[{}/{}] 跳过「{}」（{}）：{}",
+                    spec_idx + 1,
+                    total,
+                    node.title,
+                    node_type_label(other),
+                    reason
+                ));
                 if let Some(progress) = &progress {
                     let mut progress = progress
                         .lock()
@@ -369,6 +429,14 @@ pub async fn extract_wiki_tree_controlled(
         match result {
             Ok(paths) => {
                 success_count += 1;
+                crate::logger::info(format!(
+                    "[{}/{}] 导出「{}」（{}）成功 → {}",
+                    spec_idx + 1,
+                    total,
+                    node.title,
+                    node_type_label(&node.obj_type),
+                    paths.join("；")
+                ));
                 exports.push(SpecialExport {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
@@ -378,6 +446,14 @@ pub async fn extract_wiki_tree_controlled(
             }
             Err(error) => {
                 failed_count += 1;
+                crate::logger::error(format!(
+                    "[{}/{}] 导出「{}」（{}）失败：{}",
+                    spec_idx + 1,
+                    total,
+                    node.title,
+                    node_type_label(&node.obj_type),
+                    error
+                ));
                 export_failures.push(SpecialExportFailure {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
@@ -451,6 +527,18 @@ pub async fn extract_wiki_tree_controlled(
             .map_err(|e| AppError::StateUnavailable(e.to_string()))?;
         progress.phase = TaskPhase::Finalizing;
     }
+
+    crate::logger::info(format!(
+        "知识库「{}」导出结束：成功 {}，失败 {}，部分 {}，跳过 {}（共 {} 项），用时 {}ms，输出目录 {}",
+        wiki_name,
+        success_count,
+        failed_count,
+        partial_count,
+        skipped_count,
+        total,
+        started_at.elapsed().as_millis(),
+        output_root
+    ));
 
     Ok(WikiExtractResult {
         wiki_name,
@@ -569,6 +657,18 @@ pub fn count_selected_exportable_nodes(
     let relevant = selected_tokens.map(|tokens| build_relevant_tokens(tree, tokens));
     collect_docs_with_path(tree, selected_tokens).len()
         + collect_special_nodes(tree, selected_tokens, relevant.as_ref()).len()
+}
+
+/// 节点类型的中文描述（仅用于日志）
+fn node_type_label(node_type: &WikiNodeType) -> &'static str {
+    match node_type {
+        WikiNodeType::Doc => "文档",
+        WikiNodeType::Sheet => "表格",
+        WikiNodeType::Bitable => "多维表格",
+        WikiNodeType::File => "文件",
+        WikiNodeType::Folder => "目录",
+        WikiNodeType::Other => "其他",
+    }
 }
 
 /// 文档节点及其在目录树中的相对路径

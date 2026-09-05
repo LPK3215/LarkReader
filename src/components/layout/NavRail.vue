@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 左侧图标导航栏（52px）：工作台 / 历史 / 设置 / 本地阅读（M3 未开放，置灰）。
+// 左侧图标导航栏（52px）：工作台 / 历史 / 本地阅读（M3 未开放，置灰）/
+// 飞书终端 / 运行日志 / 设置。
 // 用图标栏而非带文字侧边栏：1024~1180 窗口下，省下的 128px 全部让给节点树。
 
 import AppIcon from "../AppIcon.vue";
@@ -17,6 +18,7 @@ const items: NavItem[] = [
   { key: "history", label: "任务历史", icon: "history", route: "/history" },
   { key: "reader", label: "本地阅读（规划中）", icon: "book", route: "/reader", disabled: true },
   { key: "terminal", label: "飞书终端", icon: "terminal", route: "/terminal" },
+  { key: "logs", label: "运行日志", icon: "log", route: "/logs" },
   { key: "settings", label: "设置", icon: "settings", route: "/settings" },
 ];
 </script>

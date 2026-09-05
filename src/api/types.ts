@@ -225,6 +225,23 @@ export interface SettingsStatus {
 }
 
 // ---------------------------------------------------------------------------
+// 运行日志
+// ---------------------------------------------------------------------------
+
+export interface LogFileMeta {
+  name: string;
+  size_bytes: number;
+  modified_at: string | null;
+}
+
+export interface LogFileContent {
+  name: string;
+  content: string;
+  size_bytes: number;
+  truncated: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // 统一错误（error.rs 的结构化协议）
 // ---------------------------------------------------------------------------
 

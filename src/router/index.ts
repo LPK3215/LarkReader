@@ -5,6 +5,7 @@
 //   /workspace   主工作台：贴链接 -> 扫树勾选 -> 下载
 //   /history     任务历史 + 打开产物目录
 //   /terminal    飞书终端：手动体检环境 / 登录 / 退出 / 切换账号
+//   /logs        运行日志：查看/刷新后端持久化的运行日志文件
 //   /settings    设置
 //
 // 说明：Tauri 是本地桌面应用，用 createWebHashHistory 而非 history 模式，
@@ -41,6 +42,12 @@ const routes: RouteRecordRaw[] = [
     name: "terminal",
     component: () => import("../views/TerminalView.vue"),
     meta: { title: "飞书终端" },
+  },
+  {
+    path: "/logs",
+    name: "logs",
+    component: () => import("../views/LogView.vue"),
+    meta: { title: "运行日志" },
   },
   {
     path: "/settings",

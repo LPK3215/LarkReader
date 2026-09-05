@@ -103,6 +103,13 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档本地导出工具。后端
 | `dismiss_task_result` | `task_id` | — | 删除指定完成结果 |
 | `list_task_history` | — | `Vec<WikiTaskResult>` | 查询最近任务历史 |
 
+> **`init_app` 现状**：该命令是同步命令，UI 直调会占住 IPC 直至 600s 超时且无法实时回传
+> 浏览器创建向导 URL，因此**未接入前端流程**。前端「飞书应用配置」未配置时的修复入口
+> （Onboarding 第 1 步 /「飞书终端」环境卡 →「去创建」→ `AppConfigGuide` 引导面板）改用等价
+> 手动命令 `lark-cli config init --new --brand feishu --lang zh`：复制命令 → 用户在自己终端运行
+> （阻塞式浏览器创建向导）→ 创建完成回应用点「重新检测」闭环。一键自动创建
+> （后台任务化 `init_app` + URL 实时回传）为后续演进，未排期。
+
 所有命令错误统一序列化为：
 
 ```json

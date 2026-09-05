@@ -306,12 +306,12 @@ fn extract_doc_with_title_controlled(
                                 final_path.display(),
                                 e
                             ));
-                            tracing::warn!(
+                            crate::logger::warn(format!(
                                 "图片重命名失败 {} -> {}: {}",
                                 saved.display(),
                                 final_path.display(),
                                 e
-                            );
+                            ));
                             continue;
                         }
                     }
@@ -335,13 +335,13 @@ fn extract_doc_with_title_controlled(
                         image_count,
                         token
                     ));
-                    tracing::warn!(
+                    crate::logger::warn(format!(
                         "图片 {}/{} 下载失败 token={}: {}",
                         i + 1,
                         image_count,
                         token,
                         e
-                    );
+                    ));
                 }
             }
         }

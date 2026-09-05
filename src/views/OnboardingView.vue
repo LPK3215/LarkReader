@@ -19,6 +19,7 @@ import { useOnboardingStore, type CheckState } from "../stores/onboarding";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
+import AppConfigGuide from "../components/AppConfigGuide.vue";
 
 const router = useRouter();
 const settings = useSettingsStore();
@@ -40,6 +41,7 @@ const ICON_CLASS: Record<CheckState, string> = {
   error: "is-error",
 };
 
+const showAppGuide = ref(false);
 const recheckBusy = ref(false);
 async function recheck() {
   recheckBusy.value = true;
@@ -121,25 +123,43 @@ onBeforeUnmount(() => {
             导出依赖 Node.js 与固定版本的 lark-cli，缺项会自动安装
           </p>
 
-          <ul v-if="onboarding.checks.length > 0" class="lr-onboard__checks">
-            <li v-for="item in onboarding.checks" :key="item.key" class="lr-onboard__check">
-              <span class="lr-onboard__state" :class="ICON_CLASS[item.state]">
-                <AppIcon :name="ICON[item.state]" :size="14" />
-              </span>
-              <span class="lr-onboard__checkmain">
-                <span class="lr-onboard__checklabel">{{ item.label }}</span>
-                <span class="lr-onboard__checkdetail">{{ item.detail }}</span>
-              </span>
-              <button
-                v-if="item.action && item.key === 'cli'"
-                class="lr-btn lr-btn--secondary lr-onboard__fix"
-                :disabled="onboarding.checking"
-                @click="fixCli"
-              >
-                {{ item.action }}
-              </button>
-            </li>
-          </ul>
+          <template v-if="onboarding.checks.length > 0">
+            <ul class="lr-onboard__checks">
+              <li v-for="item in onboarding.checks" :key="item.key" class="lr-onboard__check">
+                <span class="lr-onboard__state" :class="ICON_CLASS[item.state]">
+                  <AppIcon :name="ICON[item.state]" :size="14" />
+                </span>
+                <span class="lr-onboard__checkmain">
+                  <span class="lr-onboard__checklabel">{{ item.label }}</span>
+                  <span class="lr-onboard__checkdetail">{{ item.detail }}</span>
+                </span>
+                <button
+                  v-if="item.action && item.key === 'cli'"
+                  class="lr-btn lr-btn--secondary lr-onboard__fix"
+                  :disabled="onboarding.checking"
+                  @click="fixCli"
+                >
+                  {{ item.action }}
+                </button>
+                <button
+                  v-else-if="item.action && item.key === 'app'"
+                  class="lr-btn lr-btn--secondary lr-onboard__fix"
+                  :disabled="onboarding.checking"
+                  @click="showAppGuide = true"
+                >
+                  {{ item.action }}
+                </button>
+              </li>
+            </ul>
+
+            <AppConfigGuide
+              v-if="showAppGuide"
+              :busy="onboarding.checking"
+              @close="showAppGuide = false"
+              @recheck="recheck"
+            />
+          </template>
+
           <p v-else class="lr-onboard__desc">尚未检测</p>
         </template>
 
@@ -267,6 +287,8 @@ onBeforeUnmount(() => {
 
 .lr-onboard__box {
   width: 560px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: var(--lr-bg-surface);
   border: 0.5px solid var(--lr-border);
   border-radius: var(--lr-radius-xl);

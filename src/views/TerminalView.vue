@@ -11,14 +11,16 @@
 // complete_login 单次阻塞等待授权完成（勿并发轮询）。
 // ============================================================================
 
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { EnvStatus } from "../api/types";
 import { useAuthStore } from "../stores/auth";
 import AppIcon from "../components/AppIcon.vue";
+import AppConfigGuide from "../components/AppConfigGuide.vue";
 import { dialog, message } from "../composables/useMessage";
 
 const auth = useAuthStore();
+const showAppGuide = ref(false);
 
 type RowState = "ok" | "warn" | "error";
 
@@ -27,7 +29,7 @@ interface Row {
   label: string;
   detail: string;
   state: RowState;
-  /** 当行右侧出现修复按钮的文案（目前只有 lark-cli 需要） */
+  /** 当行右侧出现修复按钮的文案（cli -> 安装/更新，app 未配置 -> 去创建） */
   action?: string;
 }
 
@@ -65,6 +67,7 @@ function buildRows(env: EnvStatus): Row[] {
     label: "飞书应用配置",
     detail: env.app_configured ? env.app_id ?? "已配置" : "未配置",
     state: env.app_configured ? "ok" : "error",
+    action: env.app_configured ? undefined : "去创建",
   });
 
   const needRefresh = env.logged_in && env.token_status === "needs_refresh";
@@ -253,25 +256,35 @@ function onSwitchAccount() {
           </button>
         </header>
         <div class="lr-card__body">
-          <ul v-if="rows.length > 0" class="lr-term__checks">
-            <li v-for="row in rows" :key="row.key" class="lr-term__check">
-              <span class="lr-term__state" :class="`is-${row.state}`">
-                <AppIcon :name="ICON[row.state]" :size="14" />
-              </span>
-              <span class="lr-term__checkmain">
-                <span class="lr-term__checklabel">{{ row.label }}</span>
-                <span class="lr-term__checkdetail">{{ row.detail }}</span>
-              </span>
-              <button
-                v-if="row.action"
-                class="lr-btn lr-btn--secondary lr-term__fix"
-                :disabled="auth.refreshing"
-                @click="onFixCli"
-              >
-                {{ row.action }}
-              </button>
-            </li>
-          </ul>
+          <template v-if="rows.length > 0">
+            <ul class="lr-term__checks">
+              <li v-for="row in rows" :key="row.key" class="lr-term__check">
+                <span class="lr-term__state" :class="`is-${row.state}`">
+                  <AppIcon :name="ICON[row.state]" :size="14" />
+                </span>
+                <span class="lr-term__checkmain">
+                  <span class="lr-term__checklabel">{{ row.label }}</span>
+                  <span class="lr-term__checkdetail">{{ row.detail }}</span>
+                </span>
+                <button
+                  v-if="row.action"
+                  class="lr-btn lr-btn--secondary lr-term__fix"
+                  :disabled="auth.refreshing"
+                  @click="row.key === 'app' ? (showAppGuide = true) : onFixCli()"
+                >
+                  {{ row.action }}
+                </button>
+              </li>
+            </ul>
+
+            <AppConfigGuide
+              v-if="showAppGuide"
+              :busy="auth.refreshing"
+              @close="showAppGuide = false"
+              @recheck="onRefresh"
+            />
+          </template>
+
           <p v-else class="lr-term__hint">
             {{ auth.refreshing ? "正在检测运行环境…" : "尚未检测，点击右上角「重新检测」" }}
           </p>

@@ -88,6 +88,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
       label: "飞书应用配置",
       detail: env.app_configured ? env.app_id ?? "已配置" : "未配置",
       state: env.app_configured ? "ok" : "error",
+      action: env.app_configured ? undefined : "去创建",
     });
 
     out.push({

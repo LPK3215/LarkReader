@@ -7,6 +7,7 @@ pub mod env;
 pub mod error;
 pub mod extract;
 pub mod lark;
+pub mod logger;
 pub mod markdown;
 pub mod models;
 pub mod wiki;
@@ -20,7 +21,15 @@ use commands::AppState;
 /// 应用入口
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 初始化日志
+    // 初始化运行日志（文件持久化，供前端「运行日志」页实时阅读）
+    logger::init();
+    logger::info(format!(
+        "{} {} 启动",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    ));
+
+    // 初始化控制台日志（开发期调试用，正式日志以 logger.rs 文件为准）
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
@@ -30,6 +39,9 @@ pub fn run() {
 
     // 加载设置
     let (settings, settings_warning) = load_settings_or_default();
+    if let Some(warning) = &settings_warning {
+        logger::warn(warning);
+    }
     let completed_tasks = load_task_history();
 
     tauri::Builder::default()
@@ -66,6 +78,10 @@ pub fn run() {
             commands::get_task_result,
             commands::dismiss_task_result,
             commands::list_task_history,
+            // 运行日志
+            commands::list_log_files,
+            commands::read_log_file,
+            commands::open_log_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");

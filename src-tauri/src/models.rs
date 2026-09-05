@@ -528,6 +528,34 @@ pub struct LoginResult {
 }
 
 // ============================================================================
+// 运行日志
+// ============================================================================
+
+/// 日志文件元信息（list_log_files 返回）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogFileMeta {
+    /// 文件名，如 app-2026-09-05.log
+    pub name: String,
+    /// 文件大小（字节）
+    pub size_bytes: u64,
+    /// 最后修改时间（RFC 3339）
+    pub modified_at: Option<String>,
+}
+
+/// 日志文件内容（read_log_file 返回）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogFileContent {
+    /// 文件名
+    pub name: String,
+    /// 文本内容
+    pub content: String,
+    /// 文件总大小（字节）
+    pub size_bytes: u64,
+    /// 内容过大时是否只返回了末尾部分
+    pub truncated: bool,
+}
+
+// ============================================================================
 // lark-cli 响应结构（内部使用）
 // ============================================================================
 

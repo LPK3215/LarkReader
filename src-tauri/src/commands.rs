@@ -14,8 +14,9 @@ use crate::env;
 use crate::error::AppError;
 use crate::extract;
 use crate::models::{
-    DeviceInfo, EnvStatus, ExtractResult, LoginResult, OutputPreflight, PreviewResult, Progress,
-    Settings, SettingsStatus, TaskPhase, TaskStatus, WikiExtractResult, WikiNode, WikiTaskResult,
+    DeviceInfo, EnvStatus, ExtractResult, ExtractStatus, LogFileContent, LogFileMeta, LoginResult,
+    OutputPreflight, PreviewResult, Progress, Settings, SettingsStatus, TaskPhase, TaskStatus,
+    WikiExtractResult, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -125,6 +126,41 @@ fn read_settings(state: &State<'_, AppState>) -> Result<Settings, AppError> {
         .map_err(|e| AppError::StateUnavailable(e.to_string()))
 }
 
+/// 把登录结果写进运行日志
+fn log_login_result(result: &LoginResult) {
+    if result.success {
+        crate::logger::info(format!(
+            "飞书登录成功：{}",
+            result.user_name.as_deref().unwrap_or("未知用户")
+        ));
+    } else {
+        crate::logger::warn(format!(
+            "飞书登录失败：{}",
+            result.error.as_deref().unwrap_or("未知错误")
+        ));
+    }
+}
+
+/// 提取状态的中文描述（仅用于日志）
+fn extract_status_label(status: &ExtractStatus) -> &'static str {
+    match status {
+        ExtractStatus::Success => "成功",
+        ExtractStatus::Partial => "部分成功",
+        ExtractStatus::Failed => "失败",
+    }
+}
+
+/// 长文本截断（用于日志，避免单行过长）
+fn clip_for_log(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        text.to_string()
+    } else {
+        let mut clipped: String = text.chars().take(max_chars).collect();
+        clipped.push('…');
+        clipped
+    }
+}
+
 // ============================================================================
 // P0 命令
 // ============================================================================
@@ -152,7 +188,9 @@ pub fn init_app(brand: String, lang: String) -> Result<String, AppError> {
 /// 返回 DeviceInfo，前端拿到后打开浏览器
 #[tauri::command]
 pub fn start_login() -> Result<DeviceInfo, AppError> {
-    env::start_login(&["docs", "drive", "wiki"])
+    let device_info = env::start_login(&["docs", "drive", "wiki"])?;
+    crate::logger::info("发起飞书登录（设备码授权流程）");
+    Ok(device_info)
 }
 
 /// 用 device_code 完成飞书登录（阻塞等待授权）
@@ -162,23 +200,35 @@ pub fn start_login() -> Result<DeviceInfo, AppError> {
 /// 注意：不得并发发起多个该命令——lark-cli 每次重启会作废上一轮的 device code。
 #[tauri::command]
 pub async fn complete_login(device_code: String) -> Result<LoginResult, AppError> {
-    tauri::async_runtime::spawn_blocking(move || env::complete_login(&device_code))
+    let login = tauri::async_runtime::spawn_blocking(move || env::complete_login(&device_code))
         .await
-        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?
+        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?;
+    match &login {
+        Ok(result) => log_login_result(result),
+        Err(error) => crate::logger::error(format!("飞书登录异常：{error}")),
+    }
+    login
 }
 
 /// 阻塞模式飞书登录（简化版，一步到位）
 #[tauri::command]
 pub async fn login_feishu_blocking() -> Result<LoginResult, AppError> {
-    tauri::async_runtime::spawn_blocking(login_feishu_blocking_impl)
+    let login = tauri::async_runtime::spawn_blocking(login_feishu_blocking_impl)
         .await
-        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?
+        .map_err(|e| AppError::Other(format!("登录等待任务异常: {e}")))?;
+    match &login {
+        Ok(result) => log_login_result(result),
+        Err(error) => crate::logger::error(format!("飞书登录异常：{error}")),
+    }
+    login
 }
 
 /// 退出飞书登录（清除 lark-cli 保存的 token）
 #[tauri::command]
 pub fn logout() -> Result<String, AppError> {
-    env::logout()
+    let result = env::logout()?;
+    crate::logger::info("退出飞书登录");
+    Ok(result)
 }
 
 /// login_feishu_blocking 的同步实现（在阻塞线程上运行）
@@ -233,7 +283,20 @@ pub async fn extract_doc(
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
         .map_err(AppError::InvalidSetting)?;
-    extract::extract_doc_async(&url, &dir, &settings).await
+    let result = extract::extract_doc_async(&url, &dir, &settings).await;
+    match &result {
+        Ok(r) => crate::logger::info(format!(
+            "单篇导出「{}」：{} 字符，图片 {}/{} 成功，状态 {}，保存到 {}",
+            r.title,
+            r.char_count,
+            r.images_downloaded,
+            r.image_count,
+            extract_status_label(&r.status),
+            r.filepath
+        )),
+        Err(error) => crate::logger::warn(format!("单篇导出失败：{error}")),
+    }
+    result
 }
 
 /// 获取当前设置
@@ -249,6 +312,10 @@ pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<()
         .validate_writable()
         .map_err(AppError::InvalidSetting)?;
     save_settings(&settings)?;
+    crate::logger::info(format!(
+        "更新设置：输出目录={}，图片并发数={}，下载图片={}",
+        settings.output_dir, settings.concurrency, settings.download_images
+    ));
     let mut current = state
         .settings
         .lock()
@@ -428,6 +495,15 @@ pub async fn start_extract_wiki(
                 cancelled: cancelled.clone(),
             },
         );
+    crate::logger::info(format!(
+        "开始导出任务 {task_id}：wiki={}，输出目录={}{}",
+        clip_for_log(&wiki_url, 160),
+        dir,
+        selected_tokens
+            .as_ref()
+            .map(|tokens| format!("，勾选 {} 个节点", tokens.len()))
+            .unwrap_or_default()
+    ));
     let tasks = state.tasks.clone();
     let completed_tasks = state.completed_tasks.clone();
     let task_id_for_run = task_id.clone();
@@ -473,6 +549,21 @@ pub async fn start_extract_wiki(
             .lock()
             .map(|p| p.clone())
             .unwrap_or_else(|_| Progress::new(task_id_for_run.clone(), 0));
+        match &result {
+            Ok(wiki_result) => crate::logger::info(format!(
+                "导出任务 {task_id_for_run} 完成：成功 {}，失败 {}，部分 {}，跳过 {}（共 {} 项），用时 {} 秒，输出目录：{}",
+                wiki_result.success_count,
+                wiki_result.failed_count,
+                wiki_result.partial_count,
+                wiki_result.skipped_count,
+                wiki_result.total,
+                final_progress.elapsed_seconds,
+                wiki_result.output_root
+            )),
+            Err(error) => {
+                crate::logger::error(format!("导出任务 {task_id_for_run} 失败：{error}"))
+            }
+        }
         let task_result = match result {
             Ok(result) => WikiTaskResult {
                 task_id: task_id_for_run.clone(),
@@ -497,4 +588,81 @@ pub async fn start_extract_wiki(
         }
     });
     Ok(task_id)
+}
+
+// ============================================================================
+// 运行日志
+// ============================================================================
+
+/// 单次读取日志文件的字节上限（超出只返回末尾，避免撑爆前端）
+const MAX_LOG_READ_BYTES: u64 = 512 * 1024;
+
+/// 列出日志目录里的所有日志文件（按名称倒序，最新在前）
+#[tauri::command]
+pub fn list_log_files() -> Result<Vec<LogFileMeta>, AppError> {
+    let dir = crate::logger::log_dir();
+    let mut metas = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("log") {
+                continue;
+            }
+            let metadata = entry.metadata().ok();
+            metas.push(LogFileMeta {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                size_bytes: metadata.as_ref().map(|meta| meta.len()).unwrap_or(0),
+                modified_at: metadata
+                    .as_ref()
+                    .and_then(|meta| meta.modified().ok())
+                    .map(|time| chrono::DateTime::<chrono::Local>::from(time).to_rfc3339()),
+            });
+        }
+    }
+    metas.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(metas)
+}
+
+/// 读取指定日志文件的文本内容（过大时只返回末尾部分）
+#[tauri::command]
+pub fn read_log_file(name: String) -> Result<LogFileContent, AppError> {
+    // 防止路径穿越：只允许纯文件名（不含目录分隔符 / ..）
+    let file_name = std::path::Path::new(&name)
+        .file_name()
+        .and_then(|value| value.to_str());
+    if file_name != Some(name.as_str()) || !name.ends_with(".log") {
+        return Err(AppError::InvalidInput("非法的日志文件名".to_string()));
+    }
+    let path = crate::logger::log_dir().join(&name);
+    let metadata = std::fs::metadata(&path)?;
+    let size_bytes = metadata.len();
+    let mut file = std::fs::File::open(&path)?;
+    let (bytes, truncated) = if size_bytes > MAX_LOG_READ_BYTES {
+        use std::io::{Read, Seek, SeekFrom};
+        file.seek(SeekFrom::End(-(MAX_LOG_READ_BYTES as i64)))?;
+        let mut buffer = vec![0u8; MAX_LOG_READ_BYTES as usize];
+        file.read_exact(&mut buffer)?;
+        (buffer, true)
+    } else {
+        use std::io::Read;
+        let mut buffer = Vec::with_capacity(size_bytes as usize);
+        file.read_to_end(&mut buffer)?;
+        (buffer, false)
+    };
+    let content = String::from_utf8_lossy(&bytes).into_owned();
+    Ok(LogFileContent {
+        name,
+        content,
+        size_bytes,
+        truncated,
+    })
+}
+
+/// 打开日志目录（在文件管理器中查看日志文件）
+#[tauri::command]
+pub fn open_log_dir() -> Result<(), AppError> {
+    let dir = crate::logger::log_dir();
+    std::fs::create_dir_all(&dir)?;
+    tauri_plugin_opener::open_path(dir, None::<&str>)
+        .map_err(|e| AppError::Other(format!("打开日志目录失败: {e}")))
 }
