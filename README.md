@@ -34,7 +34,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 
 ## 🎯 使用场景
 
-当知识库内容多、目录深、要在网络不稳定的环境下翻阅已读资料时，LarkReader 可以帮你把内容备份到本地、用更顺手的方式阅读。详细示例与典型场景图见 [docs/使用场景.md](docs/使用场景.md)。
+当知识库内容多、目录深、要在网络不稳定的环境下翻阅已读资料时，LarkReader 可以帮你把内容备份到本地、用更顺手的方式阅读。详细示例与典型场景图见 [docs/use-cases.md](docs/use-cases.md)。
 
 已用一个真实的飞书知识库做过端到端验证：[docs/e2e-download-case/](docs/e2e-download-case/) 是那次导出的完整产物，8 个顶层节点、38 项成功 / 0 失败 / 0 跳过，覆盖 docx 正文、Sheet、Bitable、文件附件四类节点，目录层级与飞书一致。
 
@@ -158,6 +158,7 @@ npm run build                              通过
 
 - 实测大型知识库（A）：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
 - E2E 测试库 8 个顶层节点：**38 项成功 / 0 失败 / 0 跳过**，产物 42 文件、18 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
+- 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · A 模式（仅导出本节点，1 项）vs C 模式（展开整个知识库，38 项）；
 - 父文档带子页面整棵导出、空文档 / 超长标题 / 特殊字符文件名清洗与还原、重复导出自动编号。
 
 ## ❓ FAQ
