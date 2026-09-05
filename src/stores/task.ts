@@ -83,6 +83,8 @@ export const useTaskStore = defineStore("task", () => {
   const taskBarVisible = ref(true);
   const nodeStates = ref<Record<string, NodeRunState>>({});
   const lastError = ref<string | null>(null);
+  /** 扫描知识库结构中（防止重复点击 / 用于按钮 loading） */
+  const scanning = ref(false);
 
   // ---- 内部 ----
   let stopProgress: (() => void) | null = null;
@@ -138,6 +140,8 @@ export const useTaskStore = defineStore("task", () => {
     other: 0,
   };
   let countTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 计数请求序号：用于丢弃过期响应（后发请求优先），避免并发统计结果乱序/重复 */
+  let countSeq = 0;
 
   /** 防抖刷新：树上快速勾选/取消时合并为一次请求 */
   function scheduleCountRefresh() {
@@ -154,21 +158,30 @@ export const useTaskStore = defineStore("task", () => {
    * 自算必然与下载结果不一致。
    */
   async function refreshCount() {
-    if (stage.value !== "tree") return;
+    const seq = ++countSeq;
+    if (stage.value !== "tree") {
+      if (seq === countSeq) counting.value = false;
+      return;
+    }
     if (selectedTokens.value.length === 0) {
-      exportableCount.value = { ...EMPTY_COUNT };
-      countError.value = null;
-      counting.value = false;
+      if (seq === countSeq) {
+        exportableCount.value = { ...EMPTY_COUNT };
+        countError.value = null;
+        counting.value = false;
+      }
       return;
     }
     counting.value = true;
     try {
-      exportableCount.value = await countExportable(selectedTokens.value);
-      countError.value = null;
+      const result = await countExportable(selectedTokens.value);
+      if (seq === countSeq) {
+        exportableCount.value = result;
+        countError.value = null;
+      }
     } catch (err) {
-      countError.value = String(err);
+      if (seq === countSeq) countError.value = String(err);
     } finally {
-      counting.value = false;
+      if (seq === countSeq) counting.value = false;
     }
   }
 
@@ -186,6 +199,8 @@ export const useTaskStore = defineStore("task", () => {
    * 保持 empty/tree 原状态让用户可重试。
    */
   async function scan(url: string) {
+    if (scanning.value || stage.value === "running") return; // 防重入
+    scanning.value = true;
     lastError.value = null;
     try {
       const node = await getWikiTree(url);
@@ -194,10 +209,15 @@ export const useTaskStore = defineStore("task", () => {
       selectedTokens.value = collectDocTokens(node);
       stage.value = "tree";
       resetProgressFields();
-      void refreshCount();
+      // 只调度一次防抖计数：selectedTokens 赋值发生在 stage 切到 tree 之前，
+      // 不会触发上面的 watch，需在这里显式调度（代替此前立即 refreshCount，
+      // 避免扫描完成后计数请求被执行两遍）。
+      scheduleCountRefresh();
     } catch (err) {
       lastError.value = String(err);
       console.error("[task.scan] 扫描失败:", err);
+    } finally {
+      scanning.value = false;
     }
   }
 
@@ -256,6 +276,8 @@ export const useTaskStore = defineStore("task", () => {
   function clearAll() {
     stopPolling();
     if (countTimer) clearTimeout(countTimer);
+    countSeq++; // 丢弃可能仍在途的计数响应
+    scanning.value = false;
     stage.value = "empty";
     tree.value = null;
     selectedTokens.value = [];
@@ -334,6 +356,7 @@ export const useTaskStore = defineStore("task", () => {
     taskBarVisible,
     nodeStates,
     lastError,
+    scanning,
     // getters
     running,
     finished,

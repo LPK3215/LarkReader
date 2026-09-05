@@ -33,7 +33,7 @@ const sideTitle = computed(() => {
 
 async function onScan() {
   const url = inputUrl.value.trim();
-  if (!url) return;
+  if (!url || task.scanning) return;
   await task.scan(url);
 }
 
@@ -71,13 +71,27 @@ function openResultDir() {
             v-model="inputUrl"
             class="lr-input"
             placeholder="https://xxx.feishu.cn/wiki/..."
+            :disabled="task.scanning"
             @keyup.enter="onScan"
           />
-          <button class="lr-btn lr-btn--primary lr-btn--lg" @click="onScan">扫描结构</button>
+          <button
+            class="lr-btn lr-btn--primary lr-btn--lg lr-work__scanbtn"
+            :disabled="task.scanning"
+            @click="onScan"
+          >
+            <AppIcon
+              v-if="task.scanning"
+              name="spinner"
+              :size="14"
+              class="lr-work__spin"
+            />
+            {{ task.scanning ? "扫描中…" : "扫描结构" }}
+          </button>
         </div>
 
         <p class="lr-work__emptynote">
-          扫描阶段只读取目录树，不下载正文、不写入磁盘
+          <template v-if="task.scanning">正在读取知识库目录结构，请稍候…</template>
+          <template v-else>扫描阶段只读取目录树，不下载正文、不写入磁盘</template>
         </p>
       </div>
     </div>
@@ -285,6 +299,23 @@ function openResultDir() {
   margin-top: var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
+}
+
+/* 扫描中按钮里的旋转加载图标（keyframes 需与本组件 scoped 一起声明） */
+.lr-work__spin {
+  animation: lr-spin 0.9s linear infinite;
+}
+
+@keyframes lr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lr-work__spin {
+    animation: none;
+  }
 }
 
 /* ---- 顶部链接条 ---- */

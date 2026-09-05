@@ -6,7 +6,7 @@
 // 输出：v-model 绑定选中的 node_token 列表
 //
 // 实现收敛在本组件内部（用 Naive UI 的 NTree），外部只认 WikiNode 与 token 数组。
-// 节点规模大时把 virtual-scroll 打开即可，接口不变。
+// 超过 500 个节点自动切换虚拟滚动（仅渲染可视行），接口不变。
 // ============================================================================
 
 import { computed, h } from "vue";
@@ -93,6 +93,17 @@ const allKeys = computed(() => {
   return keys;
 });
 
+/**
+ * 节点规模较大时启用虚拟滚动：只渲染可视区域的行。
+ * 任务进行中 nodeStates 逐节点变化会触发重渲染，大树（数千行）下
+ * 没有虚拟滚动会导致整棵树的 renderSuffix 全部重跑、界面明显卡顿。
+ */
+const largeTree = computed(() => allKeys.value.length > 500);
+/** 虚拟滚动要求树自身具备确定高度，否则无法计算可视窗口 */
+const treeVirtualStyle = computed(() =>
+  largeTree.value ? { height: "100%" } : undefined
+);
+
 const allChecked = computed(
   () => allKeys.value.length > 0 && props.selected.length >= allKeys.value.length
 );
@@ -143,7 +154,7 @@ function renderLabel({ option }: { option: TreeOption }) {
       <span class="lr-tree__count">已选 {{ selected.length }} / {{ allKeys.length }}</span>
     </div>
 
-    <div class="lr-tree__scroll">
+    <div class="lr-tree__scroll" :class="{ 'lr-tree__scroll--virtual': largeTree }">
       <NTree
         v-model:checked-keys="checkedKeys"
         :data="treeData"
@@ -152,6 +163,8 @@ function renderLabel({ option }: { option: TreeOption }) {
         :render-prefix="renderPrefix"
         :render-suffix="renderSuffix"
         :render-label="renderLabel"
+        :virtual-scroll="largeTree"
+        :style="treeVirtualStyle"
         checkable
         cascade
         block-line
@@ -195,6 +208,12 @@ function renderLabel({ option }: { option: TreeOption }) {
   min-height: 0;
   overflow: auto;
   padding: var(--lr-space-2) 0;
+}
+
+/* 虚拟滚动模式：外层不再滚动，由树内部虚拟列表接管，padding 归零避免裁剪首尾 */
+.lr-tree__scroll--virtual {
+  overflow: hidden;
+  padding: 0;
 }
 
 .lr-tree__widget {
