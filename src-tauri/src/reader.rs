@@ -4,6 +4,7 @@
 //! - `list_reader_dir`：一次列一层（惰性加载），目录优先、按名排序
 //! - `read_reader_md`：读取 .md 文本（供 markdown 渲染）
 //! - `read_reader_binary`：读取二进制资源（图片），返回 data URL（供 <img> 内联）
+//! - `find_first_reader_doc`：在目录树中查找第一篇 Markdown 文档（用于历史→阅读自动定位）
 //!
 //! 安全边界：
 //! - 读取路径来自用户在前端显式选择/浏览的本地目录，桌面应用正常能力。
