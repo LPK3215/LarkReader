@@ -137,6 +137,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 |---|---|
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | **使用说明（面向最终用户）**：界面总览、首次引导、知识库下载/扫描模式、本地阅读、历史、日志、设置、更新、FAQ |
 | [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、26 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
+
 | [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |
 | [docs/FEISHU_AUTH.md](docs/FEISHU_AUTH.md) | 飞书自建应用创建、权限清单、登录链路说明 |
 | [docs/e2e-download-case/](docs/e2e-download-case/) | E2E 测试库全量下载产物快照，可离线查看导出结构与命名规则（[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)） |
@@ -200,7 +201,7 @@ lark-cli 的写类命令（media-preview / workbook-export / record-list 等）�
 <details>
 <summary><b>支持哪些平台？</b></summary>
 
-Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Actions 在三个平台出包（产物为 draft release）。
+Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Actions 在三个平台出包并**正式发布**到 GitHub Releases（非 draft），应用内更新可直接拉取。
 </details>
 
 ## 🤝 贡献

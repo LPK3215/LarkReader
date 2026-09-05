@@ -1,6 +1,6 @@
 # LarkReader 后端功能与维护手册
 
-> 当前状态：2026-09-05。本文是后端功能、接口和验证状态的唯一主文档；代码实现始终是最终依据。
+> 当前状态：2026-09-06。本文是后端功能、接口和验证状态的唯一主文档；代码实现始终是最终依据。
 
 ## 1. 项目定位
 
@@ -100,9 +100,9 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `set_settings` | `settings` | — | 验证可写性并持久化设置 |
 | `preflight_output_dir` | `path` | `OutputPreflight` | 检查可写性和磁盘空间 |
 | `open_output_dir` | `path` | — | 使用系统文件管理器打开目录 |
-| `get_wiki_tree` | `wiki_url` | `WikiNode` | 获取完整 Wiki 树 |
+| `get_wiki_tree` | `wiki_url`, `scan_mode?` | `WikiNode` | 获取完整 Wiki 树（`scan_mode`：`auto` 默认 / `full_space` 整库展开） |
 | `count_exportable` | `selected_tokens?` | `ExportableCount` | 统计所选节点中实际会导出的项目数（复用最近一次扫描缓存，不重复扫树） |
-| `start_extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?` | `String` | 创建后台任务并立即返回 ID |
+| `start_extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?`, `scan_mode?` | `String` | 创建后台任务并立即返回 ID（`scan_mode` 同 `get_wiki_tree`） |
 | `get_progress` | `task_id` | `Progress` | 查询任务状态和阶段 |
 | `cancel_task` | `task_id` | — | 取消活动任务 |
 | `get_task_result` | `task_id` | `WikiTaskResult` | 非破坏性读取完成结果 |
@@ -114,6 +114,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 本地阅读：列目录一层子项（惰性加载） |
 | `read_reader_md` | `path` | `String` | 本地阅读：读取 .md 文本 |
 | `read_reader_binary` | `path` | `ReaderBinary` | 本地阅读：读取二进制资源（data URL，16 MiB 上限） |
+| `find_first_reader_doc` | `path` | `Option<String>` | 本地阅读：在目录树中查找第一篇 Markdown 文档（用于「历史 → 应用内阅读」自动定位） |
 
 > **`config init --new`（创建/配置飞书自建应用）的调用分工**
 >
@@ -170,7 +171,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `extract.rs` | 单文档预览、导出、图片下载、事务提交和输出路径词法清理 |
 | `wiki.rs` | Wiki 遍历、选择、目录映射与批量导出（Doc/Sheet/Bitable/File 分流） |
 | `markdown.rs` | 图片解析、URL 替换和安全文件名 |
-| `reader.rs` | 本地阅读：目录导航、md 文本读取、二进制资源 data URL（纯本地，不依赖登录/网络） |
+| `reader.rs` | 本地阅读：目录导航、md 文本读取、二进制资源 data URL、查找首篇文档（纯本地，不依赖登录/网络） |
 | `models.rs` | 可序列化数据模型（含 `WikiNodeType::File`、`TaskPhase::ExportingFile`） |
 | `error.rs` | 结构化统一错误协议 |
 | `lib.rs` | 应用初始化、状态恢复和命令注册 |

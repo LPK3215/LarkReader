@@ -36,10 +36,10 @@ C = {
 }
 
 DATA = {
-    "commands": 29,
+    "commands": 26,
     "rust_files": 12,
     "rust_loc": 5120,
-    "unit_tests": 23,
+    "unit_tests": 24,
     "cli": "1.0.93",
 }
 
@@ -113,12 +113,12 @@ IPC_BOXES = [
 ]
 
 RUST_BOXES = [
-    ("commands.rs", ["29 个 IPC 命令 / 设置 / 任务与历史"]),
+    ("commands.rs", ["26 个 IPC 命令 / 设置 / 任务与历史"]),
     ("env.rs", ["Node · CLI · 应用配置 · 登录检测"]),
     ("lark.rs", ["子进程执行 / 超时 / 取消 / 重试 / cwd 白名单"]),
     ("extract.rs", ["单文档预览 / 导出 / 图片落盘 / 事务提交"]),
     ("wiki.rs", ["Wiki 遍历 / 选择 / 目录映射 / 导出分流"]),
-    ("reader.rs", ["本地目录导航 / md 读取 / 图片 data URL"]),
+    ("reader.rs", ["本地目录导航 / md 读取 / 图片 data URL / 查找首篇"]),
     ("markdown.rs", ["图片解析 / URL 本地化替换 / 安全文件名"]),
     ("models.rs", ["可序列化数据模型（WikiNode / Progress）"]),
     ("error.rs", ["统一结构化错误协议 AppError"]),
