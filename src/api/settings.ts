@@ -2,7 +2,6 @@
 // src/api/settings.ts —— 设置 / 输出目录相关 IPC
 //
 // 对应后端命令：
-//   get_settings()                  -> Settings
 //   set_settings(settings)          -> ()
 //   get_settings_status()           -> SettingsStatus
 //   preflight_output_dir(path)      -> OutputPreflight
@@ -11,10 +10,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { OutputPreflight, Settings, SettingsStatus } from "./types";
-
-export async function getSettings(): Promise<Settings> {
-  return invoke<Settings>("get_settings");
-}
 
 export async function setSettings(settings: Settings): Promise<void> {
   return invoke<void>("set_settings", { settings });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 全局任务条（40px）：跨页面保留，切到历史或设置页也能看到进度并随时取消。
-// 数据来自 stores/task.ts 的 Progress（本轮为静态视觉骨架，先用 props 驱动）。
+// 纯展示组件：数据全部由 props 驱动（App.vue 从 stores/task.ts 注入）。
 
 import AppIcon from "../AppIcon.vue";
 

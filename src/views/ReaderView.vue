@@ -52,8 +52,21 @@ const mdError = ref<string | null>(null);
 const contentHtml = ref("");
 const contentEl = ref<HTMLElement | null>(null);
 
-/** 图片 data URL 缓存（同一资源只读一次） */
+/**
+ * 图片 data URL 缓存（同一资源只读一次）。
+ * Map 保持插入顺序，超过上限时淘汰最旧条目，避免长会话/大库把大量 base64 常驻内存。
+ */
 const imageCache = new Map<string, string>();
+const IMAGE_CACHE_MAX = 200;
+
+function cacheImage(key: string, dataUrl: string) {
+  if (imageCache.has(key)) imageCache.delete(key); // 重新命中视为“最近使用”，挪到末尾
+  imageCache.set(key, dataUrl);
+  if (imageCache.size > IMAGE_CACHE_MAX) {
+    const oldest = imageCache.keys().next().value;
+    if (oldest !== undefined) imageCache.delete(oldest);
+  }
+}
 
 /** 最近一次任务产物目录（本会话还没跑过任务则为空） */
 const lastTaskDir = computed<string | null>(() => task.outputRoot || null);
@@ -210,7 +223,7 @@ async function resolveLocalImages() {
       try {
         const cached = imageCache.get(abs);
         const dataUrl = cached ?? (await readReaderBinary(abs)).data_url;
-        imageCache.set(abs, dataUrl);
+        if (!cached) cacheImage(abs, dataUrl);
         img.src = dataUrl;
       } catch (err) {
         img.classList.add("is-broken");

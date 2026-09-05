@@ -10,6 +10,11 @@
 
 import { computed, ref } from "vue";
 import type { ExportItemResult, ExportItemStatus } from "../api/types";
+import {
+  ITEM_STATUS_CLASS as STATUS_CLASS,
+  ITEM_STATUS_TEXT as STATUS_TEXT,
+  problemItemsOf,
+} from "../composables/useItemStatus";
 import AppIcon from "./AppIcon.vue";
 
 const props = withDefaults(
@@ -26,20 +31,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{ openDir: []; again: []; close: [] }>();
 
-const STATUS_TEXT: Record<ExportItemStatus, string> = {
-  success: "成功",
-  partial: "部分成功",
-  failed: "失败",
-  skipped: "跳过",
-};
-
-const STATUS_CLASS: Record<ExportItemStatus, string> = {
-  success: "lr-badge--success",
-  partial: "lr-badge--warning",
-  failed: "lr-badge--danger",
-  skipped: "lr-badge",
-};
-
 const summary = computed(() => {
   const counts: Record<ExportItemStatus, number> = {
     success: 0,
@@ -53,9 +44,7 @@ const summary = computed(() => {
   return counts;
 });
 
-const problemItems = computed(() =>
-  props.items.filter((item) => item.status !== "success")
-);
+const problemItems = computed(() => problemItemsOf(props.items));
 
 const showProblems = ref(false);
 </script>

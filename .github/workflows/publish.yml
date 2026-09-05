@@ -1,7 +1,7 @@
 name: "publish"
 
 # 触发方式（二选一）：
-#   1. 打 tag：git tag v0.1.0 && git push origin v0.1.0   → 自动构建并生成 draft release
+#   1. 打 tag：git tag v0.2.0 && git push origin v0.2.0   → 自动构建并正式发布
 #   2. 手动：GitHub 仓库 Actions 页点 "Run workflow"
 on:
   push:
@@ -10,7 +10,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 先快速校验更新签名私钥是否就位：
+  # updater 插件启用后打包必须用私钥给更新包签名，私钥只存在仓库 secret，
+  # 缺失时提前失败，避免 4 个平台跑完整个构建才发现。
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check updater signing key
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::缺少 TAURI_SIGNING_PRIVATE_KEY secret。"
+            echo "请在仓库 Settings → Secrets and variables → Actions 新建同名 secret，"
+            echo "内容为本机 ~/.larkreader-signing/larkreader.key 文件里的完整字符串。"
+            echo "没有它无法给更新包签名，自动更新不会工作。"
+            exit 1
+          fi
+
   publish-tauri:
+    needs: guard
     permissions:
       contents: write
     strategy:
@@ -60,9 +79,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           args: ${{ matrix.args }}
           releaseName: "LarkReader v__VERSION__"
           releaseBody: "See the assets below to download and install this version."
-          releaseDraft: true
+          # updater 通过 /releases/latest/download/latest.json 拉版本信息，
+          # draft release 不属于 latest，因此按 tag 直接出正式版
+          #（发不发版由 npm run release -- x.y.z 控制，不影响日常开发推送）。
+          releaseDraft: false
           prerelease: false

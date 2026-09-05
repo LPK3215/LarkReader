@@ -14,7 +14,7 @@
 //   node scripts/verify.mjs --web-only    # 只查前端
 //
 // 说明：真实下载类集成测试（src-tauri/tests/z_tmp_*，需登录飞书并联网）
-//   不在门禁内，需要时手动跑：cd src-tauri && cargo test --test z_tmp_full_download
+//   不在门禁内，需要时手动跑：cd src-tauri && cargo test --test z_tmp_big_download
 // ============================================================================
 
 import { execSync } from "node:child_process";

@@ -96,17 +96,13 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `start_login` | — | `DeviceInfo` | 发起设备码登录 |
 | `complete_login` | `device_code` | `LoginResult` | 完成设备码登录 |
 | `logout` | — | — | 退出登录 |
-| `preview_doc` | `url` | `PreviewResult` | 获取正文与图片清单，不落盘 |
-| `extract_doc` | `url`, `output_dir?` | `ExtractResult` | 导出单篇文档 |
-| `get_settings` | — | `Settings` | 获取设置 |
 | `get_settings_status` | — | `SettingsStatus` | 获取设置及配置恢复警告 |
 | `set_settings` | `settings` | — | 验证可写性并持久化设置 |
 | `preflight_output_dir` | `path` | `OutputPreflight` | 检查可写性和磁盘空间 |
 | `open_output_dir` | `path` | — | 使用系统文件管理器打开目录 |
 | `get_wiki_tree` | `wiki_url` | `WikiNode` | 获取完整 Wiki 树 |
-| `count_exportable` | `wiki_url`, `selected_tokens?` | 计数 | 统计所选节点中实际会导出的项目数 |
-| `extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?` | `WikiExtractResult` | 同步等待批量导出结果 |
-| `start_extract_wiki` | 同上 | `String` | 创建后台任务并立即返回 ID |
+| `count_exportable` | `selected_tokens?` | `ExportableCount` | 统计所选节点中实际会导出的项目数（复用最近一次扫描缓存，不重复扫树） |
+| `start_extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?` | `String` | 创建后台任务并立即返回 ID |
 | `get_progress` | `task_id` | `Progress` | 查询任务状态和阶段 |
 | `cancel_task` | `task_id` | — | 取消活动任务 |
 | `get_task_result` | `task_id` | `WikiTaskResult` | 非破坏性读取完成结果 |
@@ -118,9 +114,6 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 本地阅读：列目录一层子项（惰性加载） |
 | `read_reader_md` | `path` | `String` | 本地阅读：读取 .md 文本 |
 | `read_reader_binary` | `path` | `ReaderBinary` | 本地阅读：读取二进制资源（data URL，16 MiB 上限） |
-| `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 列出本地目录一层子项（Reader 目录导航） |
-| `read_reader_md` | `path` | `String` | 读取 `.md` 文档文本（Reader 渲染正文） |
-| `read_reader_binary` | `path` | `ReaderBinary` | 读取二进制资源，返回可内联 data URL |
 
 > **`config init --new`（创建/配置飞书自建应用）的调用分工**
 >
@@ -189,7 +182,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           23 项通过
+cargo test --lib                           24 项通过
 cargo build                                通过
 npm run build                              通过
 ```
@@ -198,7 +191,7 @@ npm run build                              通过
 
 - `tests/full_suite.rs`（A 组纯函数可不登录，B 组起需登录）
 - `tests/integration.rs`、`tests/logged_in_flow.rs`、`tests/new_user_flow.rs`
-- `tests/z_tmp_full_download.rs`、`tests/z_tmp_big_download.rs`（真实下载回归入口，产物落入 `e2e_download_tmp*/`）
+- `tests/z_tmp_big_download.rs`（真实下载回归入口，产物落入 `e2e_download_tmp_big/`）
 
 ### 6.2 真实飞书账号验证覆盖（2026-09-05）
 

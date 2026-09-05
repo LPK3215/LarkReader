@@ -17,6 +17,7 @@ import { useTaskStore } from "./stores/task";
 import { useSettingsStore } from "./stores/settings";
 import { useAuthStore } from "./stores/auth";
 import { message as globalMessage } from "./composables/useMessage";
+import { notifyUpdateOnce } from "./api/updater";
 
 const route = useRoute();
 const router = useRouter();
@@ -64,11 +65,21 @@ function goWorkspace() {
   router.push("/workspace");
 }
 
+/** 启动后静默查一次新版本：有更新才提示，整个进程只提示一次（防每次启动打扰） */
+function hintUpdateSilently() {
+  void notifyUpdateOnce((currentVersion, nextVersion) => {
+    globalMessage.info(
+      `发现新版本 v${nextVersion}（当前 v${currentVersion}），可在「设置 → 软件更新」中升级。`
+    );
+  });
+}
+
 onMounted(() => {
   if (!bare.value) {
     void ensureEnv();
     // 兜底加载真实设置：会话恢复直进外壳时（未走引导/设置页）不显示假默认值
     void settings.load();
+    hintUpdateSilently();
   }
 });
 
@@ -76,6 +87,7 @@ watch(bare, (isBare) => {
   if (!isBare) {
     void ensureEnv();
     void settings.load();
+    hintUpdateSilently();
   }
 });
 </script>

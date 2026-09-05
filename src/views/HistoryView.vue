@@ -12,12 +12,12 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useHistoryStore } from "../stores/history";
-import type {
-  ExportItemResult,
-  ExportItemStatus,
-  TaskStatus,
-  WikiTaskResult,
-} from "../api/types";
+import type { ExportItemResult, TaskStatus, WikiTaskResult } from "../api/types";
+import {
+  ITEM_STATUS_CLASS,
+  ITEM_STATUS_TEXT,
+  problemItemsOf,
+} from "../composables/useItemStatus";
 import AppIcon from "../components/AppIcon.vue";
 
 const history = useHistoryStore();
@@ -39,26 +39,12 @@ const STATUS_CLASS: Record<TaskStatus, string> = {
   cancelled: "lr-badge--warning",
 };
 
-const ITEM_STATUS_TEXT: Record<ExportItemStatus, string> = {
-  success: "成功",
-  partial: "部分成功",
-  failed: "失败",
-  skipped: "跳过",
-};
-
-const ITEM_STATUS_CLASS: Record<ExportItemStatus, string> = {
-  success: "lr-badge--success",
-  partial: "lr-badge--warning",
-  failed: "lr-badge--danger",
-  skipped: "lr-badge",
-};
-
 /** 当前展开明细的历史记录 task_id */
 const expandedId = ref<string | null>(null);
 
 /** 该次导出中「非成功」的条目（失败/部分成功/跳过），是用户需要知道原因的部分 */
 function problemItems(record: WikiTaskResult): ExportItemResult[] {
-  return (record.result?.items ?? []).filter((item) => item.status !== "success");
+  return problemItemsOf(record.result?.items ?? []);
 }
 
 function toggleDetail(taskId: string) {

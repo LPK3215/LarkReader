@@ -78,3 +78,7 @@ Desktop.ini
 # the persisted case snapshot lives in docs/e2e-download-case/)
 /e2e_download_tmp/
 /e2e_download_tmp_big/
+
+# Windows 图标/缩略图缓存被误拷进仓库根（目录名含未展开的 %SystemDrive%），
+# 非源码，忽略以免被误提交
+/%SystemDrive%/

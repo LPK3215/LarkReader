@@ -50,6 +50,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // 应用内更新：前端 Settings 手动检查 + 启动时静默检测（配置见 tauri.conf.json）
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 更新安装后重启进程（mac / Linux 需要；Windows 由安装器自行拉起）
+        .plugin(tauri_plugin_process::init())
         .manage(AppState {
             settings: Mutex::new(settings),
             tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -67,9 +69,6 @@ pub fn run() {
             commands::start_login,
             commands::complete_login,
             commands::logout,
-            commands::preview_doc,
-            commands::extract_doc,
-            commands::get_settings,
             commands::set_settings,
             commands::get_settings_status,
             commands::preflight_output_dir,
@@ -77,7 +76,6 @@ pub fn run() {
             // P1 命令
             commands::get_wiki_tree,
             commands::count_exportable,
-            commands::extract_wiki,
             commands::get_progress,
             commands::cancel_task,
             commands::start_extract_wiki,

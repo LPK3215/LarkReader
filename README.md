@@ -49,6 +49,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 | 📎 文件附件 | Wiki 页面挂载的 `file` 节点（zip / pdf / docx 等）按原始字节下载，文件名 = 位置前缀 + 原标题，字节数与上传一致 |
 | 🧭 后台任务 | 任务立即返回 ID 后台执行；8 阶段进度（总数 / 完成数 / 当前标题 / 预计剩余）；协作式取消并返回部分结果；历史持久化（24 小时 / ≤ 100 条） |
 | 📚 本地阅读 | 新增 Reader 页：浏览导出目录、渲染 Markdown 与图片（data URL 内联），离线可用 |
+| 🔄 应用内更新 | 设置页一键「检查更新」；下载进度可见；公钥签名校验；Windows 自动安装并重启，macOS/Linux 安装后自动 relaunch |
 | 🧱 可靠性 | 结构化错误协议（`code / message / retryable`）、输出目录预检（可写性 + 磁盘空间）、设置临时文件 / 备份 / 回滚、临时故障指数退避重试、运行日志页 |
 
 ## 🏗 架构
@@ -61,7 +62,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 <img src="./docs/assets/export-pipeline.svg" alt="导出流水线" width="100%"/>
 </div>
 
-前后端通过 Tauri IPC 通信：**29 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
+前后端通过 Tauri IPC 通信：**26 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
 
 ## 🛠 技术栈
 
@@ -72,7 +73,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 | 前端 | Vue 3.5 + TypeScript ~6.0 + Vite 8 |
 | 状态与 UI | Pinia 4 + Naive UI + Vue Router |
 | 内容源 | `@larksuite/cli` 固定 `1.0.93`（子进程调用，凭据托管） |
-| CI/发布 | GitHub Actions 三平台（Windows / macOS / Linux）出包，`v*` tag 触发 |
+| CI/发布 | GitHub Actions 三平台（Windows / macOS / Linux）出包，`v*` tag 触发；完整手册见 [docs/release-and-update.md](docs/release-and-update.md) |
 
 ## 📁 项目结构
 
@@ -96,6 +97,7 @@ LarkReader/
 │   ├── e2e-download-case/      # E2E 测试库全量下载稳定快照（42 文件 / 18 种扩展名）
 │   ├── e2e-fixtures/           # 测试库原始素材与生成脚本 gen_assets.py
 │   ├── BACKEND.md              # 后端功能与维护手册（唯一主文档）
+│   ├── release-and-update.md   # 构建 · 发版 · 应用内更新完整手册（环境、打包、签名密钥、CI、问题排查）
 │   ├── FEISHU_AUTH.md          # 飞书登录与应用权限说明
 │   └── LOGIN_ISSUE_20260905.md # 登录问题排查记录
 ├── scripts/                    # 仓库操作脚本（Node）：verify / clean-e2e / release
@@ -133,7 +135,8 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 
 | 文档 | 内容 |
 |---|---|
-| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、29 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
+| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、26 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
+| [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |
 | [docs/FEISHU_AUTH.md](docs/FEISHU_AUTH.md) | 飞书自建应用创建、权限清单、登录链路说明 |
 | [docs/e2e-download-case/](docs/e2e-download-case/) | E2E 测试库全量下载产物快照，可离线查看导出结构与命名规则（[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)） |
 | [docs/scripts/README.md](docs/scripts/README.md) | 本仓库可视化资产的生成脚本使用说明 |
@@ -158,7 +161,7 @@ npm run build                              通过
 
 - 实测大型知识库（A）：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
 - E2E 测试库 8 个顶层节点：**38 项成功 / 0 失败 / 0 跳过**，产物 42 文件、18 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
-- 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · A 模式（仅导出本节点，1 项）vs C 模式（展开整个知识库，38 项）；
+- 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · Auto 模式（仅导出本节点，1 项）vs FullSpace 模式（展开整个知识库，38 项）；
 - 父文档带子页面整棵导出、空文档 / 超长标题 / 特殊字符文件名清洗与还原、重复导出自动编号。
 
 ## ❓ FAQ

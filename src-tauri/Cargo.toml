@@ -34,6 +34,7 @@ tempfile = "3"
 rayon = "1"
 fs2 = "0.4"
 tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 base64 = "0.22"
 

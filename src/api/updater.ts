@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { getVersion } from "@tauri-apps/api/app";
-import { relaunch } from "@tauri-apps/api/process";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 
 /** 检查结果：与后端约定互不依赖，纯粹消费 GitHub latest.json */

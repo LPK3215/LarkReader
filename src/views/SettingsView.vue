@@ -199,6 +199,83 @@ onMounted(async () => {
         </div>
       </section>
 
+      <section class="lr-card">
+        <header class="lr-card__head">
+          <span class="lr-card__title">软件更新</span>
+        </header>
+        <div class="lr-card__body lr-settings__update">
+          <div class="lr-settings__updateinfo">
+            <div class="lr-settings__updatever">
+              当前版本 <b class="lr-mono">v{{ currentVersion || "—" }}</b>
+            </div>
+
+            <p v-if="checking" class="lr-settings__updatehint">
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
+              正在检查 GitHub 上的新版本…
+            </p>
+            <p
+              v-else-if="updateState === 'fresh'"
+              class="lr-settings__updatehint lr-settings__updatehint--ok"
+            >
+              <AppIcon name="check-circle" :size="12" />
+              已是最新版本
+            </p>
+            <p
+              v-else-if="updateState === 'hasUpdate'"
+              class="lr-settings__updatehint lr-settings__updatehint--has"
+            >
+              <AppIcon name="refresh" :size="12" />
+              发现新版本 v{{ nextVersion }}，点右侧按钮下载安装。
+            </p>
+            <p v-else-if="checkError" class="lr-settings__updatehint lr-settings__updatehint--err">
+              {{ checkError }}（可稍后重试）
+            </p>
+            <p v-else class="lr-settings__updatehint">
+              版本信息来自 GitHub Releases；Windows/Linux 均可自动更新，macOS 需在系统设置中放行。
+            </p>
+          </div>
+
+          <!-- 安装进度（替代按钮区） -->
+          <div v-if="installing" class="lr-settings__install">
+            <span class="lr-settings__installtext">
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
+              正在下载 v{{ nextVersion }}
+              <template v-if="installPercent !== null">（{{ installPercent }}%）</template>
+            </span>
+            <div class="lr-settings__barbox">
+              <div
+                class="lr-settings__barfill"
+                :style="{ width: `${installPercent ?? 0}%` }"
+              />
+            </div>
+            <span class="lr-settings__installhint">
+              下载完成后会自动安装并重启应用，期间请勿关闭窗口
+            </span>
+          </div>
+
+          <div v-else class="lr-settings__updateops">
+            <button
+              v-if="updateState === 'hasUpdate'"
+              class="lr-btn lr-btn--primary"
+              :disabled="checking"
+              @click="onInstallUpdate"
+            >
+              <AppIcon name="download" :size="13" />
+              下载并安装 v{{ nextVersion }}
+            </button>
+            <button
+              v-else
+              class="lr-btn lr-btn--secondary"
+              :disabled="checking"
+              @click="onCheckUpdate"
+            >
+              <AppIcon v-if="checking" name="spinner" :size="12" class="lr-icon-spin" />
+              {{ checking ? "检查中…" : "检查更新" }}
+            </button>
+          </div>
+        </div>
+      </section>
+
       <div class="lr-settings__footer">
         <button class="lr-btn lr-btn--secondary" :disabled="saving" @click="onReset">
           恢复默认
@@ -279,5 +356,92 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: var(--lr-space-2);
+}
+
+/* ---- 软件更新 ---- */
+.lr-settings__update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lr-space-4);
+}
+
+.lr-settings__updateinfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-1);
+}
+
+.lr-settings__updatever {
+  font-size: var(--lr-fs-body);
+}
+
+.lr-settings__updatever b {
+  color: var(--lr-text-secondary);
+  font-weight: var(--lr-fw-medium);
+}
+
+.lr-settings__updatehint {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lr-space-1);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.lr-settings__updatehint--ok {
+  color: var(--lr-success);
+}
+
+.lr-settings__updatehint--has {
+  color: var(--lr-primary);
+}
+
+.lr-settings__updatehint--err {
+  color: var(--lr-danger);
+}
+
+.lr-settings__updateops {
+  flex: none;
+}
+
+.lr-settings__install {
+  flex: none;
+  width: min(360px, 60%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-2);
+}
+
+.lr-settings__installtext {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lr-space-1);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-secondary);
+}
+
+.lr-settings__barbox {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--lr-bg-active);
+  overflow: hidden;
+}
+
+.lr-settings__barfill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--lr-primary);
+  transition: width 0.15s ease-out;
+}
+
+.lr-settings__installhint {
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
 }
 </style>
