@@ -1,6 +1,6 @@
 import wave, struct, csv, os
 
-d = r"d:\Develop\SourceCode\rustcode\LarkReader\_test_fixtures"
+d = os.path.dirname(os.path.abspath(__file__))
 
 
 def make_wav(p, secs=2):
