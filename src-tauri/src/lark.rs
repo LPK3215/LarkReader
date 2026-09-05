@@ -30,7 +30,44 @@ fn build_command() -> Command {
     for env in ENV_TO_REMOVE {
         cmd.env_remove(env);
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // 让子进程成为独立进程组组长，超时/取消时才能按负 PID 整组终止
+        // （见 kill_process_tree）。
+        cmd.process_group(0);
+    }
     cmd
+}
+
+/// 终止 lark-cli 进程及其整棵进程树。
+///
+/// 终止 lark-cli 进程及其整棵进程树。
+///
+/// 在 Windows 上 `lark-cli.cmd` 会被 std 以 cmd.exe 包装执行，cmd 再拉起
+/// node(scripts/run.js) 与真正的 cli 进程；直接 `Child::kill()` 只杀掉
+/// cmd 外壳，node 会变成孤儿继续在后台轮询——这正是 device-code 登录
+/// 超时/取消后僵尸堆积的源头。无论系统工具是否成功，最后再兜底直接
+/// kill 直接子进程。
+///
+/// - Windows：`taskkill /PID <pid> /T /F`（/T 终止整棵进程树）
+/// - Unix：向进程组发 SIGKILL（负 PID，进程组号 == 组长 PID）
+fn kill_process_tree(child: &mut std::process::Child) {
+    let pid = child.id();
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status();
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .arg("-KILL")
+            .arg(format!("-{}", pid))
+            .status();
+    }
+    let _ = child.kill();
 }
 
 /// 从输出字符串中提取 JSON 部分
@@ -164,7 +201,7 @@ fn run_lark_in(
     let started = Instant::now();
     let status: ExitStatus = loop {
         if cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
-            let _ = child.kill();
+            kill_process_tree(&mut child);
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
@@ -177,7 +214,7 @@ fn run_lark_in(
             break status;
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
+            kill_process_tree(&mut child);
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
@@ -462,7 +499,7 @@ pub fn config_init_stream(
             break status;
         }
         if started.elapsed() >= Duration::from_secs(TIMEOUT_SECS) {
-            let _ = child.kill();
+            kill_process_tree(&mut child);
             let _ = child.wait();
             let _ = out_reader.join();
             let _ = err_reader.join();
@@ -837,7 +874,6 @@ pub fn lark_cli_exists() -> bool {
 #[cfg(test)]
 mod url_tests {
     use super::extract_first_url;
-
     #[test]
     fn extracts_plain_https() {
         assert_eq!(

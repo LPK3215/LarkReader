@@ -9,7 +9,16 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AppError {
     /// lark-cli 未安装或找不到可执行文件
-    #[error("lark-cli 未找到: {0}")]
+    ///
+    /// 报错除了说明原因，还给出两条安装路径（应用内一键安装 / npm 命令行）
+    /// 与官方下载页，避免用户收到「找不到 lark-cli」后无从下手。
+    #[error(
+        "未检测到 lark-cli（飞书官方命令行工具），无法继续操作。\n\
+         · 推荐：在本应用「飞书终端」页点击 lark-cli 一行的「安装/更新」自动安装；\n\
+         · 命令行安装（需 Node.js 18+）：npm install -g @larksuite/cli\n\
+         · 官方下载页：https://www.npmjs.com/package/@larksuite/cli\n\
+         安装完成后重新操作即可。原始错误：{0}"
+    )]
     LarkCliNotFound(String),
 
     /// lark-cli 命令执行失败（非零退出码）

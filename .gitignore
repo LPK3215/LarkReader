@@ -15,6 +15,8 @@ pnpm-lock.yaml
 *.log
 # Persisted E2E case snapshot keeps its .log fixture (04_app.log)
 !docs/e2e-download-case/06_附件下载/04_app.log
+# Local `tauri dev` run helper artifacts (pid of the detached dev process)
+/dev-run.pid
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
