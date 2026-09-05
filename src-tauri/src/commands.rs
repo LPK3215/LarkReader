@@ -824,3 +824,9 @@ pub fn read_reader_md(path: String) -> Result<String, AppError> {
 pub fn read_reader_binary(path: String) -> Result<ReaderBinary, AppError> {
     crate::reader::read_reader_binary(&path)
 }
+
+/// 在导出目录树里找第一篇 Markdown（任务历史「应用内阅读」自动打开用）
+#[tauri::command]
+pub fn find_first_reader_doc(path: String) -> Result<Option<String>, AppError> {
+    crate::reader::find_first_reader_doc(&path)
+}

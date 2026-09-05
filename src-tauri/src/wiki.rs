@@ -24,6 +24,35 @@ use crate::models::{
 const MAX_WIKI_DEPTH: usize = 64;
 const MAX_WIKI_NODES: usize = 10_000;
 
+/// 单篇文档提取失败后的额外自动重试次数（含首次共 3 次尝试）。
+///
+/// 背景：批量导出遇到的多是 lark-cli / 网络的瞬时错误（抖动、限流、超时），
+/// 失败即记录会让用户不得不整库重下。此处对可重试类错误做有限次自动重试，
+/// 退避间隔短、有取消检查，永久性错误（未登录、文件系统等）不会进入重试。
+const DOC_RETRY_LIMIT: usize = 2;
+
+/// 是否属于「瞬时失败值得自动重试」的错误
+fn is_transient_error(error: &AppError) -> bool {
+    matches!(
+        error.code(),
+        // lark-cli 执行/响应解析/网络/超时/任务状态不可用/提取异常：多为瞬时可恢复
+        "LARK_CLI_ERROR"
+            | "INVALID_CLI_RESPONSE"
+            | "NETWORK_ERROR"
+            | "COMMAND_TIMEOUT"
+            | "STATE_UNAVAILABLE"
+            | "EXTRACT_ERROR"
+    )
+}
+
+/// 第 n 次重试前的退避等待：800ms / 1.6s / 3.2s，封顶 3.2s
+fn retry_backoff_ms(attempt: usize) -> u64 {
+    [800, 1600, 3200]
+        .get(attempt.saturating_sub(1))
+        .copied()
+        .unwrap_or(3200)
+}
+
 /// 获取 Wiki 节点树
 ///
 /// 流程：
@@ -268,16 +297,48 @@ pub async fn extract_wiki_tree_controlled(
             progress.phase = TaskPhase::ExportingDocument;
         }
 
-        // 提取文档
+        // 提取文档（对可重试的瞬时失败自动重试，见 DOC_RETRY_LIMIT）
         let item_started = std::time::Instant::now();
-        let outcome = extract::extract_doc_with_title_async_controlled(
-            &doc_url,
-            Some(&doc_title),
-            full_dir.to_str().unwrap_or(""),
-            settings,
-            cancelled.clone(),
-        )
-        .await;
+        let mut retried = 0usize;
+        let outcome = loop {
+            let attempt = extract::extract_doc_with_title_async_controlled(
+                &doc_url,
+                Some(&doc_title),
+                full_dir.to_str().unwrap_or(""),
+                settings,
+                cancelled.clone(),
+            )
+            .await;
+            if attempt.is_ok() || retried >= DOC_RETRY_LIMIT {
+                break attempt;
+            }
+            // 任务已取消或属永久性错误：不再浪费时间重试
+            if cancelled
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Relaxed))
+            {
+                break attempt;
+            }
+            let error = attempt.as_ref().expect_err("is_ok 已排除");
+            if !is_transient_error(error) {
+                break attempt;
+            }
+            retried += 1;
+            crate::logger::warn(format!(
+                "[{}/{}] 导出文档「{}」失败，{}ms 后第 {}/{} 次自动重试：{}",
+                doc_idx + 1,
+                docs.len(),
+                node.title,
+                retry_backoff_ms(retried),
+                retried,
+                DOC_RETRY_LIMIT,
+                error
+            ));
+            tokio::time::sleep(std::time::Duration::from_millis(
+                retry_backoff_ms(retried),
+            ))
+            .await;
+        };
 
         // 用户在本篇导出期间点了取消：这篇既不算成功也不算失败。
         // 若继续统计，被打断的图片下载会把它记成"部分成功"，与用户
@@ -339,16 +400,25 @@ pub async fn extract_wiki_tree_controlled(
                 failed_count += 1;
                 let message = error.to_string();
                 crate::logger::error(format!(
-                    "[{}/{}] 导出文档「{}」失败：{}",
+                    "[{}/{}] 导出文档「{}」失败{}：{}",
                     doc_idx + 1,
                     docs.len(),
                     node.title,
+                    if retried > 0 {
+                        format!("（自动重试 {retried} 次后仍失败）")
+                    } else {
+                        String::new()
+                    },
                     message
                 ));
                 let failure = DocFailure {
                     title: node.title.clone(),
                     node_token: node.node_token.clone(),
-                    error: message,
+                    error: if retried > 0 {
+                        format!("自动重试 {retried} 次后仍失败：{message}")
+                    } else {
+                        message
+                    },
                 };
                 failures.push(failure);
             }

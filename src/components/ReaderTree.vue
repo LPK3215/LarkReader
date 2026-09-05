@@ -16,8 +16,10 @@ const props = withDefaults(
   defineProps<{
     rootPath: string;
     activePath?: string | null;
+    /** 需要自动展开定位的文档路径（由父页面透传，见 ReaderTreeRow） */
+    revealPath?: string | null;
   }>(),
-  { activePath: null }
+  { activePath: null, revealPath: null }
 );
 
 const emit = defineEmits<{
@@ -95,6 +97,7 @@ function onError(message: string) {
         :key="child.path"
         :node="child"
         :active-path="props.activePath"
+        :reveal-path="props.revealPath"
         @select="onSelect"
         @error="onError"
       />

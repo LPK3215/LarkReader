@@ -81,6 +81,51 @@ pub fn list_reader_dir(dir_path: &str) -> AppResult<Vec<ReaderEntry>> {
     Ok(entries)
 }
 
+/// 递归搜索条目数上限（防止超大目录把「自动打开第一篇」拖慢）
+const MAX_FIRST_DOC_VISITED: usize = 4000;
+
+/// 在目录树里找「第一篇」 Markdown 文档，返回其绝对路径。
+///
+/// 用于「任务历史 → 应用内阅读」：跳进阅读页后自动渲染第一篇，而不是停在空态。
+/// 遍历顺序与目录树一致，且同层优先返回 Markdown（跳过 `*_images` 资源目录）；
+/// 有遍历上限，搜不到或超限都返回 None，不影响阅读页正常空态。
+pub fn find_first_reader_doc(root_path: &str) -> AppResult<Option<String>> {
+    let root = PathBuf::from(root_path);
+    let meta = std::fs::metadata(&root)?;
+    if !meta.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "不是目录，无法搜索: {root_path}"
+        )));
+    }
+    let mut visited = 0usize;
+    let mut pending_dirs: Vec<PathBuf> = vec![root];
+    while let Some(dir) = pending_dirs.pop() {
+        let entries = list_reader_dir(&dir.to_string_lossy())?;
+        let mut child_dirs = Vec::new();
+        for entry in entries {
+            visited += 1;
+            if visited > MAX_FIRST_DOC_VISITED {
+                crate::logger::warn(format!(
+                    "查找第一篇文档时已遍历 {MAX_FIRST_DOC_VISITED} 个条目，放弃继续"
+                ));
+                return Ok(None);
+            }
+            match entry.kind {
+                ReaderEntryKind::Md => return Ok(Some(entry.path)),
+                ReaderEntryKind::Dir => {
+                    if !is_images_dir_name(&entry.name) {
+                        child_dirs.push(PathBuf::from(entry.path));
+                    }
+                }
+                ReaderEntryKind::Other => {}
+            }
+        }
+        // 当前层没有 .md：进入子目录继续找。后进先出保证贴近阅读页目录顺序。
+        pending_dirs.extend(child_dirs.into_iter().rev());
+    }
+    Ok(None)
+}
+
 /// 读取 Markdown 文档文本。仅允许 .md/.markdown，防止误读任意文件。
 pub fn read_reader_md(file_path: &str) -> AppResult<String> {
     let path = PathBuf::from(file_path);

@@ -12,15 +12,19 @@
 // ============================================================================
 
 import { computed, nextTick, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import MarkdownIt from "markdown-it";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import AppIcon from "../components/AppIcon.vue";
 import ReaderTree from "../components/ReaderTree.vue";
-import { readReaderBinary, readReaderMd } from "../api/reader";
+import { findFirstReaderDoc, readReaderBinary, readReaderMd } from "../api/reader";
 import { useTaskStore } from "../stores/task";
 import { useHistoryStore } from "../stores/history";
 import { openOutputDir } from "../api/settings";
+
+const route = useRoute();
+const router = useRouter();
 
 const task = useTaskStore();
 const history = useHistoryStore();
@@ -37,6 +41,9 @@ const rootPath = ref<string | null>(null);
 const rootName = ref("");
 /** 正在阅读的文档（md）绝对路径 */
 const docPath = ref<string | null>(null);
+
+/** 需要树自动展开定位到的文档（任务历史「应用内阅读」直达时设置） */
+const revealPath = ref<string | null>(null);
 
 const mdLoading = ref(false);
 const mdError = ref<string | null>(null);
@@ -96,6 +103,7 @@ function setRoot(path: string) {
   rootPath.value = path;
   rootName.value = basename(path);
   docPath.value = null;
+  revealPath.value = null;
   contentHtml.value = "";
   mdError.value = null;
 }
@@ -113,6 +121,7 @@ function clearRoot() {
   rootPath.value = null;
   rootName.value = "";
   docPath.value = null;
+  revealPath.value = null;
   contentHtml.value = "";
   mdError.value = null;
 }
@@ -123,6 +132,7 @@ async function openDoc(path: string) {
   mdLoading.value = true;
   mdError.value = null;
   docPath.value = path;
+  revealPath.value = path;
   contentHtml.value = "";
   try {
     const raw = await readReaderMd(path);
@@ -132,6 +142,29 @@ async function openDoc(path: string) {
   } finally {
     mdLoading.value = false;
     void nextTick(() => resolveLocalImages());
+  }
+}
+
+/**
+ * 任务历史「应用内阅读」直达入口：route query.dir 指向产物目录时，
+ * 自动切到该阅读源并打开第一篇 md（树随之展开定位）。
+ */
+async function openExternalSource(dir: string) {
+  await loadHistory();
+  setRoot(dir);
+  let first: string | null = null;
+  try {
+    first = await findFirstReaderDoc(dir);
+  } catch (err) {
+    mdError.value = `定位第一篇文档失败：${String(err)}`;
+  }
+  if (first) {
+    revealPath.value = first;
+    await openDoc(first);
+  }
+  // 消费后清掉 query：否则用户手动更换阅读源后再点同一条历史不会触发
+  if (route.query.dir) {
+    await router.replace({ path: "/reader", query: {} });
   }
 }
 
@@ -185,10 +218,19 @@ async function revealDoc() {
   }
 }
 
-// 切换阅读源时自动打开目录内第一篇 md（有多个时留给用户点选，不自动开）
+// 切换阅读源时刷新历史（保持右侧「已有导出」清单最新）
 watch(rootPath, (path) => {
   if (path) void history.refresh();
 });
+
+// 任务历史「应用内阅读」直达：?dir=<产物目录>
+watch(
+  () => route.query.dir,
+  (dir) => {
+    if (typeof dir === "string" && dir) void openExternalSource(dir);
+  },
+  { immediate: true }
+);
 
 // ============================================================================
 // 纯路径工具（避免引 node:path —— Tauri 前端不保证可用）
@@ -285,6 +327,7 @@ function joinPath(dir: string, rel: string): string {
             <ReaderTree
               :root-path="rootPath"
               :active-path="docPath"
+              :reveal-path="revealPath"
               @select="openDoc"
               @error="(m) => (mdError = m)"
             />

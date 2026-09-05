@@ -8,6 +8,7 @@
 //   - .md 文档 emit select 供阅读；其他文件为附件，只展示不可读
 // ============================================================================
 
+import { computed, nextTick, ref, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
 import { listReaderDir } from "../api/reader";
 import type { ReaderEntry, ReaderEntryKind } from "../api/types";
@@ -32,8 +33,13 @@ const props = withDefaults(
     node: ReaderTreeNode;
     depth?: number;
     activePath?: string | null;
+    /**
+     * 需要自动展开定位到的文档路径（任务历史「应用内阅读」直达用）。
+     * 目录若位于该文档的祖先链上会自动展开，定位目标 md 行会滚动进可视区。
+     */
+    revealPath?: string | null;
   }>(),
-  { depth: 0, activePath: null }
+  { depth: 0, activePath: null, revealPath: null }
 );
 
 const emit = defineEmits<{
@@ -56,24 +62,82 @@ function entryToNode(entry: ReaderEntry): ReaderTreeNode {
   };
 }
 
+/** 判断 child 是否等于或位于 ancestor 目录之下（兼容 / 与 \ 两种分隔符） */
+function isPathUnder(child: string, ancestor: string): boolean {
+  const c = child.replace(/\\/g, "/");
+  const a = ancestor.replace(/\\/g, "/");
+  if (c === a) return true;
+  const prefix = a.endsWith("/") ? a : `${a}/`;
+  return c.startsWith(prefix);
+}
+
+const isActive = computed(
+  () => props.node.kind === "md" && props.node.path === props.activePath
+);
+
+/** 当前行是待定位文档本身（md） */
+const isRevealTarget = computed(
+  () => props.node.kind === "md" && !!props.revealPath && props.node.path === props.revealPath
+);
+
+/** 当前行是待定位文档的祖先目录（需要自动展开） */
+const isRevealAncestor = computed(
+  () =>
+    props.node.kind === "dir" &&
+    !props.node.imagesDir &&
+    !!props.revealPath &&
+    isPathUnder(props.revealPath, props.node.path)
+);
+
+/** 行元素：active / reveal 目标自动滚入可视区 */
+const rowEl = ref<HTMLElement | null>(null);
+watch(
+  () => [isActive.value, isRevealTarget.value, rowEl.value] as const,
+  ([active]) => {
+    if ((active as boolean) && rowEl.value) {
+      void nextTick(() => rowEl.value?.scrollIntoView({ block: "nearest" }));
+    }
+  },
+  { immediate: true, flush: "post" }
+);
+
+/** 惰性加载子级；失败时把错误抛给上层展示。返回是否加载成功。 */
+async function loadChildren(): Promise<boolean> {
+  const node = props.node;
+  if (node.imagesDir || node.loading || node.loaded) return node.loaded;
+  node.loading = true;
+  try {
+    const entries = await listReaderDir(node.path);
+    node.children = entries.map(entryToNode);
+    node.loaded = true;
+  } catch (err) {
+    emit("error", `读取目录失败：${String(err)}`);
+    node.loaded = false;
+  } finally {
+    node.loading = false;
+  }
+  return node.loaded;
+}
+
 async function toggleDir() {
   const node = props.node;
-  if (node.imagesDir || node.loading) return;
-  if (!node.loaded) {
-    node.loading = true;
-    try {
-      const entries = await listReaderDir(node.path);
-      node.children = entries.map(entryToNode);
-      node.loaded = true;
-    } catch (err) {
-      emit("error", `读取目录失败：${String(err)}`);
-      return;
-    } finally {
-      node.loading = false;
-    }
-  }
-  node.expanded = !node.expanded;
+  if (node.kind !== "dir" || node.imagesDir || node.loading) return;
+  const loaded = await loadChildren();
+  if (loaded) node.expanded = !node.expanded;
 }
+
+/** 若当前目录是 reveal 目标祖先：加载并展开，让子行递归继续定位 */
+watch(
+  () => [props.revealPath, props.node.loaded] as const,
+  async () => {
+    if (!isRevealAncestor.value) return;
+    const loaded = await loadChildren();
+    if (loaded && !props.node.expanded) {
+      props.node.expanded = true;
+    }
+  },
+  { immediate: true }
+);
 
 function onLineClick() {
   const node = props.node;
@@ -96,9 +160,11 @@ function sizeText(bytes: number | null): string {
 <template>
   <div>
     <div
+      ref="rowEl"
       class="lr-treerow"
       :class="{
-        'is-active': node.kind === 'md' && node.path === props.activePath,
+        'is-active': isActive,
+        'is-reveal': isRevealTarget,
         'is-clickable': node.kind === 'dir' ? !node.imagesDir : node.kind === 'md',
         'is-dim': node.imagesDir || node.kind === 'other',
       }"
@@ -146,6 +212,7 @@ function sizeText(bytes: number | null): string {
         :node="child"
         :depth="(props.depth ?? 0) + 1"
         :active-path="props.activePath"
+        :reveal-path="props.revealPath"
         @select="(p) => emit('select', p)"
         @error="(m) => emit('error', m)"
       />

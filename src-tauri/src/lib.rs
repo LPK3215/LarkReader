@@ -90,6 +90,7 @@ pub fn run() {
             commands::list_reader_dir,
             commands::read_reader_md,
             commands::read_reader_binary,
+            commands::find_first_reader_doc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LarkReader application");
