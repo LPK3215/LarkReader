@@ -14,6 +14,25 @@
 
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
 
+// ---- 首次使用标记：未完成引导的新用户会被送往 /onboarding ----
+const ONBOARDED_KEY = "larkreader_onboarded";
+
+export function isOnboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDED_KEY) === "1";
+  } catch {
+    return true; // localStorage 不可用时不劫持路由
+  }
+}
+
+export function markOnboarded(): void {
+  try {
+    localStorage.setItem(ONBOARDED_KEY, "1");
+  } catch {
+    /* 忽略 */
+  }
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
@@ -70,6 +89,13 @@ const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHashHistory(),
   routes,
+});
+
+// 首次使用（未完成引导）时，除引导页外的任何路由都先送往 /onboarding。
+// 完成引导或跳过后写入标记，之后不再拦截。
+router.beforeEach((to) => {
+  if (isOnboarded() || to.path === "/onboarding") return true;
+  return "/onboarding";
 });
 
 export default router;

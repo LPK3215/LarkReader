@@ -20,7 +20,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
 import AppConfigGuide from "../components/AppConfigGuide.vue";
-import { message } from "../composables/useMessage";
+import { dialog, message } from "../composables/useMessage";
+import { markOnboarded } from "../router";
 
 const router = useRouter();
 const settings = useSettingsStore();
@@ -131,8 +132,23 @@ function prevStep() {
   onboarding.step = Math.max(0, onboarding.step - 1);
 }
 
+/** 完成引导：写入标记，之后启动不再自动弹出 */
 function finish() {
+  markOnboarded();
   router.push("/workspace");
+}
+
+/** 跳过引导：确认后写入标记，本次及以后启动都不再自动弹出 */
+function skipOnboarding() {
+  dialog.warning({
+    title: "跳过引导",
+    content: "跳过后启动时将不再自动弹出引导，仍可随时前往「飞书终端」手动配置环境。确定跳过吗？",
+    positiveText: "跳过引导",
+    onPositiveClick: () => {
+      markOnboarded();
+      router.push("/workspace");
+    },
+  });
 }
 
 onMounted(async () => {
@@ -333,6 +349,13 @@ onBeforeUnmount(() => {
           @click="prevStep"
         >
           上一步
+        </button>
+        <button
+          v-if="onboarding.step === 0"
+          class="lr-btn lr-btn--ghost"
+          @click="skipOnboarding"
+        >
+          跳过引导
         </button>
         <span class="lr-onboard__spacer" />
         <button
