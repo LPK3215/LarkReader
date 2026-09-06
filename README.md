@@ -234,6 +234,10 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 本项目以 [GPL-3.0-only](LICENSE) 授权。提交 PR 即表示同意贡献以同一许可发布。
 版权年份：2026。
 
+## 🌐 社区认可
+
+- [LINUX DO](https://linux.do) — 「新的理想型社区」，本项目在 LINUX DO 社区进行开源推广，感谢佬友们的支持与反馈。
+
 ## 👤 作者
 
 **LPK3215** — [17538703215@163.com](mailto:17538703215@163.com)
