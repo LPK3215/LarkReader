@@ -34,8 +34,11 @@ npm run clean:e2e
 # 后端单元测试（离线可跑，24 项 lib 单测）
 cd src-tauri && cargo test --lib
 
-# 后端集成测试（真实下载类，需已登录飞书 + 联网）
-cd src-tauri && cargo test --test z_tmp_big_download
+# 后端集成测试套件（纯函数组默认跑；打真实飞书 API 的用例默认跳过）
+cd src-tauri && cargo test --test full_suite
+
+# 端到端实测（需已登录飞书 + 联网；PowerShell 下设置门控环境变量）
+$env:LARK_LIVE_TESTS = "1"; cargo test --test full_suite
 ```
 
 ## 前后端契约（重要）

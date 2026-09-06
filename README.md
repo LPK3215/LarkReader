@@ -97,6 +97,8 @@ LarkReader/
 │   ├── e2e-download-case/      # E2E 测试库全量下载稳定快照（42 文件 / 18 种扩展名）
 │   ├── e2e-fixtures/           # 测试库原始素材与生成脚本 gen_assets.py
 │   ├── BACKEND.md              # 后端功能与维护手册（唯一主文档）
+│   ├── USER_GUIDE.md           # 用户指南（面向最终用户：引导/下载/阅读/更新）
+│   ├── manual-checklist.md     # 发布后人工验收清单（逐项过功能）
 │   ├── release-and-update.md   # 构建 · 发版 · 应用内更新完整手册（环境、打包、签名密钥、CI、问题排查）
 │   ├── FEISHU_AUTH.md          # 飞书登录与应用权限说明
 │   └── LOGIN_ISSUE_20260905.md # 登录问题排查记录
