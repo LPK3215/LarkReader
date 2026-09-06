@@ -80,6 +80,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # 签名私钥为空密码生成（生成时直接回车），
+          # 必须显式传空值，否则 CLI 会等待交互输入密码导致 CI 卡死
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           args: ${{ matrix.args }}
           releaseName: "LarkReader v__VERSION__"
