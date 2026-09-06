@@ -113,6 +113,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `open_log_dir` | — | — | 在文件管理器中打开日志目录 |
 | `list_reader_dir` | `path` | `Vec<ReaderEntry>` | 本地阅读：列目录一层子项（惰性加载） |
 | `read_reader_md` | `path` | `String` | 本地阅读：读取 .md 文本 |
+| `read_reader_text` | `path` | `String` | 本地阅读：读取文本类附件（txt/csv/json/xml/log 等白名单扩展名，8 MiB 上限） |
 | `read_reader_binary` | `path` | `ReaderBinary` | 本地阅读：读取二进制资源（data URL，16 MiB 上限） |
 | `find_first_reader_doc` | `path` | `Option<String>` | 本地阅读：在目录树中查找第一篇 Markdown 文档（用于「历史 → 应用内阅读」自动定位） |
 
@@ -171,7 +172,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `extract.rs` | 单文档预览、导出、图片下载、事务提交和输出路径词法清理 |
 | `wiki.rs` | Wiki 遍历、选择、目录映射与批量导出（Doc/Sheet/Bitable/File 分流） |
 | `markdown.rs` | 图片解析、URL 替换和安全文件名 |
-| `reader.rs` | 本地阅读：目录导航、md 文本读取、二进制资源 data URL、查找首篇文档（纯本地，不依赖登录/网络） |
+| `reader.rs` | 本地阅读：目录导航、md 文本读取、文本类附件预览、二进制资源 data URL、查找首篇文档（纯本地，不依赖登录/网络） |
 | `models.rs` | 可序列化数据模型（含 `WikiNodeType::File`、`TaskPhase::ExportingFile`） |
 | `error.rs` | 结构化统一错误协议 |
 | `logger.rs` | 结构化运行日志与日志文件管理 |
@@ -184,7 +185,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           24 项通过
+cargo test --lib                           26 项通过
 cargo build                                通过
 npm run build                              通过
 ```

@@ -31,7 +31,7 @@ npm run verify
 # 清空 E2E 下载回归输出目录（每次真实下载测试前执行）
 npm run clean:e2e
 
-# 后端单元测试（离线可跑，24 项 lib 单测）
+# 后端单元测试（离线可跑，26 项 lib 单测）
 cd src-tauri && cargo test --lib
 
 # 后端集成测试套件（纯函数组默认跑；打真实飞书 API 的用例默认跳过）

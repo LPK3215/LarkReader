@@ -27,7 +27,7 @@
 
 ### 测试
 
-- 单元测试 24 项全通过；E2E 真实知识库实测 38 项成功 / 0 失败 / 0 跳过
+- 单元测试 26 项全通过；E2E 真实知识库实测 38 项成功 / 0 失败 / 0 跳过
   （产物快照见 [docs/e2e-download-case/](docs/e2e-download-case/)）
 
 [0.1.0]: https://github.com/LPK3215/LarkReader/releases/tag/v0.1.0

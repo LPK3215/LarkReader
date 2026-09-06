@@ -9,7 +9,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen)](#-验证与实测)
+[![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)](#-验证与实测)
 [![lark-cli](https://img.shields.io/badge/lark--cli-1.0.93-purple)](./docs/BACKEND.md)
 
 **飞书文档 · 本地阅读与导出工具**
@@ -62,7 +62,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 <img src="./docs/assets/export-pipeline.svg" alt="导出流水线" width="100%"/>
 </div>
 
-前后端通过 Tauri IPC 通信：**26 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
+前后端通过 Tauri IPC 通信：**27 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
 
 ## 🛠 技术栈
 
@@ -142,7 +142,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 |---|---|
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | **使用说明（面向最终用户）**：界面总览、首次引导、知识库下载/扫描模式、本地阅读、历史、日志、设置、更新、FAQ |
 | [docs/manual-checklist.md](docs/manual-checklist.md) | **人工验收清单**：安装发布版后逐项过功能，全绿再对外宣传 |
-| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、26 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
+| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、27 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
 
 | [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |
 | [docs/FEISHU_AUTH.md](docs/FEISHU_AUTH.md) | 飞书自建应用创建、权限清单、登录链路说明 |
@@ -157,7 +157,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           24 项通过
+cargo test --lib                           26 项通过
 npm run build                              通过
 ```
 

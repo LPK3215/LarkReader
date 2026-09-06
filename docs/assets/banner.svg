@@ -66,10 +66,10 @@
 <text x="324" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >lark-cli 1.0.93</text>
 <rect x="448" y="232" width="142" height="34" rx="17" ry="17" fill="#111C2B" stroke="#FFB454" stroke-width="1"/>
 <circle cx="464" cy="249" r="4" fill="#FFB454"/>
-<text x="476" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >26 个 IPC 命令</text>
+<text x="476" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >27 个 IPC 命令</text>
 <rect x="602" y="232" width="142" height="34" rx="17" ry="17" fill="#111C2B" stroke="#3FCF8E" stroke-width="1"/>
 <circle cx="618" cy="249" r="4" fill="#3FCF8E"/>
-<text x="630" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >24 项单测通过</text>
+<text x="630" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >26 项单测通过</text>
 <rect x="830" y="36" width="390" height="248" rx="16" ry="16" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <text x="858" y="74" font-size="14" fill="#93A6BD" font-weight="600" text-anchor="start" >E2E 全量下载实测 · 2026-09-05</text>
 <rect x="858" y="88" width="160" height="74" rx="12" ry="12" fill="#111C2B" stroke="#2A3A50" stroke-width="1"/>

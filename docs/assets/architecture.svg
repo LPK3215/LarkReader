@@ -44,7 +44,7 @@
 <rect x="84" y="274" width="550" height="48" rx="9" ry="9" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <rect x="84" y="274" width="3" height="48" rx="1.5" fill="#A97BFF" fill-opacity="0.75"/>
 <text x="98" y="299" font-size="13.5" fill="#E6EDF3" font-weight="600" text-anchor="start">命令通道</text>
-<text x="98" y="319" font-size="10.8" fill="#93A6BD" font-weight="400" text-anchor="start">26 个 #[tauri::command] · 前端 invoke() 双向调用 · CSP 已启用</text>
+<text x="98" y="319" font-size="10.8" fill="#93A6BD" font-weight="400" text-anchor="start">27 个 #[tauri::command] · 前端 invoke() 双向调用 · CSP 已启用</text>
 <rect x="646" y="274" width="550" height="48" rx="9" ry="9" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <rect x="646" y="274" width="3" height="48" rx="1.5" fill="#A97BFF" fill-opacity="0.75"/>
 <text x="660" y="299" font-size="13.5" fill="#E6EDF3" font-weight="600" text-anchor="start">数据契约</text>
@@ -54,11 +54,11 @@
 <rect x="60" y="358" width="1160" height="282" rx="14" ry="14" fill="#111B28" stroke="#3FCF8E" stroke-width="1"/>
 <rect x="60" y="372" width="4" height="254" rx="2" fill="#3FCF8E"/>
 <text x="84" y="388" font-size="15" fill="#3FCF8E" font-weight="600" text-anchor="start">③ Rust 后端 · src-tauri/src</text>
-<text x="1196" y="388" font-size="11.5" fill="#6B7F97" font-weight="400" text-anchor="end">12 个源文件 / 5,120 行 · 24 项单测通过</text>
+<text x="1196" y="388" font-size="11.5" fill="#6B7F97" font-weight="400" text-anchor="end">12 个源文件 / 5,120 行 · 26 项单测通过</text>
 <rect x="84" y="404" width="269" height="62" rx="9" ry="9" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <rect x="84" y="404" width="3" height="62" rx="1.5" fill="#3FCF8E" fill-opacity="0.75"/>
 <text x="98" y="429" font-size="13.5" fill="#E6EDF3" font-weight="600" text-anchor="start">commands.rs</text>
-<text x="98" y="449" font-size="10.8" fill="#93A6BD" font-weight="400" text-anchor="start">26 个 IPC 命令 / 设置 / 任务与历史</text>
+<text x="98" y="449" font-size="10.8" fill="#93A6BD" font-weight="400" text-anchor="start">27 个 IPC 命令 / 设置 / 任务与历史</text>
 <rect x="365" y="404" width="269" height="62" rx="9" ry="9" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <rect x="365" y="404" width="3" height="62" rx="1.5" fill="#3FCF8E" fill-opacity="0.75"/>
 <text x="379" y="429" font-size="13.5" fill="#E6EDF3" font-weight="600" text-anchor="start">env.rs</text>

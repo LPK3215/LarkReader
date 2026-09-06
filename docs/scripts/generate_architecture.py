@@ -36,10 +36,10 @@ C = {
 }
 
 DATA = {
-    "commands": 26,
+    "commands": 27,
     "rust_files": 12,
     "rust_loc": 5120,
-    "unit_tests": 24,
+    "unit_tests": 26,
     "cli": "1.0.93",
 }
 
@@ -113,7 +113,7 @@ IPC_BOXES = [
 ]
 
 RUST_BOXES = [
-    ("commands.rs", ["26 个 IPC 命令 / 设置 / 任务与历史"]),
+    ("commands.rs", ["27 个 IPC 命令 / 设置 / 任务与历史"]),
     ("env.rs", ["Node · CLI · 应用配置 · 登录检测"]),
     ("lark.rs", ["子进程执行 / 超时 / 取消 / 重试 / cwd 白名单"]),
     ("extract.rs", ["单文档预览 / 导出 / 图片落盘 / 事务提交"]),
