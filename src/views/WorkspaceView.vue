@@ -9,7 +9,7 @@
 //   done    右侧栏换成 ResultCard，可「重新选择」回到 tree
 // ============================================================================
 
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useTaskStore } from "../stores/task";
 import { useSettingsStore } from "../stores/settings";
 import type { ScanMode } from "../api/wiki";
@@ -18,6 +18,7 @@ import TaskPanel from "../components/TaskPanel.vue";
 import ResultCard from "../components/ResultCard.vue";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
+import { message } from "../composables/useMessage";
 
 const task = useTaskStore();
 const settings = useSettingsStore();
@@ -26,6 +27,69 @@ const inputUrl = ref("");
 const scanMode = ref<ScanMode>("auto");
 
 const treeNodes = computed(() => (task.tree ? [task.tree] : []));
+
+// ---- 示例链接（首次使用自动展开一次，之后可随时点开） ----
+const DEMO_SEEN_KEY = "larkreader_demo_hinted";
+const showDemo = ref(false);
+const demoLinks = [
+  {
+    label: "整库入口（推荐搭配「展开整个知识库」）",
+    url: "https://qcny2iztd1p8.feishu.cn/wiki/LuQ7wEqgmiqITJkL49zcjyA0nif",
+    mode: "full_space" as ScanMode,
+  },
+  {
+    label: "目录文档示例（默认模式即可，含 3 个子文档）",
+    url: "https://qcny2iztd1p8.feishu.cn/wiki/EAMOwgdxZiuJcGk7SggcXFGnnXf",
+    mode: "auto" as ScanMode,
+  },
+];
+
+onMounted(() => {
+  try {
+    if (!localStorage.getItem(DEMO_SEEN_KEY)) {
+      showDemo.value = true;
+      localStorage.setItem(DEMO_SEEN_KEY, "1");
+    }
+  } catch {
+    /* localStorage 不可用（隐私模式等）时静默跳过 */
+  }
+});
+
+/** 一键填入示例链接并按推荐模式扫描 */
+async function useDemoLink(link: (typeof demoLinks)[number]) {
+  inputUrl.value = link.url;
+  scanMode.value = link.mode;
+  showDemo.value = false;
+  await onScan();
+}
+
+async function copyDemoLink(link: (typeof demoLinks)[number]) {
+  try {
+    await navigator.clipboard.writeText(link.url);
+    message.success("示例链接已复制");
+  } catch (err) {
+    message.warning(`复制失败：${String(err)}`);
+  }
+}
+
+/** Auto 扫描只得到单节点（无子文档）时的引导提示 */
+const singleNodeScan = computed(() => {
+  const t = task.tree;
+  return (
+    task.stage === "tree" &&
+    !task.running &&
+    task.scanMode === "auto" &&
+    !!t &&
+    t.children.length === 0
+  );
+});
+
+/** 切换到 FullSpace 并用当前链接重扫 */
+async function rescanFullSpace() {
+  if (task.scanning) return;
+  scanMode.value = "full_space";
+  await task.scan(task.wikiUrl, "full_space");
+}
 
 const sideTitle = computed(() => {
   if (task.finished) return "导出结果";
@@ -127,6 +191,38 @@ function openResultDir() {
           </label>
         </div>
 
+        <div class="lr-work__demo">
+          <button class="lr-work__demotoggle" @click="showDemo = !showDemo">
+            <AppIcon name="link" :size="12" />
+            {{ showDemo ? "收起示例链接" : "没有链接？试试示例链接" }}
+          </button>
+          <div v-if="showDemo" class="lr-work__demolist">
+            <p class="lr-work__demotip">
+              这是开源的测试知识库，点「使用」自动填入并扫描，直观感受两种扫描模式的区别：
+            </p>
+            <div v-for="d in demoLinks" :key="d.url" class="lr-work__demorow">
+              <div class="lr-work__demomain">
+                <span class="lr-work__demolabel">{{ d.label }}</span>
+                <code class="lr-work__demourl">{{ d.url }}</code>
+              </div>
+              <button
+                class="lr-btn lr-btn--ghost"
+                title="复制链接"
+                @click="copyDemoLink(d)"
+              >
+                复制
+              </button>
+              <button
+                class="lr-btn lr-btn--secondary"
+                :disabled="task.scanning"
+                @click="useDemoLink(d)"
+              >
+                使用
+              </button>
+            </div>
+          </div>
+        </div>
+
         <p class="lr-work__emptynote">
           <template v-if="task.scanning">正在读取知识库目录结构，请稍候…</template>
           <template v-else>扫描阶段只读取目录树，不下载正文、不写入磁盘</template>
@@ -154,6 +250,20 @@ function openResultDir() {
               {{ task.running ? "下载进行中，勾选已锁定" : "勾选需要的节点" }}
             </span>
           </header>
+          <!-- Auto 模式只扫到单节点时的引导：一键切换 FullSpace 重扫 -->
+          <div v-if="singleNodeScan" class="lr-work__hintbar">
+            <AppIcon name="alert-circle" :size="13" />
+            <span class="lr-work__hinttext">
+              本次扫描只找到该节点自身——它在知识库目录树中没有子节点（旁边的节点是它的兄弟，不是它的子文档）。想要整个知识库？
+            </span>
+            <button
+              class="lr-btn lr-btn--ghost lr-work__hintbtn"
+              :disabled="task.scanning"
+              @click="rescanFullSpace"
+            >
+              切换「展开整个知识库」重扫
+            </button>
+          </div>
           <NodeTree
             :nodes="treeNodes"
             :selected="task.selectedTokens"
@@ -344,6 +454,99 @@ function openResultDir() {
   margin-top: var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
+}
+
+/* ---- 示例链接 ---- */
+.lr-work__demo {
+  width: 100%;
+  margin-top: var(--lr-space-2);
+}
+
+.lr-work__demotoggle {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-primary);
+  cursor: pointer;
+}
+
+.lr-work__demotoggle:hover {
+  text-decoration: underline;
+}
+
+.lr-work__demolist {
+  width: 100%;
+  margin-top: var(--lr-space-2);
+  padding: var(--lr-space-3);
+  border: 0.5px dashed var(--lr-border);
+  border-radius: var(--lr-radius-md);
+  background: var(--lr-bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-2);
+  text-align: left;
+}
+
+.lr-work__demotip {
+  margin: 0;
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
+}
+
+.lr-work__demorow {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+}
+
+.lr-work__demomain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lr-work__demolabel {
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text);
+}
+
+.lr-work__demourl {
+  font-size: var(--lr-fs-mono);
+  color: var(--lr-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 单节点扫描提示条 ---- */
+.lr-work__hintbar {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lr-space-2);
+  margin: var(--lr-space-3) var(--lr-space-4) 0;
+  padding: var(--lr-space-3);
+  border-radius: var(--lr-radius-md);
+  background: var(--lr-warning-soft, rgba(186, 117, 23, 0.08));
+  border: 0.5px solid var(--lr-border);
+  color: var(--lr-text-secondary);
+  font-size: var(--lr-fs-secondary);
+}
+
+.lr-work__hinttext {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.lr-work__hintbtn {
+  flex: none;
+  color: var(--lr-primary);
 }
 
 .lr-work__modeselect {
