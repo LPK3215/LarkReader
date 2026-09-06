@@ -35,12 +35,12 @@ const DEMO_SEEN_KEY = "larkreader_demo_hinted";
 const showDemo = ref(false);
 const demoLinks = [
   {
-    label: "整库入口（默认模式，一次拿到整库）",
+    label: "整库入口",
     url: "https://qcny2iztd1p8.feishu.cn/wiki/LuQ7wEqgmiqITJkL49zcjyA0nif",
     mode: "full_space" as ScanMode,
   },
   {
-    label: "目录文档（切精确模式试试：只拿它和 3 个子文档）",
+    label: "目录文档 · 精确模式",
     url: "https://qcny2iztd1p8.feishu.cn/wiki/EAMOwgdxZiuJcGk7SggcXFGnnXf",
     mode: "auto" as ScanMode,
   },
@@ -143,7 +143,7 @@ function openResultDir() {
         <span class="lr-work__emptylogo"><AppIcon name="link" :size="22" /></span>
         <h2 class="lr-work__emptytitle">导出飞书知识库</h2>
         <p class="lr-work__emptydesc">
-          粘贴知识库链接，先只扫描目录结构，勾选需要的节点再下载
+          粘贴链接，勾选节点，一键导出
         </p>
 
         <div class="lr-work__emptyform">
@@ -180,7 +180,7 @@ function openResultDir() {
               value="full_space"
               :disabled="task.scanning"
             />
-            <span>展开整个知识库（含兄弟节点）<em class="lr-work__radiotag">默认</em></span>
+            <span>展开整个知识库<em class="lr-work__radiotag">默认</em></span>
           </label>
           <label class="lr-work__radio">
             <input
@@ -189,7 +189,7 @@ function openResultDir() {
               value="auto"
               :disabled="task.scanning"
             />
-            <span>仅导出本节点及子树</span>
+            <span>仅本节点及子树</span>
           </label>
         </div>
 
@@ -199,9 +199,7 @@ function openResultDir() {
             {{ showDemo ? "收起示例链接" : "没有链接？试试示例链接" }}
           </button>
           <div v-if="showDemo" class="lr-work__demolist">
-            <p class="lr-work__demotip">
-              这是开源的测试知识库，点「使用」自动填入并扫描：第一条用默认模式拿整库，第二条演示精确模式（只要某一支）：
-            </p>
+            <p class="lr-work__demotip">点「使用」自动填入并扫描</p>
             <div v-for="d in demoLinks" :key="d.url" class="lr-work__demorow">
               <div class="lr-work__demomain">
                 <span class="lr-work__demolabel">{{ d.label }}</span>
@@ -226,8 +224,8 @@ function openResultDir() {
         </div>
 
         <p class="lr-work__emptynote">
-          <template v-if="task.scanning">正在读取知识库目录结构，请稍候…</template>
-          <template v-else>扫描阶段只读取目录树，不下载正文、不写入磁盘</template>
+          <template v-if="task.scanning">扫描中…</template>
+          <template v-else>只扫结构，不写磁盘</template>
         </p>
       </div>
     </div>
@@ -255,15 +253,13 @@ function openResultDir() {
           <!-- Auto 模式只扫到单节点时的引导：一键切换 FullSpace 重扫 -->
           <div v-if="singleNodeScan" class="lr-work__hintbar">
             <AppIcon name="alert-circle" :size="13" />
-            <span class="lr-work__hinttext">
-              本次扫描只找到该节点自身——它在知识库目录树中没有子节点（旁边的节点是它的兄弟，不是它的子文档）。想要整个知识库？
-            </span>
+            <span class="lr-work__hinttext">只扫到该节点本身，没有子文档</span>
             <button
               class="lr-btn lr-btn--ghost lr-work__hintbtn"
               :disabled="task.scanning"
               @click="rescanFullSpace"
             >
-              切换「展开整个知识库」重扫
+              扫整库
             </button>
           </div>
           <NodeTree

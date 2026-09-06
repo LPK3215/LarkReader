@@ -372,7 +372,7 @@ function joinPath(dir: string, rel: string): string {
       <div>
         <h1 class="lr-page__title">本地阅读</h1>
         <p class="lr-page__desc">
-          阅读已导出的知识库文档（离线本地渲染，无需登录飞书）
+          离线阅读已导出的文档
         </p>
       </div>
       <div class="lr-reader__head-ops">
@@ -392,7 +392,7 @@ function joinPath(dir: string, rel: string): string {
       <div v-if="!rootPath" class="lr-reader__choose">
         <div class="lr-empty lr-empty--reader">
           <AppIcon name="book" :size="30" />
-          <span>选择一份已导出的知识库开始阅读</span>
+          <span>选择一份导出开始阅读</span>
         </div>
 
         <div v-if="sources.length" class="lr-card lr-reader__sources">
@@ -422,9 +422,7 @@ function joinPath(dir: string, rel: string): string {
             <AppIcon name="folder-open" :size="15" />
             选择其他文件夹
           </button>
-          <p class="lr-reader__choose-hint">
-            也可在飞书终端完成导出后回到这里直接阅读
-          </p>
+          <p class="lr-reader__choose-hint">导出后回这里直接读</p>
         </div>
       </div>
 
@@ -462,7 +460,7 @@ function joinPath(dir: string, rel: string): string {
           <!-- 未选文档 -->
           <div v-else-if="!docPath" class="lr-empty">
             <AppIcon name="doc" :size="24" />
-            <span>在左侧目录中选择一篇文档开始阅读</span>
+            <span>选择文档开始阅读</span>
           </div>
 
           <!-- markdown 正文 -->
@@ -507,10 +505,10 @@ function joinPath(dir: string, rel: string): string {
             <!-- 其他格式：交给系统默认程序 -->
             <div v-else class="lr-reader-other">
               <AppIcon name="paperclip" :size="28" />
-              <p class="lr-reader-other__hint">该格式暂不支持应用内预览，可以用系统默认程序打开</p>
+              <p class="lr-reader-other__hint">暂不支持预览</p>
               <button class="lr-btn lr-btn--secondary" @click="openCurrentWithSystem">
                 <AppIcon name="folder-open" :size="14" />
-                用系统默认程序打开
+                系统打开
               </button>
             </div>
           </template>
