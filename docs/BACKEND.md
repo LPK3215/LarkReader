@@ -100,7 +100,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `set_settings` | `settings` | — | 验证可写性并持久化设置 |
 | `preflight_output_dir` | `path` | `OutputPreflight` | 检查可写性和磁盘空间 |
 | `open_output_dir` | `path` | — | 使用系统文件管理器打开目录 |
-| `get_wiki_tree` | `wiki_url`, `scan_mode?` | `WikiNode` | 获取完整 Wiki 树（`scan_mode`：`auto` 默认 / `full_space` 整库展开） |
+| `get_wiki_tree` | `wiki_url`, `scan_mode?` | `WikiNode` | 获取完整 Wiki 树（`scan_mode`：`auto` 只扫该节点子树 / `full_space` 整库展开；接口默认 `auto`，前端默认传 `full_space`） |
 | `count_exportable` | `selected_tokens?` | `ExportableCount` | 统计所选节点中实际会导出的项目数（复用最近一次扫描缓存，不重复扫树） |
 | `start_extract_wiki` | `wiki_url`, `output_dir?`, `selected_tokens?`, `scan_mode?` | `String` | 创建后台任务并立即返回 ID（`scan_mode` 同 `get_wiki_tree`） |
 | `get_progress` | `task_id` | `Progress` | 查询任务状态和阶段 |

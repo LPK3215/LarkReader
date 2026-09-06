@@ -18,7 +18,8 @@ export type ScanMode = "auto" | "full_space";
  * 后端走飞书 lark-cli 完成。
  *
  * @param wikiUrl  知识库节点链接
- * @param scanMode 可选，默认 auto。full_space 时无子节点的 URL 会自动展开整个知识库
+ * @param scanMode 可选，接口默认 auto；前端默认传 full_space（一次拿到整库）。
+ *   full_space 会无条件列出空间全部顶层节点并递归展开，与传入节点有没有子文档无关
  * @throws AppError(InvalidInput | Extract | Other) 来自后端
  */
 export async function getWikiTree(

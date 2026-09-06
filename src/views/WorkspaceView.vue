@@ -35,12 +35,12 @@ const DEMO_SEEN_KEY = "larkreader_demo_hinted";
 const showDemo = ref(false);
 const demoLinks = [
   {
-    label: "整库入口（推荐搭配「展开整个知识库」）",
+    label: "整库入口（默认模式，一次拿到整库）",
     url: "https://qcny2iztd1p8.feishu.cn/wiki/LuQ7wEqgmiqITJkL49zcjyA0nif",
     mode: "full_space" as ScanMode,
   },
   {
-    label: "目录文档示例（默认模式即可，含 3 个子文档）",
+    label: "目录文档（切精确模式试试：只拿它和 3 个子文档）",
     url: "https://qcny2iztd1p8.feishu.cn/wiki/EAMOwgdxZiuJcGk7SggcXFGnnXf",
     mode: "auto" as ScanMode,
   },
@@ -177,19 +177,19 @@ function openResultDir() {
             <input
               v-model="scanMode"
               type="radio"
-              value="auto"
+              value="full_space"
               :disabled="task.scanning"
             />
-            <span>仅导出本节点及子树</span>
+            <span>展开整个知识库（含兄弟节点）<em class="lr-work__radiotag">默认</em></span>
           </label>
           <label class="lr-work__radio">
             <input
               v-model="scanMode"
               type="radio"
-              value="full_space"
+              value="auto"
               :disabled="task.scanning"
             />
-            <span>展开整个知识库（含兄弟节点）</span>
+            <span>仅导出本节点及子树</span>
           </label>
         </div>
 
@@ -200,7 +200,7 @@ function openResultDir() {
           </button>
           <div v-if="showDemo" class="lr-work__demolist">
             <p class="lr-work__demotip">
-              这是开源的测试知识库，点「使用」自动填入并扫描，直观感受两种扫描模式的区别：
+              这是开源的测试知识库，点「使用」自动填入并扫描：第一条用默认模式拿整库，第二条演示精确模式（只要某一支）：
             </p>
             <div v-for="d in demoLinks" :key="d.url" class="lr-work__demorow">
               <div class="lr-work__demomain">
@@ -462,6 +462,16 @@ function openResultDir() {
 .lr-work__demo {
   width: 100%;
   margin-top: var(--lr-space-2);
+}
+
+.lr-work__radiotag {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--lr-primary-soft);
+  color: var(--lr-primary);
+  font-size: var(--lr-fs-mono);
+  font-style: normal;
 }
 
 .lr-work__demotoggle {
