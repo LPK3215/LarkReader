@@ -33,6 +33,15 @@ export function markOnboarded(): void {
   }
 }
 
+/** 清除引导完成标记（设置页「重新运行引导」用） */
+export function resetOnboarded(): void {
+  try {
+    localStorage.removeItem(ONBOARDED_KEY);
+  } catch {
+    /* 忽略 */
+  }
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: "/",

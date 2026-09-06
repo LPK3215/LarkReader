@@ -10,10 +10,12 @@
 // ============================================================================
 
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useSettingsStore, DEFAULT_SETTINGS } from "../stores/settings";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
 import { message } from "../composables/useMessage";
+import { resetOnboarded } from "../router";
 import {
   checkForUpdate,
   downloadAndInstallUpdate,
@@ -22,6 +24,13 @@ import {
 } from "../api/updater";
 
 const settings = useSettingsStore();
+const router = useRouter();
+
+/** 手动重新运行新手引导：清除标记后跳转引导页 */
+function rerunOnboarding() {
+  resetOnboarded();
+  router.push("/onboarding");
+}
 
 const saving = ref(false);
 /** 保存成功的瞬时内联反馈（替代无处安放的 toast） */
@@ -276,6 +285,19 @@ onMounted(async () => {
         </div>
       </section>
 
+      <section class="lr-card">
+        <header class="lr-card__head">
+          <span class="lr-card__title">新手引导</span>
+        </header>
+        <div class="lr-card__body lr-settings__onboard">
+          <span class="lr-settings__onboardhint">重新查看环境配置与登录的引导流程</span>
+          <button class="lr-btn lr-btn--secondary" @click="rerunOnboarding">
+            <AppIcon name="refresh" :size="13" />
+            重新运行引导
+          </button>
+        </div>
+      </section>
+
       <div class="lr-settings__footer">
         <button class="lr-btn lr-btn--secondary" :disabled="saving" @click="onReset">
           恢复默认
@@ -295,6 +317,18 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--lr-space-4);
   padding-right: var(--lr-space-1);
+}
+
+.lr-settings__onboard {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-3);
+}
+
+.lr-settings__onboardhint {
+  flex: 1;
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
 }
 
 .lr-settings__warning {
