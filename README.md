@@ -108,9 +108,10 @@ LarkReader/
 
 ## 🚀 快速开始
 
-**不想自己编译？直接[下载预编译安装包](https://github.com/LPK3215/LarkReader/releases/latest)**（Windows MSI / macOS DMG / Linux AppImage、deb），或用产品主页的[下载向导](https://lpk3215.github.io/LarkReader/#download)。
+**普通用户（推荐）**：直接[下载安装包](https://github.com/LPK3215/LarkReader/releases/latest)（Windows MSI / macOS DMG / Linux AppImage、deb），跟随首次引导三步完成配置即可，日常操作见[用户指南](docs/USER_GUIDE.md)。
+唯一前提：本机已安装 [Node.js 22+](https://nodejs.org)（官方 lark-cli 依赖它，cli 本体由应用自动安装）。
 
-**环境要求**：Node.js 22+（包管理器统一为 npm）、Rust stable（建议 rustup 安装）。
+**开发者**（从源码运行/构建）：Node.js 22+（包管理器统一为 npm）+ Rust stable（建议 rustup 安装）。
 
 ```powershell
 npm install
