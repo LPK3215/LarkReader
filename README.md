@@ -222,6 +222,13 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 
 欢迎任何形式的贡献：提 issue、修 bug、补文档、加功能。动手前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)（提交规范、前后端契约、`npm run verify` 门禁要求）；安全问题请勿公开 issue，走 [SECURITY.md](SECURITY.md) 说明的私密安全公告渠道。
 
+## ⚖️ 使用声明
+
+- 本项目为**技术学习与交流**目的创建，通过飞书**官方 Open API** 与官方 lark-cli、以使用者自己的账号授权，读取其**有权限查看**的内容；不破解、不绕过任何权限机制
+- 导出内容的**版权归原作者所有**，仅限个人学习与备份，**请勿用于传播或商业用途**
+- 使用者需自行遵守飞书用户协议、开放平台条款及所在组织的数据安全规定；因违反前述规定产生的后果由使用者自行承担
+- 作者不对使用者的滥用行为负责；如权利人认为本工具存在侵权，请通过 [Issues](https://github.com/LPK3215/LarkReader/issues) 联系，将积极配合处理
+
 ## 📄 许可证
 
 本项目以 [GPL-3.0-only](LICENSE) 授权。提交 PR 即表示同意贡献以同一许可发布。
