@@ -106,7 +106,13 @@ LarkReader/
 └── .github/workflows/          # publish.yml：三平台发布流水线
 ```
 
-<!-- TODO: 截图待补充 —— 桌面端 Workspace / Reader 页面截图 -->
+## 🖼 界面预览
+
+<div align="center">
+<img src="./docs/screenshots/workspace-node-tree.png" alt="工作台：粘贴链接后勾选节点树，右侧导出设置与统计" width="82%"/>
+<br><br>
+<img src="./docs/screenshots/reader-view.png" alt="本地阅读：离线浏览导出的目录树与 Markdown 正文" width="82%"/>
+</div>
 
 ## 🚀 快速开始
 

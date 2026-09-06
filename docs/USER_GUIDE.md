@@ -14,6 +14,8 @@ Markdown / XLSX / NDJSON / 原始附件，之后可离线阅读、长期留档�
 
 启动后进入主窗口，左侧竖排图标依次是：
 
+![LarkReader 主窗口：左侧功能导航，中间为工作台导出入口](./screenshots/workspace-export-empty.png)
+
 | 图标入口 | 名称 | 作用 |
 |---|---|---|
 | 工作台 | 工作台 | 贴链接 → 勾选 → 下载，一条主线 |
