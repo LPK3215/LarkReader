@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="LarkReader · 免费、安全的飞书知识库本地导出工具。桌面原生，数据本地留痕，支持 Doc / Sheet / Bitable / File 多格式导出。">
+  <meta name="description" content="LarkReader · 免费、安全的飞书知识库本地导出工具。桌面原生，导出内容离线可读，支持 Doc / Sheet / Bitable / File 多格式导出。">
   <meta name="theme-color" content="#3370ff">
   <meta property="og:title" content="LarkReader · 飞书知识库本地导出工具">
-  <meta property="og:description" content="把整个飞书 Wiki 一键备份成 Markdown + 图片，本地保留。免费、桌面原生、数据本地留痕。">
+  <meta property="og:description" content="把整个飞书 Wiki 一键备份成 Markdown + 图片，本地保留。免费、桌面原生、导出内容离线可读。">
   <meta property="og:type" content="website">
   <title>LarkReader · 飞书知识库本地导出工具</title>
 
@@ -62,7 +62,7 @@
       </div>
       <h1 class="hero-title">
         飞书知识库，<br>
-        一键<span class="hl">本地留痕</span>
+        一键<span class="hl">本地阅读</span>
       </h1>
       <p class="hero-sub">
         把整个 Wiki 或单篇文档备份成 Markdown + 图片，结构、附件、批注全保留。<br>
@@ -79,7 +79,7 @@
 
       <ul class="hero-chips" aria-label="产品关键词">
         <li><svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg> 桌面原生</li>
-        <li><svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 数据本地留痕</li>
+        <li><svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 数据不离本机</li>
         <li><svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> Doc / Sheet / Bitable / File 全类型</li>
         <li><svg class="chip-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg> 并发可控</li>
       </ul>
@@ -114,7 +114,7 @@
       <header class="section-head">
         <span class="eyebrow">痛点 / 场景</span>
         <h2>你为什么需要 LarkReader</h2>
-        <p>飞书很好，但内容出不来。本地导出这件事，市面上没人替你做。</p>
+        <p>飞书很好，但长文档在线读起来累，也没法离线。把工作资料备份成通用格式、用自己习惯的方式阅读这件事，市面上没人替你做。</p>
       </header>
 
       <div class="scene-grid">
@@ -731,6 +731,10 @@ npm run tauri build</code></pre>
         <details class="faq-item">
           <summary>有新版本会自动提醒我吗？</summary>
           <p>会。每次启动会静默检查一次 GitHub Releases，发现新版就在顶部提示一次（每进程只提示一次，避免打扰）；想立刻检查也可以在「设置 → 软件更新」一键启动，下载进度可见，装好后 Windows 自动接管、macOS / Linux 自动重启。</p>
+        </details>
+        <details class="faq-item">
+          <summary>LarkReader 合规吗？会不会绕过飞书的限制？</summary>
+          <p>不会。LarkReader 只通过<strong>飞书官方 Open API 与官方 lark-cli</strong>，用<strong>你自己的授权账号</strong>读取你本来就有权限查看的内容，相当于把「在线阅读」变成「本地阅读」。它不破解、不绕过任何权限机制。导出内容的版权归原作者所有，请仅将结果用于个人学习与工作备份，并遵守飞书用户协议及相关法律法规。</p>
         </details>
         <details class="faq-item">
           <summary>怎么反馈 bug / 提需求 / 贡献代码？</summary>
