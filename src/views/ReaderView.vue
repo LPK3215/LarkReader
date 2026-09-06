@@ -476,29 +476,44 @@ function joinPath(dir: string, rel: string): string {
             <div v-html="contentHtml" />
           </article>
 
-          <!-- 图片附件 -->
-          <div v-else-if="viewKind === 'image'" class="lr-reader-media">
-            <img :src="binaryUrl" :alt="docPath ? basename(docPath) : ''" />
-          </div>
+          <!-- 非 md 附件：文件名信息头 + 内容 -->
+          <template v-else>
+            <div class="lr-reader__filehead">
+              <AppIcon name="paperclip" :size="13" />
+              <span class="lr-reader__filename">{{ docPath ? basename(docPath) : "" }}</span>
+              <button
+                class="lr-btn lr-btn--ghost lr-reader__fileopen"
+                title="用系统默认程序打开"
+                @click="openCurrentWithSystem"
+              >
+                <AppIcon name="folder-open" :size="13" />
+                系统打开
+              </button>
+            </div>
 
-          <!-- PDF 附件 -->
-          <div v-else-if="viewKind === 'pdf'" class="lr-reader-media">
-            <embed :src="binaryUrl" type="application/pdf" />
-          </div>
+            <!-- 图片附件（1x1 像素测试图也会按最小尺寸放大显示） -->
+            <div v-if="viewKind === 'image'" class="lr-reader-media">
+              <img :src="binaryUrl" :alt="docPath ? basename(docPath) : ''" />
+            </div>
 
-          <!-- 纯文本附件 -->
-          <pre v-else-if="viewKind === 'text'" class="lr-reader-code">{{ textContent }}</pre>
+            <!-- PDF 附件 -->
+            <div v-else-if="viewKind === 'pdf'" class="lr-reader-media lr-reader-media--fill">
+              <embed :src="binaryUrl" type="application/pdf" />
+            </div>
 
-          <!-- 其他格式：交给系统默认程序 -->
-          <div v-else class="lr-reader-other">
-            <AppIcon name="paperclip" :size="28" />
-            <p class="lr-reader-other__name">{{ docPath ? basename(docPath) : "" }}</p>
-            <p class="lr-reader-other__hint">该格式暂不支持应用内预览，可以用系统默认程序打开</p>
-            <button class="lr-btn lr-btn--secondary" @click="openCurrentWithSystem">
-              <AppIcon name="folder-open" :size="14" />
-              用系统默认程序打开
-            </button>
-          </div>
+            <!-- 纯文本附件 -->
+            <pre v-else-if="viewKind === 'text'" class="lr-reader-code">{{ textContent }}</pre>
+
+            <!-- 其他格式：交给系统默认程序 -->
+            <div v-else class="lr-reader-other">
+              <AppIcon name="paperclip" :size="28" />
+              <p class="lr-reader-other__hint">该格式暂不支持应用内预览，可以用系统默认程序打开</p>
+              <button class="lr-btn lr-btn--secondary" @click="openCurrentWithSystem">
+                <AppIcon name="folder-open" :size="14" />
+                用系统默认程序打开
+              </button>
+            </div>
+          </template>
         </main>
       </div>
     </div>
@@ -656,6 +671,34 @@ function joinPath(dir: string, rel: string): string {
 }
 
 /* ---- 非 md 附件的阅读形态 ---- */
+.lr-reader__filehead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  padding: var(--lr-space-3) var(--lr-space-4);
+  border-bottom: 1px solid var(--lr-border);
+  color: var(--lr-text-secondary);
+  font-size: var(--lr-fs-secondary);
+}
+
+.lr-reader__filename {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lr-text);
+  font-weight: var(--lr-fw-medium);
+}
+
+.lr-reader__fileopen {
+  flex: none;
+  height: 24px;
+  padding: 0 var(--lr-space-2);
+  font-size: var(--lr-fs-secondary);
+}
+
 .lr-reader-media {
   flex: 1;
   min-height: 0;
@@ -666,10 +709,18 @@ function joinPath(dir: string, rel: string): string {
   padding: var(--lr-space-4);
 }
 
+.lr-reader-media--fill {
+  padding: 0;
+}
+
 .lr-reader-media img {
   max-width: 100%;
   max-height: 100%;
   border-radius: var(--lr-radius-md);
+  /* 极小图（如 1x1 像素测试图）也可见：按最小显示尺寸放大并保留像素感 */
+  min-width: 48px;
+  min-height: 48px;
+  image-rendering: pixelated;
 }
 
 .lr-reader-media embed {
