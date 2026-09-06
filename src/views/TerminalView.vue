@@ -158,6 +158,18 @@ async function openVerificationUrl() {
   }
 }
 
+/** 登录环节复制设备码 / 授权链接：自动打开失败时用户可自行处理 */
+async function copyLoginValue(kind: "code" | "url") {
+  const text = kind === "code" ? auth.deviceCode : auth.verificationUrl;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success(kind === "code" ? "设备码已复制" : "链接已复制");
+  } catch {
+    message.warning("复制失败，请手动选择复制");
+  }
+}
+
 function onLogout() {
   dialog.warning({
     title: "退出飞书登录",
@@ -242,16 +254,26 @@ function onSwitchAccount() {
           <div v-else-if="auth.loginState === 'awaiting'" class="lr-term__device">
             <p class="lr-term__devlabel">在浏览器打开链接并输入设备码完成授权</p>
             <code class="lr-term__code lr-selectable">{{ auth.deviceCode }}</code>
-            <button class="lr-btn lr-btn--primary lr-btn--lg" @click="openVerificationUrl">
-              <AppIcon name="external" :size="14" />
-              打开浏览器授权
-            </button>
+            <div class="lr-term__devops">
+              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
+                <AppIcon name="external" :size="14" />
+                打开浏览器授权
+              </button>
+              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('code')">
+                复制设备码
+              </button>
+            </div>
             <p class="lr-term__wait">
               <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
               等待授权完成…
             </p>
             <code class="lr-term__url lr-selectable">{{ auth.verificationUrl }}</code>
-            <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
+            <div class="lr-term__devops">
+              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('url')">
+                复制链接
+              </button>
+              <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
+            </div>
           </div>
 
           <!-- 登录失败 -->
@@ -472,11 +494,18 @@ function onSwitchAccount() {
 
 .lr-term__url {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
+  text-align: center;
   font-size: var(--lr-fs-mono);
   color: var(--lr-text-tertiary);
+}
+
+.lr-term__devops {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* ---- 环境检查 ---- */

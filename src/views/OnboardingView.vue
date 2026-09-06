@@ -125,6 +125,18 @@ function cancelLogin() {
   onboarding.cancelLogin();
 }
 
+/** 登录环节复制设备码 / 授权链接：自动打开失败时用户可自行处理 */
+async function copyLoginValue(kind: "code" | "url") {
+  const text = kind === "code" ? onboarding.deviceCode : onboarding.verificationUrl;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success(kind === "code" ? "设备码已复制" : "链接已复制");
+  } catch {
+    message.warning("复制失败，请手动选择复制");
+  }
+}
+
 function nextStep() {
   onboarding.step = onboarding.step + 1;
 }
@@ -279,16 +291,26 @@ onBeforeUnmount(() => {
           <div v-else-if="onboarding.loginState === 'awaiting'" class="lr-onboard__device">
             <p class="lr-onboard__devlabel">在浏览器中打开下面链接，并输入设备码</p>
             <code class="lr-onboard__code lr-selectable">{{ onboarding.deviceCode }}</code>
-            <button class="lr-btn lr-btn--primary lr-btn--lg" @click="openVerificationUrl">
-              <AppIcon name="external" :size="14" />
-              打开浏览器授权
-            </button>
+            <div class="lr-onboard__devops">
+              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
+                <AppIcon name="external" :size="14" />
+                打开浏览器授权
+              </button>
+              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('code')">
+                复制设备码
+              </button>
+            </div>
             <p class="lr-onboard__wait">
               <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
               等待授权完成…
             </p>
             <code class="lr-onboard__url lr-selectable">{{ onboarding.verificationUrl }}</code>
-            <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
+            <div class="lr-onboard__devops">
+              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('url')">
+                复制链接
+              </button>
+              <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
+            </div>
           </div>
 
           <!-- 失败 -->
@@ -631,11 +653,18 @@ onBeforeUnmount(() => {
 
 .lr-onboard__url {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
+  text-align: center;
   font-size: var(--lr-fs-mono);
   color: var(--lr-text-tertiary);
+}
+
+.lr-onboard__devops {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .lr-onboard__done {
