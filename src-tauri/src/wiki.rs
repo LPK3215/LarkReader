@@ -56,9 +56,9 @@ fn retry_backoff_ms(attempt: usize) -> u64 {
 /// 扫描模式
 ///
 /// - `Auto`：只导出传入 URL 对应的节点及其子树。默认行为，不变。
-/// - `FullSpace`：如果传入节点没有子节点，自动展开整个知识库
-///   （列出 space 下全部顶层节点，逐个递归）。Auto 的超集——Auto 能拿到的
-///   FullSpace 全能拿到，Auto 拿不到的兄弟节点 FullSpace 也能拿到。
+/// - `FullSpace`：展开整个知识库（列出 space 下全部顶层节点，逐个递归）。
+///   Auto 的真超集——无论传入节点有没有子文档，FullSpace 都会给出包含其
+///   兄弟节点在内的整库目录树；传入节点本身会按真实层级出现在树中。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScanMode {
@@ -79,10 +79,10 @@ pub fn get_wiki_tree(wiki_url: &str) -> AppResult<WikiNode> {
 
 /// 获取 Wiki 节点树（支持扫描模式选择）
 ///
-/// - `ScanMode::Auto`：等同 `get_wiki_tree`，只导出传入节点及其子树
-/// - `ScanMode::FullSpace`：Auto 模式超集。先走 Auto 逻辑，如果传入节点
-///   `has_child=false`（无子树），额外调 `wiki +node-list --space-id`（不带
-///   parent）列出 space 下全部顶层节点，构造虚拟 Folder 根逐个递归。
+/// - `ScanMode::Auto`：只导出传入节点及其子树
+/// - `ScanMode::FullSpace`：Auto 模式超集。无条件调 `wiki +node-list --space-id`
+///   （不带 parent）列出 space 下全部顶层节点，构造虚拟 Folder 根逐个递归，
+///   无论传入节点有没有子文档都给出整库目录树（含兄弟节点及其后代）。
 ///   虚拟根 obj_type=Folder 不会被收集为文档；space 顶层节点按 Auto 模式同款
 ///   depth=1 挂到虚拟根下，目录结构与 Auto 模式一致。
 pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<WikiNode> {
@@ -118,14 +118,10 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
         children: vec![],
     };
 
-    // Auto 或 FullSpace 模式且有子节点：走原有递归逻辑
-    if has_child {
-        let mut ancestors = HashSet::from([node_token.clone()]);
-        let mut node_count = 1usize;
-        root.children =
-            traverse_children(&space_id, &node_token, 1, &mut ancestors, &mut node_count)?;
-    } else if mode == ScanMode::FullSpace {
-        // FullSpace fallback：传入节点无子树，展开整个 space
+    // FullSpace：无条件展开整个 space（展开只发生在顶层一次：列出全部
+    // 顶层节点后，每个顶层节点走与 Auto 相同的普通子树递归，不会递归地
+    // 触发二次展开，也就不存在“层层套娃”）。
+    if mode == ScanMode::FullSpace {
         let space_roots = lark::wiki_space_roots(&space_id)?;
         if !space_roots.is_empty() {
             // 构造虚拟 Folder 根：obj_type=Folder 不会被收集为文档，
@@ -201,6 +197,15 @@ pub fn get_wiki_tree_with_mode(wiki_url: &str, mode: ScanMode) -> AppResult<Wiki
 
             return Ok(virtual_root);
         }
+        // space 顶层列不出来（异常/权限场景）：退回 Auto 行为
+    }
+
+    // Auto：仅导出传入节点及其子树
+    if has_child {
+        let mut ancestors = HashSet::from([node_token.clone()]);
+        let mut node_count = 1usize;
+        root.children =
+            traverse_children(&space_id, &node_token, 1, &mut ancestors, &mut node_count)?;
     }
 
     Ok(root)

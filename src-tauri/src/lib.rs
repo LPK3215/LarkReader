@@ -89,6 +89,7 @@ pub fn run() {
             // 本地阅读（Reader）
             commands::list_reader_dir,
             commands::read_reader_md,
+            commands::read_reader_text,
             commands::read_reader_binary,
             commands::find_first_reader_doc,
         ])

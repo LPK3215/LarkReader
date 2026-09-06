@@ -15,11 +15,16 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import MarkdownIt from "markdown-it";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 import AppIcon from "../components/AppIcon.vue";
 import ReaderTree from "../components/ReaderTree.vue";
-import { findFirstReaderDoc, readReaderBinary, readReaderMd } from "../api/reader";
+import {
+  findFirstReaderDoc,
+  readReaderBinary,
+  readReaderMd,
+  readReaderText,
+} from "../api/reader";
 import { useTaskStore } from "../stores/task";
 import { useHistoryStore } from "../stores/history";
 import { openOutputDir } from "../api/settings";
@@ -51,6 +56,25 @@ const mdLoading = ref(false);
 const mdError = ref<string | null>(null);
 const contentHtml = ref("");
 const contentEl = ref<HTMLElement | null>(null);
+
+/** 正文呈现形态：md 渲染 / 图片 / PDF 内嵌 / 纯文本 / 其他（交给系统打开） */
+const viewKind = ref<"md" | "image" | "pdf" | "text" | "other">("md");
+const binaryUrl = ref("");
+const textContent = ref("");
+
+/** 应用内可预览的扩展名分组（与后端 reader.rs 的白名单保持一致） */
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "ico"]);
+const TEXT_EXTS = new Set([
+  "txt", "csv", "tsv", "json", "ndjson", "xml", "log", "yaml", "yml", "toml",
+  "html", "htm", "ini", "cfg", "conf", "sql", "sh", "bat", "ps1", "py", "js",
+  "ts", "css", "java", "c", "h", "cpp", "go", "rs", "rb",
+]);
+
+function extOf(path: string): string {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
 
 /**
  * 图片 data URL 缓存（同一资源只读一次）。
@@ -144,7 +168,7 @@ function clearRoot() {
   mdError.value = null;
 }
 
-/** 打开发布中的文档：读 md -> 渲染 html -> 内联本地图片 */
+/** 打开文件：按扩展名分发 —— md 渲染 / 图片 / PDF 内嵌 / 纯文本 / 其他交给系统 */
 async function openDoc(path: string) {
   if (path === docPath.value) return;
   const requested = path;
@@ -153,21 +177,58 @@ async function openDoc(path: string) {
   docPath.value = path;
   revealPath.value = path;
   contentHtml.value = "";
+  textContent.value = "";
+  binaryUrl.value = "";
+
+  const ext = extOf(path);
+  const kind: typeof viewKind.value = IMAGE_EXTS.has(ext)
+    ? "image"
+    : ext === "pdf"
+      ? "pdf"
+      : ext === "md" || ext === "markdown"
+        ? "md"
+        : TEXT_EXTS.has(ext)
+          ? "text"
+          : "other";
+  viewKind.value = kind;
+
   try {
-    const raw = await readReaderMd(path);
-    if (docPath.value !== requested) return; // 等待期间用户已切到别的文档，丢弃这次结果
-    contentHtml.value = md.render(raw);
+    if (kind === "md") {
+      const raw = await readReaderMd(path);
+      if (docPath.value !== requested) return; // 等待期间用户已切到别的文档，丢弃这次结果
+      contentHtml.value = md.render(raw);
+    } else if (kind === "image" || kind === "pdf") {
+      const bin = await readReaderBinary(path);
+      if (docPath.value !== requested) return;
+      binaryUrl.value = bin.data_url;
+    } else if (kind === "text") {
+      const raw = await readReaderText(path);
+      if (docPath.value !== requested) return;
+      textContent.value = raw;
+    }
   } catch (err) {
     if (docPath.value !== requested) return;
     mdError.value = String(err);
   } finally {
     if (docPath.value !== requested) return;
     mdLoading.value = false;
-    void nextTick(() => {
-      resolveLocalImages();
-      const el = contentEl.value;
-      if (el) el.scrollTop = 0; // 切换文档后回到顶部，避免停留在上一篇的滚动位置
-    });
+    if (kind === "md") {
+      void nextTick(() => {
+        resolveLocalImages();
+        const el = contentEl.value;
+        if (el) el.scrollTop = 0; // 切换文档后回到顶部，避免停留在上一篇的滚动位置
+      });
+    }
+  }
+}
+
+/** 其他格式：交给系统默认程序打开 */
+async function openCurrentWithSystem() {
+  if (!docPath.value) return;
+  try {
+    await openPath(docPath.value);
+  } catch (err) {
+    message.warning(`用系统程序打开失败：${String(err)}`);
   }
 }
 
@@ -259,10 +320,11 @@ function onContentClick(event: MouseEvent) {
 
 /** 在系统文件管理器里显示当前文档所在目录 */
 async function revealDoc() {
-  const current = docPath.value ?? rootPath.value;
-  if (!current) return;
+  if (!rootPath.value && !docPath.value) return;
+  // 正在读文件时打开其所在目录；否则打开当前阅读源根目录
+  const target = docPath.value ? dirname(docPath.value) : (rootPath.value as string);
   try {
-    await openOutputDir(current.endsWith(".md") ? dirname(current) : current);
+    await openOutputDir(target);
   } catch (err) {
     // 系统级失败（目录已被删/权限）不该覆盖正在阅读的正文
     message.warning(`打开目录失败：${String(err)}`);
@@ -400,14 +462,43 @@ function joinPath(dir: string, rel: string): string {
           <!-- 未选文档 -->
           <div v-else-if="!docPath" class="lr-empty">
             <AppIcon name="doc" :size="24" />
-            <span>在左侧目录中选择一篇 .md 文档开始阅读</span>
+            <span>在左侧目录中选择一篇文档开始阅读</span>
           </div>
 
-          <!-- 正文 -->
-          <article v-else ref="contentEl" class="lr-reader-md" @click="onContentClick">
+          <!-- markdown 正文 -->
+          <article
+            v-else-if="viewKind === 'md'"
+            ref="contentEl"
+            class="lr-reader-md"
+            @click="onContentClick"
+          >
             <!-- eslint-disable-next-line vue/no-v-html -->
             <div v-html="contentHtml" />
           </article>
+
+          <!-- 图片附件 -->
+          <div v-else-if="viewKind === 'image'" class="lr-reader-media">
+            <img :src="binaryUrl" :alt="docPath ? basename(docPath) : ''" />
+          </div>
+
+          <!-- PDF 附件 -->
+          <div v-else-if="viewKind === 'pdf'" class="lr-reader-media">
+            <embed :src="binaryUrl" type="application/pdf" />
+          </div>
+
+          <!-- 纯文本附件 -->
+          <pre v-else-if="viewKind === 'text'" class="lr-reader-code">{{ textContent }}</pre>
+
+          <!-- 其他格式：交给系统默认程序 -->
+          <div v-else class="lr-reader-other">
+            <AppIcon name="paperclip" :size="28" />
+            <p class="lr-reader-other__name">{{ docPath ? basename(docPath) : "" }}</p>
+            <p class="lr-reader-other__hint">该格式暂不支持应用内预览，可以用系统默认程序打开</p>
+            <button class="lr-btn lr-btn--secondary" @click="openCurrentWithSystem">
+              <AppIcon name="folder-open" :size="14" />
+              用系统默认程序打开
+            </button>
+          </div>
         </main>
       </div>
     </div>
@@ -562,6 +653,66 @@ function joinPath(dir: string, rel: string): string {
   border: 0.5px solid var(--lr-danger-border);
   color: var(--lr-danger);
   font-size: var(--lr-fs-secondary);
+}
+
+/* ---- 非 md 附件的阅读形态 ---- */
+.lr-reader-media {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--lr-space-4);
+}
+
+.lr-reader-media img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--lr-radius-md);
+}
+
+.lr-reader-media embed {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.lr-reader-code {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--lr-space-5);
+  font-family: var(--lr-font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lr-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--lr-bg-code, rgba(127, 127, 127, 0.08));
+}
+
+.lr-reader-other {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lr-space-3);
+  padding: var(--lr-space-6);
+  color: var(--lr-text-secondary);
+}
+
+.lr-reader-other__name {
+  font-weight: var(--lr-fw-medium);
+  color: var(--lr-text);
+  word-break: break-all;
+}
+
+.lr-reader-other__hint {
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
 }
 </style>
 

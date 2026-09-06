@@ -150,6 +150,52 @@ pub fn read_reader_md(file_path: &str) -> AppResult<String> {
     std::fs::read_to_string(&path).map_err(AppError::from)
 }
 
+/// 阅读器支持应用内纯文本预览的扩展名（等宽字体展示）
+const TEXT_EXTS: &[&str] = &[
+    "txt", "csv", "tsv", "json", "ndjson", "xml", "log", "yaml", "yml", "toml", "html", "htm",
+    "ini", "cfg", "conf", "sql", "sh", "bat", "ps1", "py", "js", "ts", "css", "java", "c", "h",
+    "cpp", "go", "rs", "rb",
+];
+
+/// 判断扩展名是否为可在应用内做纯文本预览的文件
+fn is_text_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| TEXT_EXTS.iter().any(|t| ext.eq_ignore_ascii_case(t)))
+}
+
+/// 读取文本类附件（txt/csv/json/xml/log 等）用于应用内纯文本预览。
+///
+/// 与 read_reader_md 的区别：不渲染 Markdown，仅按原始文本展示；
+/// 仅放行白名单扩展名，防止误读任意文件。
+pub fn read_reader_text(file_path: &str) -> AppResult<String> {
+    let path = PathBuf::from(file_path);
+    if !is_text_file(&path) {
+        return Err(AppError::InvalidInput(format!(
+            "该文件类型不支持应用内文本预览: {file_path}"
+        )));
+    }
+    let meta = std::fs::metadata(&path)?;
+    if !meta.is_file() {
+        return Err(AppError::InvalidInput(format!(
+            "不是文件，无法阅读: {file_path}"
+        )));
+    }
+    if meta.len() > MAX_MD_BYTES {
+        return Err(AppError::Other(format!(
+            "文件过大（超过 {} MiB），无法在阅读器中预览: {file_path}",
+            MAX_MD_BYTES / (1024 * 1024)
+        )));
+    }
+    std::fs::read_to_string(&path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            AppError::Other("文件不是有效的 UTF-8 文本，无法预览".to_string())
+        } else {
+            AppError::from(e)
+        }
+    })
+}
+
 /// 读取二进制资源（图片等），拼成 data URL 返回。
 pub fn read_reader_binary(file_path: &str) -> AppResult<ReaderBinary> {
     let path = PathBuf::from(file_path);
@@ -253,6 +299,36 @@ mod tests {
         let txt = tmp.path().join("a.txt");
         std::fs::write(&txt, "hello").unwrap();
         assert!(read_reader_md(&txt.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn test_read_reader_text_whitelist_and_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let csv = tmp.path().join("a.csv");
+        std::fs::write(&csv, "id,name\n1,张三\n").unwrap();
+        let out = read_reader_text(&csv.to_string_lossy()).unwrap();
+        assert!(out.contains("张三"));
+
+        // 白名单外的扩展名拒绝
+        let bin = tmp.path().join("a.xlsx");
+        std::fs::write(&bin, "fake").unwrap();
+        assert!(read_reader_text(&bin.to_string_lossy()).is_err());
+        // 无扩展名拒绝
+        let noext = tmp.path().join("noext");
+        std::fs::write(&noext, "x").unwrap();
+        assert!(read_reader_text(&noext.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn test_read_reader_text_rejects_non_utf8() {
+        let tmp = tempfile::tempdir().unwrap();
+        let txt = tmp.path().join("gbk.txt");
+        // 0xFF 不是合法 UTF-8 序列，应得到友好错误而不是 panic
+        std::fs::write(&txt, [0xFF, 0xFE, 0x41]).unwrap();
+        let err = read_reader_text(&txt.to_string_lossy())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("UTF-8"), "实际错误: {err}");
     }
 
     #[test]

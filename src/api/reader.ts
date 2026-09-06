@@ -23,6 +23,11 @@ export async function readReaderMd(path: string): Promise<string> {
   return invoke<string>("read_reader_md", { path });
 }
 
+/** 读取文本类附件（txt/csv/json/xml/log 等），应用内纯文本预览用。 */
+export async function readReaderText(path: string): Promise<string> {
+  return invoke<string>("read_reader_text", { path });
+}
+
 /** 读取二进制资源（图片等），返回 data URL。 */
 export async function readReaderBinary(path: string): Promise<ReaderBinary> {
   return invoke<ReaderBinary>("read_reader_binary", { path });

@@ -760,6 +760,12 @@ pub fn read_reader_md(path: String) -> Result<String, AppError> {
     crate::reader::read_reader_md(&path)
 }
 
+/// 读取文本类附件（txt/csv/json/xml/log 等）用于应用内纯文本预览
+#[tauri::command]
+pub fn read_reader_text(path: String) -> Result<String, AppError> {
+    crate::reader::read_reader_text(&path)
+}
+
 /// 读取二进制资源（图片等），返回可内联的 data URL
 #[tauri::command]
 pub fn read_reader_binary(path: String) -> Result<ReaderBinary, AppError> {

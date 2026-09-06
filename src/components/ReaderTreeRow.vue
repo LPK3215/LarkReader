@@ -72,7 +72,7 @@ function isPathUnder(child: string, ancestor: string): boolean {
 }
 
 const isActive = computed(
-  () => props.node.kind === "md" && props.node.path === props.activePath
+  () => props.node.kind !== "dir" && props.node.path === props.activePath
 );
 
 /** 当前行是待定位文档本身（md） */
@@ -143,10 +143,11 @@ function onLineClick() {
   const node = props.node;
   if (node.kind === "dir") {
     void toggleDir();
-  } else if (node.kind === "md") {
+  } else if (node.kind === "md" || node.kind === "other") {
+    // md 与附件（文本/图片等可预览，其余在阅读页给出系统打开入口）
     emit("select", node.path);
   }
-  // other（附件）与 images 目录不可点：仅展示
+  // images 资源目录不可点：仅展示
 }
 
 function sizeText(bytes: number | null): string {
@@ -165,8 +166,8 @@ function sizeText(bytes: number | null): string {
       :class="{
         'is-active': isActive,
         'is-reveal': isRevealTarget,
-        'is-clickable': node.kind === 'dir' ? !node.imagesDir : node.kind === 'md',
-        'is-dim': node.imagesDir || node.kind === 'other',
+        'is-clickable': node.kind === 'dir' ? !node.imagesDir : true,
+        'is-dim': node.imagesDir,
       }"
       :style="{ paddingLeft: `${8 + (props.depth ?? 0) * 16}px` }"
       :title="node.name"
