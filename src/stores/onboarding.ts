@@ -22,6 +22,7 @@ import {
   setupLarkCli,
   startLogin,
 } from "../api/env";
+import { errMsg } from "../composables/useMessage";
 
 export type CheckState = "pending" | "ok" | "warn" | "error";
 
@@ -130,7 +131,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
         {
           key: "node",
           label: "环境检测失败",
-          detail: String(err),
+          detail: errMsg(err),
           state: "error",
         },
       ];
@@ -151,7 +152,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
         {
           key: "cli",
           label: "lark-cli 安装失败",
-          detail: String(err),
+          detail: errMsg(err),
           state: "error",
         },
       ];
@@ -192,7 +193,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
       }
     } catch (err) {
       if (seq !== loginSeq) return;
-      loginError.value = String(err);
+      loginError.value = errMsg(err);
       loginState.value = "failed";
     }
   }

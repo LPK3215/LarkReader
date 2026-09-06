@@ -158,42 +158,65 @@ pub fn check_env() -> EnvStatus {
 // 安装与引导
 // ============================================================================
 
-/// 自动安装 lark-cli（npm install -g @larksuite/cli@latest）
+/// 自动安装 lark-cli（npm install -g @larksuite/cli@<固定版本>）
 ///
-/// 需要 Node.js 已安装
+/// 需要 Node.js 已安装。npm 偶发的网络/注册表错误属瞬时失败，
+/// 自动重试最多 3 次；每次尝试与失败原因都写入运行日志。
 pub fn install_lark_cli() -> AppResult<String> {
     // 先检查 Node.js
     if check_node().is_none() {
         return Err(AppError::NodeNotFound);
     }
 
-    // 执行 npm install -g @larksuite/cli@latest
-    let mut npm_cmd = Command::new("npm");
-    npm_cmd.args([
-        "install",
-        "-g",
-        &format!("@larksuite/cli@{}", SUPPORTED_LARK_CLI_VERSION),
-    ]);
-    hide_window(&mut npm_cmd);
-    let output = npm_cmd
-        .output()
-        .map_err(|e| AppError::Other(format!("npm 执行失败: {}", e)))?;
+    const MAX_ATTEMPTS: usize = 3;
+    let mut last_err: Option<String> = None;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::Other(format!(
-            "npm install 失败: {}",
-            stderr.trim()
-        )));
+    for attempt in 1..=MAX_ATTEMPTS {
+        crate::logger::info(&format!(
+            "lark-cli 安装：第 {attempt}/{MAX_ATTEMPTS} 次尝试（npm install -g @larksuite/cli@{SUPPORTED_LARK_CLI_VERSION}）"
+        ));
+
+        let mut npm_cmd = Command::new("npm");
+        npm_cmd.args([
+            "install",
+            "-g",
+            &format!("@larksuite/cli@{}", SUPPORTED_LARK_CLI_VERSION),
+        ]);
+        hide_window(&mut npm_cmd);
+        let output = npm_cmd
+            .output()
+            .map_err(|e| AppError::Other(format!("npm 执行失败: {}", e)))?;
+
+        if output.status.success() {
+            match check_lark_cli() {
+                Some(version) => {
+                    crate::logger::info(&format!("lark-cli 安装成功：v{version}"));
+                    return Ok(version);
+                }
+                None => {
+                    last_err = Some(
+                        "npm install 完成，但 lark-cli 仍未找到，可能需要重启终端或检查 PATH"
+                            .to_string(),
+                    );
+                }
+            }
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = Some(format!("npm install 失败: {}", stderr.trim()));
+        }
+
+        crate::logger::warn(&format!(
+            "lark-cli 安装第 {attempt}/{MAX_ATTEMPTS} 次失败：{}",
+            last_err.clone().unwrap_or_default()
+        ));
+        if attempt < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
     }
 
-    // 验证安装是否成功
-    match check_lark_cli() {
-        Some(version) => Ok(version),
-        None => Err(AppError::Other(
-            "npm install 完成，但 lark-cli 仍未找到，可能需要重启终端或检查 PATH".to_string(),
-        )),
-    }
+    Err(AppError::Other(
+        last_err.unwrap_or_else(|| "安装失败".to_string()),
+    ))
 }
 
 /// 发起非阻塞飞书登录
