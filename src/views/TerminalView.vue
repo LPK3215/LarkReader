@@ -455,9 +455,11 @@ function onSwitchAccount() {
 
 .lr-term__code {
   font-family: var(--lr-font-mono);
-  font-size: 24px;
-  letter-spacing: 3px;
+  font-size: 18px;
+  letter-spacing: 2px;
   color: var(--lr-text);
+  word-break: break-all;
+  max-width: 100%;
 }
 
 .lr-term__wait {
@@ -469,10 +471,12 @@ function onSwitchAccount() {
 }
 
 .lr-term__url {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--lr-fs-mono);
   color: var(--lr-text-tertiary);
-  word-break: break-all;
-  text-align: center;
 }
 
 /* ---- 环境检查 ---- */

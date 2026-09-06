@@ -206,8 +206,7 @@ onBeforeUnmount(stopPoll);
     </header>
 
     <p class="lr-appcfg__why">
-      本工具通过 lark-cli 访问飞书文档，需要先绑定一个「飞书自建应用」。以下操作
-      只需做一次，之后一直有效。
+      需绑定一个「飞书自建应用」，一次配置长期有效。
     </p>
 
     <!-- 自动创建路径 -->
@@ -222,7 +221,7 @@ onBeforeUnmount(stopPoll);
           一键自动创建并打开浏览器
         </button>
         <span class="lr-appcfg__autohint"
-          >无需手动运行命令，向导会自动弹到浏览器，完成即回到本页检测。</span
+          >自动弹浏览器，完成即自动检测。</span
         >
       </div>
 
@@ -250,14 +249,13 @@ onBeforeUnmount(stopPoll);
         </div>
 
         <div v-if="working && linkFound" class="lr-appcfg__stepnote">
-          浏览器已打开时，跟随页面完成创建即可；完成后本面板会自动继续并重新检测，
-          无需再手动操作。
+          跟随页面完成创建即可，完成后面板自动继续。
         </div>
         <div v-if="autoDone" class="lr-appcfg__stepnote">
-          环境检测刷新中，几秒后状态会变绿。
+          正在重新检测，几秒后状态变绿。
         </div>
         <div v-if="autoFail" class="lr-appcfg__stepnote">
-          可以点上方按钮重试；若反复失败，请用下方「手动方式」在终端运行。
+          可重试，或改用下方手动方式。
         </div>
       </div>
     </div>
@@ -269,30 +267,22 @@ onBeforeUnmount(stopPoll);
       </div>
 
       <ol class="lr-appcfg__steps">
-        <li>打开电脑终端（PowerShell、终端.app、VS Code 终端都可以）。</li>
         <li>
-          粘贴并运行下面这条命令：
+          复制命令，粘贴到终端运行：
           <div class="lr-appcfg__cmd">
             <code class="lr-appcfg__cmdcode lr-selectable">{{ INIT_CMD }}</code>
             <button class="lr-btn lr-btn--secondary lr-appcfg__copy" @click="copyCommand">
               <AppIcon name="doc" :size="12" />
-              {{ copied ? "已放入" : "命令放入剪贴板" }}
+              {{ copied ? "已复制" : "复制" }}
             </button>
           </div>
         </li>
-        <li>
-          命令会打开浏览器并进入飞书开放平台创建向导，跟随提示完成自建应用的创建
-          （会复用你的飞书账号授权，通常几十秒）。此期间请勿关闭终端。
-        </li>
-        <li>
-          看到创建完成后，回到本窗口点下方「重新检测」，状态变绿即可继续。
-        </li>
+        <li>浏览器中完成应用创建（复用飞书账号授权，几十秒）。</li>
+        <li>回来点「我已完成，重新检测」。</li>
       </ol>
 
       <p class="lr-appcfg__note">
-        提示：若提示找不到 <code class="lr-appcfg__inline">lark-cli</code>，先重开
-        终端让 PATH 生效；想手动在网页创建也可以，但建好后仍需跑上面命令把
-        App ID / Secret 写回 lark-cli，所以直接跑命令最省事。
+        提示找不到 <code class="lr-appcfg__inline">lark-cli</code>：先重开终端再试。
       </p>
     </template>
 

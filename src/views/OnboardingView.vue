@@ -395,7 +395,7 @@ onBeforeUnmount(() => {
 .lr-onboard__box {
   width: 560px;
   max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--lr-bg-surface);
   border: 0.5px solid var(--lr-border);
   border-radius: var(--lr-radius-xl);
@@ -488,9 +488,11 @@ onBeforeUnmount(() => {
   color: var(--lr-success);
 }
 
-/* ---- 内容区 ---- */
+/* ---- 内容区：独立滚动，底栏固定不遮挡 ---- */
 .lr-onboard__body {
-  min-height: 220px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .lr-onboard__title {
@@ -612,9 +614,11 @@ onBeforeUnmount(() => {
 
 .lr-onboard__code {
   font-family: var(--lr-font-mono);
-  font-size: 26px;
-  letter-spacing: 3px;
+  font-size: 18px;
+  letter-spacing: 2px;
   color: var(--lr-text);
+  word-break: break-all;
+  max-width: 100%;
 }
 
 .lr-onboard__wait {
@@ -626,10 +630,12 @@ onBeforeUnmount(() => {
 }
 
 .lr-onboard__url {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--lr-fs-mono);
   color: var(--lr-text-tertiary);
-  word-break: break-all;
-  text-align: center;
 }
 
 .lr-onboard__done {
@@ -684,6 +690,7 @@ onBeforeUnmount(() => {
 
 /* ---- 底部 ---- */
 .lr-onboard__foot {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--lr-space-2);
