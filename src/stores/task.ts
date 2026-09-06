@@ -69,7 +69,7 @@ export const useTaskStore = defineStore("task", () => {
   const stage = ref<WorkspaceStage>("empty");
   const taskId = ref<string | null>(null);
   const wikiUrl = ref("");
-  const scanMode = ref<ScanMode>("auto");
+  const scanMode = ref<ScanMode>("full_space");
   const tree = ref<WikiNode | null>(null);
   const selectedTokens = ref<string[]>([]);
   const phase = ref<TaskPhase>("queued");
@@ -198,7 +198,7 @@ export const useTaskStore = defineStore("task", () => {
     if (scanning.value || stage.value === "running") return; // 防重入
     scanning.value = true;
     lastError.value = null;
-    const effectiveMode = mode ?? "auto";
+    const effectiveMode = mode ?? "full_space";
     try {
       const node = await getWikiTree(url, effectiveMode);
       wikiUrl.value = url;
@@ -302,7 +302,7 @@ export const useTaskStore = defineStore("task", () => {
     tree.value = null;
     selectedTokens.value = [];
     wikiUrl.value = "";
-    scanMode.value = "auto";
+    scanMode.value = "full_space";
     exportableCount.value = null;
     countError.value = null;
     counting.value = false;

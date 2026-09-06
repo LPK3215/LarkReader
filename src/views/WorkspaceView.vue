@@ -24,7 +24,9 @@ const task = useTaskStore();
 const settings = useSettingsStore();
 
 const inputUrl = ref("");
-const scanMode = ref<ScanMode>("auto");
+// 默认「展开整个知识库」：首次使用贴一个链接就能看到全貌，
+// 需要精确控制时再手动切回「仅导出本节点及子树」。
+const scanMode = ref<ScanMode>("full_space");
 
 const treeNodes = computed(() => (task.tree ? [task.tree] : []));
 
