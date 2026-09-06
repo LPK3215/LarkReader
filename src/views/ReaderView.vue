@@ -535,18 +535,18 @@ function joinPath(dir: string, rel: string): string {
 /* ---- 空态选源 ---- */
 .lr-reader__choose {
   height: 100%;
-  overflow: auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: var(--lr-space-4);
+  gap: var(--lr-space-5);
   max-width: 680px;
   margin: 0 auto;
-  padding-bottom: var(--lr-space-6);
+  padding: var(--lr-space-6) var(--lr-space-2) var(--lr-space-6);
 }
 
 .lr-empty--reader {
-  margin-top: var(--lr-space-6);
+  margin: var(--lr-space-4) 0;
 }
 
 .lr-reader__sources {
