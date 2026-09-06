@@ -22,13 +22,41 @@ const ENV_TO_REMOVE: &[&str] = &["HERMES_HOME", "OPENCLAW_HOME", "LARK_CHANNEL"]
 /// 构造一个已清理干扰环境变量的 lark-cli Command
 ///
 /// Windows 上额外设置 CREATE_NO_WINDOW，避免每次调用都弹出 cmd.exe 黑框。
+/// 在 PATH 各目录中解析命令的真实绝对路径（Windows 按 .cmd/.bat/.exe 顺序）。
+///
+/// 应用由不同方式启动时，子进程对无扩展名命令（npm / lark-cli）的解析依赖
+/// 继承而来的 PATH，偶发 "program not found"。这里解析出绝对路径后显式传入，
+/// 彻底规避该问题。找不到时原样返回（保持旧有报错行为）。
+pub(crate) fn resolve_on_path(name: &str) -> std::path::PathBuf {
+    let direct = std::path::PathBuf::from(name);
+    if direct.is_file() {
+        return direct;
+    }
+    let exts: &[&str] = if cfg!(windows) { &["cmd", "bat", "exe"] } else { &[""] };
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            for ext in exts {
+                let candidate = dir.join(if ext.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{name}.{ext}")
+                });
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    direct
+}
+
 fn build_command() -> Command {
     let lark_bin = if cfg!(windows) {
         "lark-cli.cmd"
     } else {
         "lark-cli"
     };
-    let mut cmd = Command::new(lark_bin);
+    let mut cmd = Command::new(resolve_on_path(lark_bin));
     for env in ENV_TO_REMOVE {
         cmd.env_remove(env);
     }

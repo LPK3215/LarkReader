@@ -176,7 +176,7 @@ pub fn install_lark_cli() -> AppResult<String> {
             "lark-cli 安装：第 {attempt}/{MAX_ATTEMPTS} 次尝试（npm install -g @larksuite/cli@{SUPPORTED_LARK_CLI_VERSION}）"
         ));
 
-        let mut npm_cmd = Command::new("npm");
+        let mut npm_cmd = Command::new(crate::lark::resolve_on_path("npm"));
         npm_cmd.args([
             "install",
             "-g",
