@@ -208,6 +208,8 @@ lark-cli 的写类命令（media-preview / workbook-export / record-list 等）�
 <summary><b>支持哪些平台？</b></summary>
 
 Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Actions 在三个平台出包并**正式发布**到 GitHub Releases（非 draft），应用内更新可直接拉取。
+
+> **当前版本说明**：v0.1.0 的 Releases 暂仅提供 **Windows（x64）安装包**，多平台产物将随发布流水线完善陆续补充。macOS / Linux 用户目前可参照「快速开始 → 开发者」从源码自行构建使用。
 </details>
 
 ## 🤝 贡献

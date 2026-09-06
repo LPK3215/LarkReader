@@ -4,6 +4,10 @@ LarkReader 是一款把「飞书知识库」下载到本地的工具：扫描目
 Markdown / XLSX / NDJSON / 原始附件，之后可离线阅读、长期留档。文档只在本地读写，正文与
 图片下载到你的磁盘，不依赖在线状态。
 
+> **适用平台**：Windows 10+ / macOS 11+ / Ubuntu 20.04+（x86_64 / arm64）。
+> 当前发布的安装包暂为 **Windows（x64）**；macOS / Linux 用户可到
+> [项目仓库](https://github.com/LPK3215/LarkReader) 参照 README「快速开始」从源码自行构建。
+
 ---
 
 ## 1. 界面总览
