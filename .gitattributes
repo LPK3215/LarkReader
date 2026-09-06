@@ -1,0 +1,20 @@
+# 统一行尾：所有文本文件入库为 LF，检出时按平台自动处理
+* text=auto
+
+# Windows 专用脚本保持 CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+*.wav binary

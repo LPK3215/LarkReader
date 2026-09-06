@@ -138,6 +138,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 | 文档 | 内容 |
 |---|---|
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | **使用说明（面向最终用户）**：界面总览、首次引导、知识库下载/扫描模式、本地阅读、历史、日志、设置、更新、FAQ |
+| [docs/manual-checklist.md](docs/manual-checklist.md) | **人工验收清单**：安装发布版后逐项过功能，全绿再对外宣传 |
 | [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、26 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
 
 | [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |

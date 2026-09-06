@@ -9,7 +9,7 @@
 //      src-tauri/Cargo.toml（三处一致，保证 CI 出包版本与 tag 相同）
 //   4. 提交版本回写 commit，打 v<版本> tag 并推送当前分支 + tag
 //   5. GitHub Actions .github/workflows/publish.yml 收到 tag 后自动构建
-//      Windows/macOS/Linux 三平台安装包，产物进 draft release
+//      Windows/macOS/Linux 三平台安装包，产物进正式 GitHub Release
 //
 // 用法（在项目根目录）：
 //   npm run release -- 0.2.0            # 普通发布（先跑门禁）
@@ -151,5 +151,5 @@ const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: ROOT }).toStri
 sh(`git push origin "${branch}"`);
 sh(`git push origin "${tag}"`);
 
-console.log(`\n[release] ${tag} 已推送。GitHub Actions 正在三平台构建，产物将进入 draft release：`);
+console.log(`\n[release] ${tag} 已推送。GitHub Actions 正在三平台构建，产物将进入正式 Release：`);
 console.log("  https://github.com/LPK3215/LarkReader/releases");
