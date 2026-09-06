@@ -27,6 +27,27 @@ const router = useRouter();
 const settings = useSettingsStore();
 const onboarding = useOnboardingStore();
 
+// ---- 首次使用合规确认：勾选同意后才进入引导，之后不再显示 ----
+const AGREEMENT_KEY = "larkreader_agreement_v1";
+const agreed = ref((() => {
+  try {
+    return localStorage.getItem(AGREEMENT_KEY) === "1";
+  } catch {
+    return true;
+  }
+})());
+const agreeChecked = ref(false);
+
+function acceptAgreement() {
+  if (!agreeChecked.value) return;
+  try {
+    localStorage.setItem(AGREEMENT_KEY, "1");
+  } catch {
+    /* 忽略 */
+  }
+  agreed.value = true;
+}
+
 const STEPS = ["环境体检", "登录飞书", "输出目录", "完成"];
 
 const ICON: Record<CheckState, string> = {
@@ -182,6 +203,7 @@ onBeforeUnmount(() => {
       </header>
 
       <!-- 步骤条 -->
+      <template v-if="agreed">
       <ol class="lr-onboard__steps">
         <li
           v-for="(s, i) in STEPS"
@@ -401,6 +423,31 @@ onBeforeUnmount(() => {
           {{ savingDir ? "保存中…" : "下一步" }}
         </button>
       </footer>
+      </template>
+
+      <!-- 首次使用：合规确认 -->
+      <template v-else>
+        <h2 class="lr-onboard__title">使用前请阅读</h2>
+        <div class="lr-onboard__agreement">
+          <ul>
+            <li>本工具通过飞书<strong>官方 Open API</strong> 与官方 lark-cli，以你自己的账号授权读取你<strong>有权限查看</strong>的内容；不破解、不绕过任何权限机制。</li>
+            <li>导出内容的<strong>版权归原作者所有</strong>，仅限个人学习与备份，请勿用于传播或商业用途。</li>
+            <li>请遵守飞书用户协议、开放平台条款及所在组织的数据安全规定；因违规使用产生的后果由使用者自行承担。</li>
+            <li>本项目为学习交流项目，与飞书 / 字节跳动官方无关联。</li>
+          </ul>
+          <label class="lr-onboard__agreelabel">
+            <input v-model="agreeChecked" type="checkbox" />
+            <span>我已阅读并同意以上声明</span>
+          </label>
+          <button
+            class="lr-btn lr-btn--primary lr-btn--lg"
+            :disabled="!agreeChecked"
+            @click="acceptAgreement"
+          >
+            同意并继续
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -451,6 +498,38 @@ onBeforeUnmount(() => {
 .lr-onboard__tag {
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
+}
+
+/* ---- 合规确认 ---- */
+.lr-onboard__agreement {
+  margin-top: var(--lr-space-4);
+  padding: var(--lr-space-4);
+  border: 0.5px solid var(--lr-border);
+  border-radius: var(--lr-radius-lg);
+  background: var(--lr-bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-3);
+}
+
+.lr-onboard__agreement ul {
+  margin: 0;
+  padding-left: var(--lr-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lr-space-2);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-secondary);
+  line-height: var(--lr-lh-body);
+}
+
+.lr-onboard__agreelabel {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  font-size: var(--lr-fs-body);
+  color: var(--lr-text);
+  cursor: pointer;
 }
 
 /* ---- 步骤条 ---- */
