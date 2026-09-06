@@ -219,6 +219,47 @@
             <a class="case-mode-row-link" href="https://github.com/LPK3215/LarkReader/blob/main/docs/scan-mode-comparison.md" target="_blank" rel="noopener">原理 ↗</a>
           </div>
 
+          <div class="file-tree" role="img" aria-label="e2e-download-case 真实导出目录结构">
+            <div class="file-tree-head">
+              <span class="file-tree-dot"></span><span class="file-tree-dot"></span><span class="file-tree-dot"></span>
+              <span class="file-tree-path">本地磁盘 · e2e-download-case/</span>
+            </div>
+            <pre class="file-tree-body">├─ <span class="ft-dir">01_文本排版/</span>
+│   └─ 00_01_文本排版.md
+├─ <span class="ft-dir">01_文本排版 (2)/</span>            <span class="ft-note">← 同名自动编号，不互相覆盖</span>
+│   ├─ 00_一级标题：标题与列表.md
+│   ├─ 01_代码块与引用.md
+│   └─ 02_表格与任务列表.md
+├─ <span class="ft-dir">02_媒体/</span>
+│   ├─ 00_图片文档.md
+│   ├─ <span class="ft-dir">00_图片文档_images/</span>
+│   │   └─ <span class="ft-img">img_01.png · img_02.png · img_03.png</span>
+│   └─ 01_文件附件文档.md
+├─ <span class="ft-dir">03_表格数据库/</span>
+│   ├─ <span class="ft-sheet">00_员工花名册.xlsx</span>
+│   └─ <span class="ft-dir">01_项目看板/</span>
+│       ├─ <span class="ft-bitable">01_Table.ndjson</span>
+│       └─ <span class="ft-bitable">01_Table.manifest.json</span>
+├─ <span class="ft-dir">04_边界情况/</span>
+│   ├─ 00_空文档.md
+│   └─ 01_超长标题测试…….md     <span class="ft-note">← 100 字符自动截断</span>
+├─ <span class="ft-dir">05_排序验证/</span>
+│   ├─ 00_甲.md
+│   ├─ 01_乙.md
+│   └─ 02_丙.md
+└─ <span class="ft-dir">06_附件下载/</span>
+    ├─ <span class="ft-attach">01_data.csv … 05_notes.txt</span>
+    ├─ <span class="ft-attach">08_性能报告(终版).pdf</span>
+    ├─ <span class="ft-attach">13_附件包.zip</span>
+    ├─ <span class="ft-attach">14_sample-doc.docx · 15_sample-sheet.xlsx · 16_sample-deck.pptx</span>
+    └─ … 共 17 个附件，全部原样字节</pre>
+          </div>
+          <p class="file-tree-caption">
+            这不是示意图 —— 这就是
+            <a href="https://github.com/LPK3215/LarkReader/tree/main/docs/e2e-download-case" target="_blank" rel="noopener">docs/e2e-download-case/</a>
+            落盘后的真实目录：断网后用 LarkReader 的「本地阅读」直接打开，目录、排序、图片、附件全部还在。
+          </p>
+
           <p class="use-case-foot">整棵目录树按飞书层级与排序落盘，编号前缀即子节点树序，zip 后可直接离线浏览整本知识库。</p>
         </article>
 

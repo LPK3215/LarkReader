@@ -6,11 +6,20 @@
 //! C. 边界情况（空链接、无效链接、纯 token、不同 URL 格式）
 //! D. 错误处理（错误信息是否友好、是否 panic）
 //! E. 重复执行稳定性（同一操作多次执行无异常）
+//!
+//! B04-B06、C02、D01、E01-E03 会调用 lark-cli 访问真实飞书 API，
+//! 默认跳过；需设置环境变量 `LARK_LIVE_TESTS=1` 才会执行，
+//! 以保证 `cargo test` 在离线 / CI 环境下默认通过。
 
 use lark_reader_lib::{env, extract, lark, markdown, models, wiki};
 
 const TEST_URL: &str = "https://gcnyv4rcw1jv.feishu.cn/wiki/Kh47wj3YRiPxsekidFWcbW0Knkb";
 const SUB_DOC_URL: &str = "https://gcnyv4rcw1jv.feishu.cn/wiki/QJFEw6cH0iSry4kRUcMcDttfn4e";
+
+/// 是否启用打真实飞书 API 的端到端测试（`LARK_LIVE_TESTS=1` 开启）。
+fn live_enabled() -> bool {
+    std::env::var("LARK_LIVE_TESTS").is_ok()
+}
 
 // ============================================================================
 // A. 纯函数测试（不需要网络，不需要登录）
@@ -204,6 +213,11 @@ fn test_b03_config_show() {
 fn test_b04_wiki_node_get() {
     println!("\n=== B04: wiki node-get ===");
 
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
+
     let node_token = extract::parse_node_token(TEST_URL);
     let info = lark::wiki_node_get(&node_token).expect("node-get 失败");
 
@@ -220,6 +234,11 @@ fn test_b04_wiki_node_get() {
 #[test]
 fn test_b05_preview_doc_with_real_title() {
     println!("\n=== B05: 文档预览（含真实标题）===");
+
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
 
     let preview = extract::preview_doc(TEST_URL).expect("preview 失败");
     println!("  标题: {}", preview.title);
@@ -241,6 +260,11 @@ fn test_b05_preview_doc_with_real_title() {
 #[test]
 fn test_b06_extract_doc_full() {
     println!("\n=== B06: 单文档提取（正文+图片，完整验证）===");
+
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
 
     let temp_dir = std::env::temp_dir().join("larkreader_full_test");
     std::fs::create_dir_all(&temp_dir).unwrap();
@@ -314,6 +338,11 @@ fn test_c01_empty_url() {
 fn test_c02_invalid_url() {
     println!("\n=== C02: 无效链接 ===");
 
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
+
     let result =
         extract::preview_doc("https://gcnyv4rcw1jv.feishu.cn/wiki/INVALID_TOKEN_NOT_EXIST_99999");
     assert!(result.is_err(), "无效链接应该返回错误");
@@ -368,6 +397,11 @@ fn test_c05_url_with_trailing_slash() {
 fn test_d01_error_message_is_chinese() {
     println!("\n=== D01: 错误信息中文化 ===");
 
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
+
     // 用无效链接触发错误
     let result = extract::preview_doc("https://gcnyv4rcw1jv.feishu.cn/wiki/NOT_EXIST_12345");
     assert!(result.is_err());
@@ -410,6 +444,11 @@ fn test_d02_no_panic_on_garbage_url() {
 #[test]
 fn test_e01_repeat_extract_same_doc() {
     println!("\n=== E01: 同一文档连续提取两次（稳定性）===");
+
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
 
     let temp_dir = std::env::temp_dir().join("larkreader_repeat_test");
     std::fs::create_dir_all(&temp_dir).unwrap();
@@ -456,6 +495,11 @@ fn test_e01_repeat_extract_same_doc() {
 fn test_e02_extract_sub_doc() {
     println!("\n=== E02: 提取子文档（不同文档验证）===");
 
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
+
     let temp_dir = std::env::temp_dir().join("larkreader_subdoc_test");
     std::fs::create_dir_all(&temp_dir).unwrap();
 
@@ -483,6 +527,11 @@ fn test_e02_extract_sub_doc() {
 #[test]
 fn test_e03_wiki_tree_structure() {
     println!("\n=== E03: 知识库目录树结构验证 ===");
+
+    if !live_enabled() {
+        println!("  ⏭️ 跳过：打真实飞书 API，需设置 LARK_LIVE_TESTS=1");
+        return;
+    }
 
     let tree = wiki::get_wiki_tree(TEST_URL).expect("获取目录树失败");
 
