@@ -65,7 +65,7 @@
         一键<span class="hl">本地阅读</span>
       </h1>
       <p class="hero-sub">
-        把整个 Wiki 或单篇文档备份成 Markdown + 图片，结构、附件、批注全保留。<br>
+        把整个 Wiki 或单篇文档备份成 Markdown + 图片，结构、附件全保留。<br>
         <strong>桌面原生 · 数据本地 · 不依赖云服务</strong>。
       </p>
 
@@ -561,7 +561,7 @@
         <article class="step">
           <div class="step-num">1</div>
           <h3>粘贴飞书链接</h3>
-          <p>支持 Wiki URL 或单篇文档 URL。首次使用需要扫码登录飞书账号，整个 token 本地保存。</p>
+          <p>支持 Wiki URL 或单篇文档 URL。首次使用走设备码登录飞书账号，凭据由官方 lark-cli 本地托管。</p>
           <div class="step-art">
             <svg viewBox="0 0 320 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="0" y="0" width="320" height="160" rx="10" fill="rgba(120,160,255,.08)"/>
@@ -681,8 +681,8 @@
         <article class="dl-card">
           <h3>从源码编译</h3>
           <p class="dl-sub">需要 Rust stable 与 Node 22+：</p>
-<pre class="cmd"><code>git clone https://github.com/&lt;user&gt;/larkreader.git
-cd larkreader
+<pre class="cmd"><code>git clone https://github.com/LPK3215/LarkReader.git
+cd LarkReader
 npm install
 npm run tauri build</code></pre>
           <p class="dl-sub">产物在 <code>src-tauri/target/release/bundle/</code>。</p>
