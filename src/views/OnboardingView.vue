@@ -430,10 +430,10 @@ onBeforeUnmount(() => {
         <h2 class="lr-onboard__title">使用前请阅读</h2>
         <div class="lr-onboard__agreement">
           <ul>
-            <li>本工具通过飞书<strong>官方 Open API</strong> 与官方 lark-cli，以你自己的账号授权读取你<strong>有权限查看</strong>的内容；不破解、不绕过任何权限机制。</li>
+            <li>本项目是一个<strong>飞书开放平台 API 的学习实践项目</strong>——如同学习一门编程语言后写一个应用来练手，与飞书 / 字节跳动官方无关联。</li>
+            <li>通过<strong>官方 Open API</strong> 与官方 lark-cli，以你自己的账号授权读取你<strong>有权限查看</strong>的内容；不破解、不绕过任何权限机制。</li>
             <li>导出内容的<strong>版权归原作者所有</strong>，仅限个人学习与备份，请勿用于传播或商业用途。</li>
             <li>请遵守飞书用户协议、开放平台条款及所在组织的数据安全规定；因违规使用产生的后果由使用者自行承担。</li>
-            <li>本项目为学习交流项目，与飞书 / 字节跳动官方无关联。</li>
           </ul>
           <label class="lr-onboard__agreelabel">
             <input v-model="agreeChecked" type="checkbox" />
