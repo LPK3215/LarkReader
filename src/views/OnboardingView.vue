@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
         <template v-if="onboarding.step === 0">
           <h2 class="lr-onboard__title">检查运行环境</h2>
           <p class="lr-onboard__desc">
-            导出依赖 Node.js 与固定版本的 lark-cli，缺项会自动安装
+            导出依赖 Node.js 与固定版本的 lark-cli，缺项可自动安装或复制命令手动安装
           </p>
 
           <template v-if="onboarding.checks.length > 0">

@@ -172,7 +172,7 @@ pub fn install_lark_cli() -> AppResult<String> {
     let mut last_err: Option<String> = None;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        crate::logger::info(&format!(
+        crate::logger::info(format!(
             "lark-cli 安装：第 {attempt}/{MAX_ATTEMPTS} 次尝试（npm install -g @larksuite/cli@{SUPPORTED_LARK_CLI_VERSION}）"
         ));
 
@@ -190,7 +190,7 @@ pub fn install_lark_cli() -> AppResult<String> {
         if output.status.success() {
             match check_lark_cli() {
                 Some(version) => {
-                    crate::logger::info(&format!("lark-cli 安装成功：v{version}"));
+                    crate::logger::info(format!("lark-cli 安装成功：v{version}"));
                     return Ok(version);
                 }
                 None => {
@@ -205,7 +205,7 @@ pub fn install_lark_cli() -> AppResult<String> {
             last_err = Some(format!("npm install 失败: {}", stderr.trim()));
         }
 
-        crate::logger::warn(&format!(
+        crate::logger::warn(format!(
             "lark-cli 安装第 {attempt}/{MAX_ATTEMPTS} 次失败：{}",
             last_err.clone().unwrap_or_default()
         ));

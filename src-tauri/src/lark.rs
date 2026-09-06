@@ -32,7 +32,11 @@ pub(crate) fn resolve_on_path(name: &str) -> std::path::PathBuf {
     if direct.is_file() {
         return direct;
     }
-    let exts: &[&str] = if cfg!(windows) { &["cmd", "bat", "exe"] } else { &[""] };
+    let exts: &[&str] = if cfg!(windows) {
+        &["cmd", "bat", "exe"]
+    } else {
+        &[""]
+    };
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             for ext in exts {
