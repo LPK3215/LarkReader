@@ -63,3 +63,22 @@ export const dialog = {
     });
   },
 };
+
+/**
+ * 把 invoke 抛出的错误统一转成可读文本。
+ * Tauri 后端 Err(AppError) 到前端是一个对象（{code, message, ...}），
+ * 直接 String() 会得到 "[object Object]"，这里优先取 message 字段。
+ */
+export function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}

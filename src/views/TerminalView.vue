@@ -113,13 +113,32 @@ async function onRefresh() {
   await auth.refresh();
 }
 
-async function onFixCli() {
+// ---- lark-cli 安装方式：自动（带进度）/ 手动（复制命令去终端） ----
+// 命令与后端 SUPPORTED_LARK_CLI_VERSION 保持一致
+const INSTALL_CMD = "npm install -g @larksuite/cli@1.0.93";
+
+/** null=收起 choose=二选一 auto=自动安装进行中 */
+const cliPanel = ref<null | "choose" | "auto">(null);
+
+function askInstallCli() {
+  cliPanel.value = "choose";
+}
+
+async function autoInstallCli() {
+  cliPanel.value = "auto";
+  await auth.installCli();
+  if (!auth.envError) message.success("lark-cli 已就绪");
+  cliPanel.value = null;
+}
+
+async function manualInstallCli() {
   try {
-    await auth.installCli();
-    message.success("lark-cli 已就绪");
-  } catch (err) {
-    message.error(String(err));
+    await navigator.clipboard.writeText(INSTALL_CMD);
+    message.success("安装命令已复制，去终端运行后点「重新检测」");
+  } catch {
+    message.warning(`复制失败，请手动输入：${INSTALL_CMD}`);
   }
+  cliPanel.value = null;
 }
 
 async function onBeginLogin() {
@@ -280,13 +299,37 @@ function onSwitchAccount() {
                 <button
                   v-if="row.action"
                   class="lr-btn lr-btn--secondary lr-term__fix"
-                  :disabled="auth.refreshing"
-                  @click="row.key === 'app' ? (showAppGuide = true) : onFixCli()"
+                  :disabled="auth.refreshing || auth.installing"
+                  @click="row.key === 'app' ? (showAppGuide = true) : askInstallCli()"
                 >
                   {{ row.action }}
                 </button>
               </li>
             </ul>
+
+            <!-- lark-cli 安装方式：自动（带进度）/ 手动（复制命令） -->
+            <div v-if="cliPanel" class="lr-term__clipanel">
+              <template v-if="cliPanel === 'choose'">
+                <div class="lr-term__cliopts">
+                  <button
+                    class="lr-btn lr-btn--primary"
+                    :disabled="auth.installing"
+                    @click="autoInstallCli"
+                  >
+                    <AppIcon name="download" :size="13" />
+                    自动安装
+                  </button>
+                  <button class="lr-btn lr-btn--secondary" @click="manualInstallCli">
+                    复制命令，手动安装
+                  </button>
+                </div>
+                <p class="lr-term__clihint">自动安装约需几十秒，完成后自动重新检测</p>
+              </template>
+              <p v-else class="lr-term__clititle">
+                <AppIcon name="spinner" :size="13" class="lr-icon-spin" />
+                正在安装 lark-cli…
+              </p>
+            </div>
 
             <AppConfigGuide
               v-if="showAppGuide"
@@ -496,6 +539,31 @@ function onSwitchAccount() {
   height: 26px;
   padding: 0 var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
+}
+
+/* ---- lark-cli 安装方式面板 ---- */
+.lr-term__clipanel {
+  margin-top: var(--lr-space-3);
+  padding: var(--lr-space-3) var(--lr-space-4);
+  border: 0.5px dashed var(--lr-border);
+  border-radius: var(--lr-radius-md);
+  background: var(--lr-bg-subtle);
+}
+
+.lr-term__cliopts {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+}
+
+.lr-term__clihint,
+.lr-term__clititle {
+  margin: var(--lr-space-2) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
 }
 
 .lr-term__hint {

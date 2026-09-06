@@ -24,6 +24,7 @@ import {
   setupLarkCli,
   startLogin,
 } from "../api/env";
+import { errMsg } from "../composables/useMessage";
 
 export type EnvLevel = "ready" | "warning" | "error";
 
@@ -57,6 +58,8 @@ export const useAuthStore = defineStore("auth", () => {
   const env = ref<EnvStatus | null>(null);
   const refreshing = ref(false);
   const envError = ref<string | null>(null);
+  /** lark-cli 自动安装进行中（终端页显示进度态用） */
+  const installing = ref(false);
 
   // ---- 登录 / 退出流程 ----
   const loginState = ref<LoginFlowState>("idle");
@@ -84,7 +87,7 @@ export const useAuthStore = defineStore("auth", () => {
       env.value = await checkEnv();
       envError.value = null;
     } catch (err) {
-      envError.value = String(err);
+      envError.value = errMsg(err);
     } finally {
       refreshing.value = false;
     }
@@ -92,14 +95,15 @@ export const useAuthStore = defineStore("auth", () => {
 
   /** 安装/更新 lark-cli（供终端页「修复」按钮用），装完重检。 */
   async function installCli() {
-    refreshing.value = true;
+    if (installing.value) return;
+    installing.value = true;
     try {
       await setupLarkCli();
       await refresh();
     } catch (err) {
-      envError.value = String(err);
+      envError.value = errMsg(err);
     } finally {
-      refreshing.value = false;
+      installing.value = false;
     }
   }
 
@@ -137,7 +141,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
     } catch (err) {
       if (seq !== loginSeq) return;
-      loginError.value = String(err);
+      loginError.value = errMsg(err);
       loginState.value = "failed";
     }
   }
@@ -167,6 +171,7 @@ export const useAuthStore = defineStore("auth", () => {
   return {
     env,
     refreshing,
+    installing,
     envError,
     loggedIn,
     userName,
