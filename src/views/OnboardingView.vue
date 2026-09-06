@@ -20,6 +20,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
 import AppConfigGuide from "../components/AppConfigGuide.vue";
+import { message } from "../composables/useMessage";
 
 const router = useRouter();
 const settings = useSettingsStore();
@@ -52,6 +53,33 @@ async function recheck() {
   }
 }
 
+// ---- lark-cli 安装方式：自动（带进度）/ 手动（复制命令去终端） ----
+// 命令与后端 SUPPORTED_LARK_CLI_VERSION 保持一致
+const INSTALL_CMD = "npm install -g @larksuite/cli@1.0.93";
+
+/** null=收起 choose=二选一 auto=自动安装进行中 */
+const cliPanel = ref<null | "choose" | "auto">(null);
+
+function askInstallCli() {
+  cliPanel.value = "choose";
+}
+
+async function autoInstallCli() {
+  cliPanel.value = "auto";
+  await onboarding.installCli();
+  cliPanel.value = null;
+}
+
+async function manualInstallCli() {
+  try {
+    await navigator.clipboard.writeText(INSTALL_CMD);
+    message.success("安装命令已复制，去终端运行后点「重新检测」");
+  } catch {
+    message.warning(`复制失败，请手动输入：${INSTALL_CMD}`);
+  }
+  cliPanel.value = null;
+}
+
 /** 步骤 3 离开时把「默认输出目录」落盘，避免重启后丢失选择 */
 const savingDir = ref(false);
 async function onNextStep() {
@@ -77,10 +105,6 @@ async function onNextStep() {
 /** 选目录后立即预检，进入工作台时也保证 settings.save 落盘 */
 function onDirPick(path: string) {
   void settings.refreshPreflight(path);
-}
-
-async function fixCli() {
-  await onboarding.installCli();
 }
 
 async function onBeginLogin() {
@@ -163,8 +187,8 @@ onBeforeUnmount(() => {
                 <button
                   v-if="item.action && item.key === 'cli'"
                   class="lr-btn lr-btn--secondary lr-onboard__fix"
-                  :disabled="onboarding.checking"
-                  @click="fixCli"
+                  :disabled="onboarding.checking || onboarding.installing"
+                  @click="askInstallCli"
                 >
                   {{ item.action }}
                 </button>
@@ -185,6 +209,30 @@ onBeforeUnmount(() => {
                 </button>
               </li>
             </ul>
+
+            <!-- lark-cli 安装方式：自动（带进度）/ 手动（复制命令） -->
+            <div v-if="cliPanel" class="lr-onboard__clipanel">
+              <template v-if="cliPanel === 'choose'">
+                <div class="lr-onboard__cliopts">
+                  <button
+                    class="lr-btn lr-btn--primary"
+                    :disabled="onboarding.installing"
+                    @click="autoInstallCli"
+                  >
+                    <AppIcon name="download" :size="13" />
+                    自动安装
+                  </button>
+                  <button class="lr-btn lr-btn--secondary" @click="manualInstallCli">
+                    复制命令，手动安装
+                  </button>
+                </div>
+                <p class="lr-onboard__clihint">自动安装约需几十秒，完成后自动重新检测</p>
+              </template>
+              <p v-else class="lr-onboard__clititle">
+                <AppIcon name="spinner" :size="13" class="lr-icon-spin" />
+                正在安装 lark-cli…
+              </p>
+            </div>
 
             <AppConfigGuide
               v-if="showAppGuide"
@@ -491,6 +539,31 @@ onBeforeUnmount(() => {
   height: 26px;
   padding: 0 var(--lr-space-3);
   font-size: var(--lr-fs-secondary);
+}
+
+/* ---- lark-cli 安装方式面板 ---- */
+.lr-onboard__clipanel {
+  margin-top: var(--lr-space-3);
+  padding: var(--lr-space-3) var(--lr-space-4);
+  border: 0.5px dashed var(--lr-border);
+  border-radius: var(--lr-radius-md);
+  background: var(--lr-bg-subtle);
+}
+
+.lr-onboard__cliopts {
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+}
+
+.lr-onboard__clihint,
+.lr-onboard__clititle {
+  margin: var(--lr-space-2) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--lr-space-2);
+  font-size: var(--lr-fs-secondary);
+  color: var(--lr-text-tertiary);
 }
 
 /* ---- 登录 ---- */

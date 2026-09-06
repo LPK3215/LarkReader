@@ -39,6 +39,8 @@ export type LoginState = "idle" | "awaiting" | "done" | "failed";
 export const useOnboardingStore = defineStore("onboarding", () => {
   const step = ref(0);
   const checking = ref(false);
+  /** lark-cli 自动安装进行中（区别于普通体检，用于显示安装进度态） */
+  const installing = ref(false);
 
   const checks = ref<CheckItem[]>([]);
   // 「登录状态」是步骤 2 的独立关卡，不应阻塞步骤 1（登录）入口：
@@ -139,21 +141,22 @@ export const useOnboardingStore = defineStore("onboarding", () => {
 
   /** 步骤 1：安装/更新 lark-cli，再跑一次体检。失败要落在体检列表上可见，而不是写进登录错误。 */
   async function installCli() {
-    checking.value = true;
+    if (installing.value) return;
+    installing.value = true;
     try {
       await setupLarkCli();
       await runCheck();
     } catch (err) {
       checks.value = [
         {
-          key: "node",
+          key: "cli",
           label: "lark-cli 安装失败",
           detail: String(err),
           state: "error",
         },
       ];
     } finally {
-      checking.value = false;
+      installing.value = false;
     }
   }
 
@@ -215,6 +218,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   return {
     step,
     checking,
+    installing,
     checks,
     envReady,
     loginState,
