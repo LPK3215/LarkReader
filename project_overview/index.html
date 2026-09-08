@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LarkReader · 项目全景观览</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="scroll-progress"></div>
+
+  <nav class="navbar glass">
+    <div class="nav-brand">📖 LarkReader</div>
+    <ul class="nav-links">
+      <li><a href="#hero" class="nav-link active">概览</a></li>
+      <li><a href="#intro" class="nav-link">简介</a></li>
+      <li><a href="#architecture" class="nav-link">架构</a></li>
+      <li><a href="#techstack" class="nav-link">技术栈</a></li>
+      <li><a href="#structure" class="nav-link">目录</a></li>
+      <li><a href="#quickstart" class="nav-link">开始</a></li>
+      <li><a href="#features" class="nav-link">功能</a></li>
+    </ul>
+    <button id="theme-toggle" class="theme-toggle">🌙</button>
+  </nav>
+
+  <section id="hero" class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+      <div class="hero-badge">v0.1.0 · GPL-3.0</div>
+      <h1 class="hero-title">LarkReader</h1>
+      <p class="hero-subtitle">飞书知识库 · 本地阅读与导出工具</p>
+      <div class="hero-tags">
+        <span class="tag">Tauri 2</span>
+        <span class="tag">Rust</span>
+        <span class="tag">Vue 3.5</span>
+        <span class="tag">TypeScript 6</span>
+        <span class="tag">Naive UI</span>
+        <span class="tag">Pinia 4</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="intro" class="section">
+    <div class="container">
+      <h2 class="section-title">📋 项目简介</h2>
+      <div class="card">
+        <p>LarkReader 解决一个具体问题：把飞书知识库变成你硬盘上可直接阅读、离线可用的文件。递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘。纯本地运行、数据不出机、无遥测。</p>
+        <div class="highlights">
+          <div class="hi"><span class="hi-icon">🔐</span><h4>环境与认证</h4><p>自动检测 lark-cli / 登录状态，设备码登录</p></div>
+          <div class="hi"><span class="hi-icon">📄</span><h4>单文档导出</h4><p>Markdown + 图片并发下载并本地化 URL</p></div>
+          <div class="hi"><span class="hi-icon">🌲</span><h4>Wiki 递归导出</h4><p>保留目录层级与排序，循环/深度保护</p></div>
+          <div class="hi"><span class="hi-icon">📊</span><h4>表格与数据库</h4><p>Sheet→XLSX, Bitable→NDJSON</p></div>
+          <div class="hi"><span class="hi-icon">📎</span><h4>文件附件</h4><p>按原始字节下载，字节数一致</p></div>
+          <div class="hi"><span class="hi-icon">🧭</span><h4>后台任务</h4><p>8 阶段进度，协作式取消</p></div>
+          <div class="hi"><span class="hi-icon">📚</span><h4>本地阅读</h4><p>Reader 页离线浏览 Markdown 与图片</p></div>
+          <div class="hi"><span class="hi-icon">🔄</span><h4>应用内更新</h4><p>公钥签名校验，一键更新</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">🏗️ 架构全景</h2>
+      <div class="card">
+        <div class="arch-diagram">
+          <svg viewBox="0 0 900 400" xmlns="http://www.w3.org/2000/svg" class="arch-svg">
+            <defs>
+              <linearGradient id="g-fe" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#42b883"/><stop offset="100%" stop-color="#35495e"/></linearGradient>
+              <linearGradient id="g-ipc" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff7043"/><stop offset="100%" stop-color="#d84315"/></linearGradient>
+              <linearGradient id="g-be" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#DEA584"/><stop offset="100%" stop-color="#A35D2D"/></linearGradient>
+              <linearGradient id="g-cli" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7e57c2"/><stop offset="100%" stop-color="#512da8"/></linearGradient>
+              <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 Z" fill="#888"/></marker>
+            </defs>
+            <!-- Frontend -->
+            <rect x="30" y="20" width="250" height="160" rx="14" fill="url(#g-fe)" opacity="0.9"/>
+            <text x="155" y="48" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Vue 3.5 前端</text>
+            <rect x="50" y="60" width="90" height="24" rx="5" fill="rgba(255,255,255,0.2)"/><text x="95" y="76" text-anchor="middle" fill="#fff" font-size="10">导出页</text>
+            <rect x="150" y="60" width="90" height="24" rx="5" fill="rgba(255,255,255,0.2)"/><text x="195" y="76" text-anchor="middle" fill="#fff" font-size="10">阅读页</text>
+            <rect x="50" y="92" width="90" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="95" y="108" text-anchor="middle" fill="#fff" font-size="10">设置页</text>
+            <rect x="150" y="92" width="90" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="195" y="108" text-anchor="middle" fill="#fff" font-size="10">日志页</text>
+            <rect x="50" y="124" width="190" height="24" rx="5" fill="rgba(255,255,255,0.1)"/><text x="145" y="140" text-anchor="middle" fill="#ccc" font-size="9">Pinia 状态管理 + Naive UI</text>
+            <!-- Tauri IPC -->
+            <rect x="330" y="50" width="200" height="100" rx="14" fill="url(#g-ipc)" opacity="0.9"/>
+            <text x="430" y="78" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Tauri IPC</text>
+            <rect x="350" y="92" width="160" height="22" rx="5" fill="rgba(255,255,255,0.15)"/><text x="430" y="107" text-anchor="middle" fill="#fff" font-size="9">27 个命令 (camelCase → snake_case)</text>
+            <rect x="350" y="120" width="160" height="20" rx="5" fill="rgba(255,255,255,0.1)"/><text x="430" y="134" text-anchor="middle" fill="#ddd" font-size="8">AppError{code, message, retryable}</text>
+            <!-- Rust Backend -->
+            <rect x="580" y="20" width="280" height="200" rx="14" fill="url(#g-be)" opacity="0.9"/>
+            <text x="720" y="48" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Rust 后端</text>
+            <rect x="600" y="60" width="110" height="24" rx="5" fill="rgba(255,255,255,0.2)"/><text x="655" y="76" text-anchor="middle" fill="#fff" font-size="9">导出引擎</text>
+            <rect x="720" y="60" width="120" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="780" y="76" text-anchor="middle" fill="#fff" font-size="9">Markdown 渲染</text>
+            <rect x="600" y="92" width="110" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="655" y="108" text-anchor="middle" fill="#fff" font-size="9">任务调度</text>
+            <rect x="720" y="92" width="120" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="780" y="108" text-anchor="middle" fill="#fff" font-size="9">错误处理</text>
+            <rect x="600" y="124" width="110" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="655" y="140" text-anchor="middle" fill="#fff" font-size="9">文件落盘</text>
+            <rect x="720" y="124" width="120" height="24" rx="5" fill="rgba(255,255,255,0.15)"/><text x="780" y="140" text-anchor="middle" fill="#fff" font-size="9">更新检查</text>
+            <rect x="600" y="158" width="240" height="22" rx="5" fill="rgba(255,255,255,0.1)"/><text x="720" y="173" text-anchor="middle" fill="#ddd" font-size="8">tokio / reqwest / pulldown-cmark / rayon</text>
+            <!-- lark-cli -->
+            <rect x="580" y="250" width="280" height="70" rx="14" fill="url(#g-cli)" opacity="0.9"/>
+            <text x="720" y="278" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">lark-cli (子进程)</text>
+            <rect x="600" y="290" width="240" height="20" rx="5" fill="rgba(255,255,255,0.1)"/><text x="720" y="304" text-anchor="middle" fill="#ddd" font-size="9">@larksuite/cli@1.0.93 — 飞书 API 调用</text>
+            <!-- Local FS -->
+            <rect x="30" y="230" width="250" height="90" rx="14" fill="#37474f" opacity="0.9"/>
+            <text x="155" y="258" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">本地文件系统</text>
+            <rect x="50" y="270" width="100" height="20" rx="5" fill="rgba(255,255,255,0.1)"/><text x="100" y="284" text-anchor="middle" fill="#ccc" font-size="9">*.md</text>
+            <rect x="160" y="270" width="100" height="20" rx="5" fill="rgba(255,255,255,0.1)"/><text x="210" y="284" text-anchor="middle" fill="#ccc" font-size="9">*.xlsx / *.ndjson</text>
+            <!-- Arrows -->
+            <line x1="280" y1="100" x2="325" y2="100" stroke="#888" stroke-width="2" marker-end="url(#arr)"/>
+            <line x1="530" y1="100" x2="575" y2="100" stroke="#888" stroke-width="2" marker-end="url(#arr)"/>
+            <line x1="720" y1="220" x2="720" y2="245" stroke="#888" stroke-width="2" marker-end="url(#arr)"/>
+            <line x1="580" y1="200" x2="285" y2="250" stroke="#888" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="techstack" class="section">
+    <div class="container">
+      <h2 class="section-title">🧱 技术栈</h2>
+      <div class="card">
+        <table class="tech-table">
+          <thead><tr><th>层</th><th>技术</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td>桌面框架</td><td>Tauri 2</td><td>跨平台桌面应用（Windows / macOS / Linux）</td></tr>
+            <tr><td>后端</td><td>Rust (stable)</td><td>tokio / reqwest / pulldown-cmark / rayon</td></tr>
+            <tr><td>前端</td><td>Vue 3.5 + TypeScript ~6.0</td><td>响应式 UI</td></tr>
+            <tr><td>构建</td><td>Vite 8</td><td>前端构建与热重载</td></tr>
+            <tr><td>状态管理</td><td>Pinia 4</td><td>跨页面状态</td></tr>
+            <tr><td>UI 组件</td><td>Naive UI</td><td>表格、表单、对话框</td></tr>
+            <tr><td>路由</td><td>Vue Router</td><td>SPA 路由</td></tr>
+            <tr><td>内容源</td><td>@larksuite/cli 1.0.93</td><td>飞书 API 子进程调用</td></tr>
+            <tr><td>CI/发布</td><td>GitHub Actions</td><td>三平台出包，v* tag 触发</td></tr>
+            <tr><td>许可证</td><td>GPL-3.0-only</td><td>开源协议</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="structure" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">📂 目录结构</h2>
+      <div class="card">
+        <div class="tree-container">
+          <details open class="tree-node">
+            <summary>📁 LarkReader/</summary>
+            <div class="tree-leaf">📁 src/ — Vue 3 前端源码</div>
+            <div class="tree-leaf">📁 src-tauri/ — Rust 后端 + Tauri 配置</div>
+            <div class="tree-leaf">📁 docs/ — 文档（BACKEND.md / assets / e2e 案例）</div>
+            <div class="tree-leaf">📁 scripts/ — 构建/验证/发布脚本</div>
+            <div class="tree-leaf">📁 public/ — 静态资源</div>
+            <div class="tree-leaf">📁 .github/ — CI/CD 工作流</div>
+            <div class="tree-leaf">📄 package.json — 前端依赖</div>
+            <div class="tree-leaf">📄 vite.config.ts / tsconfig.json</div>
+            <div class="tree-leaf">📄 LICENSE (GPL-3.0) / README.md / CHANGELOG.md</div>
+            <div class="tree-leaf">📄 CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md</div>
+            <div class="tree-leaf">📄 AUTHORS</div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart" class="section">
+    <div class="container">
+      <h2 class="section-title">🚀 快速开始</h2>
+      <div class="card">
+        <h4>前置要求</h4>
+        <ul class="req-list">
+          <li>✅ Node.js 18+</li>
+          <li>✅ Rust (stable)</li>
+          <li>✅ @larksuite/cli（应用内自动安装）</li>
+        </ul>
+        <div class="code-block">
+          <div class="code-header"><span>Bash</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><code># 安装前端依赖
+npm install
+
+# 开发模式运行
+npm run tauri dev
+
+# 构建生产包
+npm run tauri build
+
+# 验证
+npm run verify</code></pre>
+        </div>
+        <p>首次运行会自动检测 lark-cli 并引导登录。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">⚡ 核心功能</h2>
+      <div class="card">
+        <table class="tech-table">
+          <thead><tr><th>能力</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>单文档导出</td><td>接受 Wiki URL 或节点 token，Markdown + 图片并发下载并本地化</td></tr>
+            <tr><td>Wiki 递归导出</td><td>保留目录层级与排序，循环/深度≤64/节点≤10000 三重保护</td></tr>
+            <tr><td>表格导出</td><td>Sheet→XLSX，Bitable→NDJSON + manifest.json</td></tr>
+            <tr><td>文件附件</td><td>按原始字节下载，字节数与上传一致</td></tr>
+            <tr><td>后台任务</td><td>8 阶段进度，协作式取消，历史持久化（24h/≤100 条）</td></tr>
+            <tr><td>本地阅读</td><td>Reader 页浏览导出目录，渲染 Markdown 与图片</td></tr>
+            <tr><td>应用更新</td><td>公钥签名校验，Windows/macOS/Linux 自动安装</td></tr>
+            <tr><td>可靠性</td><td>结构化错误协议、预检、回滚、指数退避重试</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-title">📄 许可证</h2>
+      <div class="card license-card">
+        <p><strong>GPL-3.0-only</strong></p>
+        <p>Copyright © 2024-2026 LPK3215</p>
+        <p>仓库：<a href="https://github.com/LPK3215/LarkReader" target="_blank" style="color:var(--accent)">github.com/LPK3215/LarkReader</a></p>
+        <p>产品主页：<a href="https://lpk3215.github.io/LarkReader/" target="_blank" style="color:var(--accent)">lpk3215.github.io/LarkReader</a></p>
+      </div>
+    </div>
+  </section>
+
+  <button id="back-to-top" class="back-to-top">↑</button>
+  <footer class="footer"><p>Generated by CatPaw · 2026-09-09 · LarkReader v0.1.0</p></footer>
+  <script src="./script.js"></script>
+</body>
+</html>
