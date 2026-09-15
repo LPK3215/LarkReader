@@ -95,6 +95,10 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""   # 仅当生成时设过密码才�
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.larkreader-signing\larkreader.key" -Raw
 ```
 
+> **实测坑（2026-09-15）**：
+> 1. `npm run tauri build` 只读 `TAURI_SIGNING_PRIVATE_KEY`（私钥内容），**不认 `TAURI_SIGNING_PRIVATE_KEY_PATH`**。用方式 A 会以 `A public key has been found, but no private key.` 收尾——安装包已生成，但没有 `.sig` 侧车。
+> 2. Windows 上**无法通过环境变量传空密码**（空值会被系统丢弃），此时 CLI 会停在 `Decrypting updater signing key, expect a prompt for password` 等你回车。交互式终端里直接回车即可；脚本 / CI 场景改用事后补签（见 3.4）。
+
 ### 3.2 打包命令
 
 默认打包当前平台的所有 bundle 类型（Windows 出 nsis+msi，Linux 出 deb+appimage，macOS 出 dmg 等）：
@@ -134,6 +138,36 @@ src-tauri/target/release/bundle/
 ```
 
 > Tauri 的 GUI 依赖系统 WebView，跨操作系统交叉编译通常不可行——各平台包要在对应系统上构建。这正是 CI 用四平台矩阵的原因。
+
+### 3.4 CI 不可用时的本地补发路径（实测可行，2026-09-15）
+
+当 GitHub Actions 因账号计费等问题跑不起来时，可以本地出 Windows 包、手动挂到 Release：
+
+1. **补签名**（构建阶段没签上时；脚本/无人值守场景必用）：
+   ```bash
+   npx tauri signer sign -f "$USERPROFILE/.larkreader-signing/larkreader.key" -p "" <安装包路径>
+   ```
+   每个安装包生成同名 `.sig` 侧车。
+2. **生成 updater 清单 `latest.json`**：
+   ```json
+   {
+     "notes": "本次更新…",
+     "pub_date": "2026-09-15T09:54:19Z",
+     "platforms": {
+       "windows-x86_64": {
+         "signature": "<对应 .sig 文件的完整内容>",
+         "url": "https://github.com/LPK3215/LarkReader/releases/download/vX.Y.Z/LarkReader_X.Y.Z_x64-setup.exe"
+       }
+     },
+     "version": "X.Y.Z"
+   }
+   ```
+3. **建 Release 并上传**（`--latest` 保证应用内更新端点指向它）：
+   ```bash
+   gh release create vX.Y.Z --title "LarkReader vX.Y.Z" --notes-file <说明.md> --latest \
+     <nsis.exe> <nsis.exe.sig> <msi> <msi.sig> latest.json
+   ```
+4. **验证**：打开 `https://github.com/LPK3215/LarkReader/releases/latest/download/latest.json`，应返回该版本的清单。
 
 ---
 
@@ -304,6 +338,7 @@ node scripts/release.mjs 0.2.0 --dry-run  # 预览版本回写，不写盘不提
 | 报 `tag v0.2.0 已存在` | 换版本号；或 `git tag -d v0.2.0 && git push origin :v0.2.0` 删旧 tag（慎用） |
 | 本地 `npm run tauri build` 报签名相关错误 | 忘了给 `TAURI_SIGNING_PRIVATE_KEY(PATH)` 环境变量，见第 3.1 节 |
 | Actions 的 guard job 标红 | 缺 `TAURI_SIGNING_PRIVATE_KEY` secret → 按报错指引添加后重跑 |
+| 所有 job 2~4 秒就失败、无任何日志（runner 未分配） | **账号被计费问题锁定**：报错原文 `The job was not started because your account is locked due to a billing issue.` → 到 https://github.com/settings/billing 处理逾期账单 / 支付方式后重跑。公开仓库的 Actions 本身免费，与额度无关；锁定期间可走 3.4 的本地补发路径 |
 | Release 里没有 `latest.json` | 确认正式发布（非 draft/prerelease）；确认 `createUpdaterArtifacts: true` 与 updater 配置齐全 |
 | 客户端永远显示“已是最新” | 当前版本 ≥ GitHub 最新；或 Release 仍是 draft/prerelease |
 | 客户端检查更新失败 | 网络不通 GitHub；代理环境可在 `src/api/updater.ts` 的 check 加 `proxy` |
