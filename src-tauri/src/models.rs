@@ -30,7 +30,80 @@ pub struct EnvStatus {
     pub user_name: Option<String>,
     /// token 状态（ready / needs_refresh / none）
     pub token_status: Option<String>,
+    /// 当前 token 的授权范围巡检结果（登录后才检查）
+    pub scope_check: ScopeCheck,
     pub check_errors: Vec<EnvCheckError>,
+}
+
+/// 授权范围巡检结果（`check_env` 附带、`check_scopes` 单独返回）
+///
+/// 存在的意义：`user lacks permission for the requested resource` 这类报错只有业务
+/// 请求发起后才出现，用户看到的是"导出失败"而不是"缺哪个权限"。这里在体检阶段就把
+/// 授权范围查出来（`lark-cli auth check --scope <LOGIN_SCOPES> --json`），缺项直接摆到
+/// 界面上，并提供"清除登录态并重新登录"的修复入口。
+///
+/// 状态判定采用保守策略：**只有拿到明确缺项证据才判 missing**（宁可漏报不可误拦），
+/// 拿不到清单时判 unknown，不阻断任何操作。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScopeCheck {
+    /// ok（必需 scope 齐全）/ missing（确认缺项）/ unknown（无法判定）/ skipped（前置未满足）
+    pub state: String,
+    /// 本工具业务命令覆盖的全部必需 scope（`lark.rs::LOGIN_SCOPES`）
+    pub required: Vec<String>,
+    /// 当前 token 已授予的 scope（能解析到时有效，无法判定时为空）
+    pub granted: Vec<String>,
+    /// 必需但未授予的 scope（仅 state == "missing" 时非空）
+    pub missing: Vec<String>,
+    /// 面向用户的一句话说明
+    pub message: String,
+}
+
+impl ScopeCheck {
+    /// 前置条件不满足（如未登录），不做检查也不报错
+    pub fn skipped(message: impl Into<String>) -> Self {
+        Self {
+            state: "skipped".to_string(),
+            message: message.into(),
+            ..Default::default()
+        }
+    }
+
+    /// 必需 scope 齐全
+    pub fn ok(required: Vec<String>, granted: Vec<String>, message: impl Into<String>) -> Self {
+        Self {
+            state: "ok".to_string(),
+            required,
+            granted,
+            missing: Vec::new(),
+            message: message.into(),
+        }
+    }
+
+    /// 确认缺少若干必需 scope
+    pub fn missing(
+        required: Vec<String>,
+        granted: Vec<String>,
+        missing: Vec<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            state: "missing".to_string(),
+            required,
+            granted,
+            missing,
+            message: message.into(),
+        }
+    }
+
+    /// 无法判定（命令失败 / 输出结构不认识）——不阻断导出，仅在界面上提示
+    pub fn unknown(required: Vec<String>, message: impl Into<String>) -> Self {
+        Self {
+            state: "unknown".to_string(),
+            required,
+            message: message.into(),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

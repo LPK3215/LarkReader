@@ -15,8 +15,8 @@ use crate::error::AppError;
 use crate::lark;
 use crate::models::{
     AppInitStatus, DeviceInfo, EnvStatus, ExportableCount, LogFileContent, LogFileMeta,
-    LoginResult, OutputPreflight, Progress, ReaderBinary, ReaderEntry, Settings, SettingsStatus,
-    TaskPhase, TaskStatus, WikiNode, WikiTaskResult,
+    LoginResult, OutputPreflight, Progress, ReaderBinary, ReaderEntry, ScopeCheck, Settings,
+    SettingsStatus, TaskPhase, TaskStatus, WikiNode, WikiTaskResult,
 };
 use crate::wiki;
 
@@ -330,6 +330,58 @@ pub async fn logout() -> Result<String, AppError> {
     Ok(result)
 }
 
+/// 巡检当前飞书 token 的授权范围（`lark-cli auth check --scope <LOGIN_SCOPES>`）。
+///
+/// 只读命令：不改登录态、不发业务请求。体检里的 `scope_check` 是同一实现的附带结果，
+/// 本命令供界面单独刷新（例如补完权限点后立刻复查）。
+#[tauri::command]
+pub async fn check_scopes() -> ScopeCheck {
+    tauri::async_runtime::spawn_blocking(lark::check_scopes)
+        .await
+        .unwrap_or_else(|e| {
+            crate::logger::error(format!("授权范围巡检任务异常: {e}"));
+            ScopeCheck::unknown(
+                lark::required_scopes(),
+                format!("授权范围巡检任务异常: {e}"),
+            )
+        })
+}
+
+/// 把一段文本（实际用于设备码授权链接）渲染成二维码 SVG。
+///
+/// 为什么在本地生成而不调 `lark-cli auth qrcode`：
+/// 1. 纯本地计算——不联网、不写临时文件、也不依赖 lark-cli 版本；
+/// 2. 链接一换就立刻重画，不会出现"页面显示的还是上一轮的过期二维码"。
+///
+/// 为什么登录面板要给二维码（2026-10-08 用户实测反馈）：
+/// 部分环境下浏览器点「开通并授权」**完全没有反应**（无报错、也无协议提示），
+/// 换浏览器也不一定好；同一链接在手机上（飞书 / 豆包 / 任意浏览器，账号本就同源）
+/// 却可以正常授权。所以登录流程不该只给一个"必须在本机浏览器完成"的链接，
+/// 而应同时给出二维码，让用户自己选最快的那条路。
+#[tauri::command]
+pub fn qr_svg(text: String) -> Result<String, AppError> {
+    let code = qrcode::QrCode::new(text.as_bytes())
+        .map_err(|e| AppError::Other(format!("生成二维码失败: {e}")))?;
+    Ok(code
+        .render::<qrcode::render::svg::Color>()
+        .min_dimensions(240, 240)
+        .build())
+}
+
+/// 用**隔离浏览器**打开链接（创建应用向导页 / 设备码授权页共用）。
+///
+/// 为什么不是系统默认浏览器：授权页要求浏览器里已有豆包/飞书登录态，且对浏览器
+/// 环境敏感——日常浏览器常见"点开通并授权毫无反应"，而独立 profile 的干净实例
+/// 实测一次成功（见 `isolated_browser` 模块头部的实测表，2026-10-09）。
+///
+/// 本命令只负责"自动打开 + 自动带上链接"，后续扫码登录与点授权都由用户完成。
+#[tauri::command]
+pub fn open_isolated_browser(url: String) -> Result<String, AppError> {
+    let message = crate::isolated_browser::open_isolated(&url)?;
+    crate::logger::info(format!("隔离浏览器打开链接：{message}"));
+    Ok(message)
+}
+
 /// 保存设置
 #[tauri::command]
 pub fn set_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), AppError> {
@@ -539,6 +591,21 @@ pub async fn start_extract_wiki(
     let dir = output_dir.unwrap_or_else(|| settings.output_dir.clone());
     crate::models::validate_output_directory_writable(std::path::Path::new(&dir))
         .map_err(AppError::InvalidSetting)?;
+
+    // 授权范围门禁：确认缺少必需 scope 时直接拒绝启动，避免任务跑起来后每个文件都失败
+    // （症状就是 issue 里那句 `user lacks permission for the requested resource`）。
+    // 只有「确认缺失」才拦截——unknown 放行，交由业务请求自身的报错提示。
+    let scope_check = tauri::async_runtime::spawn_blocking(lark::check_scopes)
+        .await
+        .unwrap_or_default();
+    if scope_check.state == "missing" {
+        crate::logger::error(format!(
+            "导出任务被阻止：授权范围缺少 {}",
+            scope_check.missing.join("、")
+        ));
+        return Err(AppError::LarkCliResponse(scope_check.message));
+    }
+
     let task_id = Uuid::new_v4().to_string();
     let progress = Arc::new(Mutex::new(Progress::new(task_id.clone(), 0)));
     let cancelled = Arc::new(AtomicBool::new(false));

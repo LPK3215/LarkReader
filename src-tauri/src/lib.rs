@@ -6,6 +6,7 @@ pub mod commands;
 pub mod env;
 pub mod error;
 pub mod extract;
+pub mod isolated_browser;
 pub mod lark;
 pub mod logger;
 pub mod markdown;
@@ -69,6 +70,9 @@ pub fn run() {
             commands::start_login,
             commands::complete_login,
             commands::logout,
+            commands::check_scopes,
+            commands::qr_svg,
+            commands::open_isolated_browser,
             commands::set_settings,
             commands::get_settings_status,
             commands::preflight_output_dir,

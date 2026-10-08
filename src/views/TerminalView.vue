@@ -7,13 +7,12 @@
 // 与右上角状态胶囊共用 stores/auth.ts，状态实时一致；动作全部走 IPC
 // （api/env.ts），不保留浏览器假数据。
 //
-// 登录模型与 onboarding 一致：start_login 拿设备码 -> 浏览器授权 ->
-// complete_login 单次阻塞等待授权完成（勿并发轮询）。
+// 登录模型与 onboarding 一致：start_login 拿设备码 -> 展示二维码/链接待用户授权 ->
+// complete_login 单次阻塞等待授权完成（勿并发轮询）。不自动拉起浏览器。
 // ============================================================================
 
 import { computed, onMounted, ref } from "vue";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import type { EnvStatus } from "../api/types";
+import type { EnvStatus, ScopeCheck } from "../api/types";
 import { useAuthStore } from "../stores/auth";
 import AppIcon from "../components/AppIcon.vue";
 import AppConfigGuide from "../components/AppConfigGuide.vue";
@@ -80,7 +79,36 @@ function buildRows(env: EnvStatus): Row[] {
     state: env.logged_in ? (needRefresh ? "warn" : "ok") : "warn",
   });
 
+  // 授权范围：把"导出时才会撞上的缺权限"提前到体检里暴露。
+  // 只有确认缺项（missing）才给修复按钮并拦截导出；unknown 只提示不阻断。
+  const scope = env.scope_check;
+  const scopeState = scope?.state ?? "";
+  out.push({
+    key: "scope",
+    label: "授权范围",
+    detail: describeScope(scope),
+    state: scopeState === "ok" ? "ok" : scopeState === "missing" ? "error" : "warn",
+    action: scopeState === "missing" ? "清除并重新登录" : undefined,
+  });
+
   return out;
+}
+
+/** 授权范围行的明细文案（口径与账号卡一致，避免两处说法漂移）。 */
+function describeScope(scope?: ScopeCheck): string {
+  if (!scope) return "尚未检测";
+  switch (scope.state) {
+    case "ok":
+      return scope.granted.length > 0
+        ? `已授权 ${scope.granted.length} 项 · 必需 ${scope.required.length} 项齐全`
+        : scope.message || "必需权限齐全";
+    case "missing":
+      return `缺少 ${scope.missing.length} 项：${scope.missing.join("、")}`;
+    case "skipped":
+      return scope.message || "未登录，暂未检查";
+    default:
+      return scope.message || "无法确认授权范围";
+  }
 }
 
 const rows = computed<Row[]>(() => (auth.env ? buildRows(auth.env) : []));
@@ -103,6 +131,24 @@ const accountShown = computed(() => auth.loggedIn || auth.loginState === "done")
 const accountSub = computed(() =>
   auth.loggedIn ? tokenLabel.value : "登录已确认，同步状态中…"
 );
+
+/**
+ * 账号卡下方的凭据/授权说明。
+ * 授权范围缺项时直接把"缺什么"写在卡片上——这是用户最需要看到、也最容易错过的一句。
+ */
+const accountTip = computed(() => {
+  const scope = auth.env?.scope_check;
+  if (!scope || scope.state === "skipped") {
+    return "凭据由 lark-cli 本地保管；退出后再次导出文档前需要重新授权。";
+  }
+  if (scope.state === "missing") {
+    return `当前授权缺少：${scope.missing.join("、")}。清除登录态并重新登录即可补齐，否则导出会被拦截。`;
+  }
+  if (scope.state === "unknown") {
+    return `凭据由 lark-cli 本地保管；授权范围未能确认（${scope.message}）。`;
+  }
+  return `凭据由 lark-cli 本地保管；${scope.message}。`;
+});
 
 /** 进入页面立即体检一次，保证看到的是最新状态。 */
 onMounted(() => {
@@ -149,13 +195,9 @@ function cancelLogin() {
   auth.cancelLogin();
 }
 
+/** 显式在系统浏览器打开授权链接（不再自动弹；扫码那条路始终可用） */
 async function openVerificationUrl() {
-  if (!auth.verificationUrl) return;
-  try {
-    await openUrl(auth.verificationUrl);
-  } catch {
-    // 打开外部链接被拒绝时，设备码仍显示在页面上
-  }
+  await auth.openVerification();
 }
 
 /** 登录环节复制设备码 / 授权链接：自动打开失败时用户可自行处理 */
@@ -170,10 +212,50 @@ async function copyLoginValue(kind: "code" | "url") {
   }
 }
 
+/** 环境卡里各行的修复按钮：一行一个动作，避免把动作塞进 key 判断的表达式里 */
+function onRowAction(row: Row) {
+  if (row.key === "app") {
+    showAppGuide.value = true;
+  } else if (row.key === "scope") {
+    confirmResetLogin();
+  } else {
+    askInstallCli();
+  }
+}
+
+/**
+ * 清除登录态并重新登录 —— 授权范围缺项的唯一修复路径。
+ *
+ * 必须先 logout：lark-cli 只保留一个令牌槽位，旧令牌里没有新增的 scope，
+ * 不先删除就等于继续用旧令牌。应用后台未开通对应权限点时，光重新登录也不够，
+ * 所以文案里同时点出这一步。
+ */
+function confirmResetLogin() {
+  const missing = auth.scopeMissing.length
+    ? auth.scopeMissing.join("、")
+    : "未知权限项";
+  dialog.warning({
+    title: "清除登录态并重新登录",
+    content:
+      `当前授权缺少：${missing}。将先删除本机（lark-cli）保存的飞书令牌，` +
+      "再发起一次浏览器授权，新令牌才会带上最新的权限范围。" +
+      "若飞书开放平台里该应用尚未开通这些权限点，需先在应用「权限管理」中开启，重新登录才有效。",
+    positiveText: "清除并重新登录",
+    onPositiveClick: async () => {
+      try {
+        await auth.resetLogin();
+        message.success("已清除旧登录态，请在新打开的授权页完成授权");
+      } catch (err) {
+        message.error(String(err));
+      }
+    },
+  });
+}
+
 function onLogout() {
   dialog.warning({
     title: "退出飞书登录",
-    content: `确定退出账号「${auth.userName ?? ""}」吗？退出后需要重新在浏览器授权才能继续导出文档，已导出的本地文件不受影响。`,
+    content: `确定退出账号「${auth.userName ?? ""}」吗？退出会删除本机保存的飞书登录令牌，之后需重新在浏览器授权才能继续导出文档；已导出的本地文件不受影响。`,
     positiveText: "退出登录",
     onPositiveClick: async () => {
       try {
@@ -233,10 +315,17 @@ function onSwitchAccount() {
                 <span class="lr-term__accountsub">{{ accountSub }}</span>
               </span>
             </div>
-            <p class="lr-term__tip">
-              凭据由 lark-cli 本地保管；退出后再次导出文档前需要重新授权。
+            <p class="lr-term__tip" :class="{ 'is-warn': auth.scopesIncomplete }">
+              {{ accountTip }}
             </p>
             <div class="lr-term__actions">
+              <button
+                v-if="auth.scopesIncomplete"
+                class="lr-btn lr-btn--primary"
+                @click="confirmResetLogin"
+              >
+                清除登录态并重新登录
+              </button>
               <button class="lr-btn lr-btn--secondary" @click="onSwitchAccount">
                 切换账号
               </button>
@@ -252,28 +341,32 @@ function onSwitchAccount() {
 
           <!-- 等待授权 -->
           <div v-else-if="auth.loginState === 'awaiting'" class="lr-term__device">
-            <p class="lr-term__devlabel">在浏览器打开链接并输入设备码完成授权</p>
-            <code class="lr-term__code lr-selectable">{{ auth.deviceCode }}</code>
-            <div class="lr-term__devops">
-              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
-                <AppIcon name="external" :size="14" />
-                打开浏览器授权
-              </button>
-              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('code')">
-                复制设备码
-              </button>
-            </div>
-            <p class="lr-term__wait">
-              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
-              等待授权完成…
+            <p class="lr-term__devlabel">已用隔离浏览器打开授权页，请到那个窗口完成授权</p>
+            <div v-if="auth.qrMarkup" class="lr-term__qr" v-html="auth.qrMarkup"></div>
+            <p class="lr-term__qrnote">
+              在刚打开的浏览器窗口里：① 若显示登录页，先用手机（豆包 / 飞书）扫码登录；
+              ② 再点「开通并授权」，有「一并开通并授权…免审权限修改」的勾选框就一并勾上。
+              不方便用电脑时，直接手机扫上面的二维码。
             </p>
             <code class="lr-term__url lr-selectable">{{ auth.verificationUrl }}</code>
             <div class="lr-term__devops">
-              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('url')">
+              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
+                <AppIcon name="external" :size="14" />
+                重新打开授权页
+              </button>
+              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('url')">
                 复制链接
+              </button>
+              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('code')">
+                复制设备码
               </button>
               <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
             </div>
+            <p class="lr-term__wait">
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
+              等待授权完成…期间请勿再点「登录」或重复发起：新的一次会作废当前这次。
+            </p>
+            <code class="lr-term__code lr-selectable">{{ auth.deviceCode }}</code>
           </div>
 
           <!-- 登录失败 -->
@@ -322,7 +415,7 @@ function onSwitchAccount() {
                   v-if="row.action"
                   class="lr-btn lr-btn--secondary lr-term__fix"
                   :disabled="auth.refreshing || auth.installing"
-                  @click="row.key === 'app' ? (showAppGuide = true) : askInstallCli()"
+                  @click="onRowAction(row)"
                 >
                   {{ row.action }}
                 </button>
@@ -384,6 +477,7 @@ function onSwitchAccount() {
           <span class="lr-term__legenddot is-ready" />环境正常，可直接导出；
           <span class="lr-term__legenddot is-warn" />有未登录或版本等提醒；
           <span class="lr-term__legenddot is-error" />缺依赖需先处理。
+          「授权范围」确认缺权限时会拦截导出，点该行右侧「清除并重新登录」补齐。
           右上角状态胶囊与这里状态一致，点击胶囊可直达本页。
         </div>
       </section>
@@ -440,6 +534,11 @@ function onSwitchAccount() {
   font-size: var(--lr-fs-secondary);
   color: var(--lr-text-tertiary);
   line-height: var(--lr-lh-body);
+}
+
+/* 授权范围缺项：提示要能被一眼看到（黄色），而不是混在灰色说明里 */
+.lr-term__tip.is-warn {
+  color: var(--lr-warning, #d8860b);
 }
 
 .lr-term__actions {
@@ -506,6 +605,30 @@ function onSwitchAccount() {
   gap: var(--lr-space-2);
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* 授权二维码：后端本地渲染的 SVG，经 v-html 注入（scoped 样式需 :deep 才能命中） */
+.lr-term__qr {
+  width: 196px;
+  height: 196px;
+  padding: var(--lr-space-2);
+  border-radius: var(--lr-radius-md);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+
+.lr-term__qr :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lr-term__qrnote {
+  max-width: 440px;
+  text-align: center;
+  font-size: var(--lr-fs-secondary);
+  line-height: 1.6;
+  color: var(--lr-text-tertiary);
 }
 
 /* ---- 环境检查 ---- */

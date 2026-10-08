@@ -16,7 +16,6 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useSettingsStore } from "../stores/settings";
 import { useOnboardingStore, type CheckState } from "../stores/onboarding";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
 import AppConfigGuide from "../components/AppConfigGuide.vue";
@@ -133,20 +132,16 @@ async function onBeginLogin() {
   await onboarding.beginLogin();
 }
 
+/** 显式在系统浏览器打开授权链接（不再自动弹；扫码那条路始终可用） */
 async function openVerificationUrl() {
-  if (!onboarding.verificationUrl) return;
-  try {
-    await openUrl(onboarding.verificationUrl);
-  } catch {
-    /* 权限失败时设备码仍可见 */
-  }
+  await onboarding.openVerification();
 }
 
 function cancelLogin() {
   onboarding.cancelLogin();
 }
 
-/** 登录环节复制设备码 / 授权链接：自动打开失败时用户可自行处理 */
+/** 登录环节复制设备码 / 授权链接：用户可自行粘贴到手机或任意浏览器 */
 async function copyLoginValue(kind: "code" | "url") {
   const text = kind === "code" ? onboarding.deviceCode : onboarding.verificationUrl;
   if (!text) return;
@@ -311,28 +306,35 @@ onBeforeUnmount(() => {
 
           <!-- 等待授权 -->
           <div v-else-if="onboarding.loginState === 'awaiting'" class="lr-onboard__device">
-            <p class="lr-onboard__devlabel">在浏览器中打开下面链接，并输入设备码</p>
-            <code class="lr-onboard__code lr-selectable">{{ onboarding.deviceCode }}</code>
-            <div class="lr-onboard__devops">
-              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
-                <AppIcon name="external" :size="14" />
-                打开浏览器授权
-              </button>
-              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('code')">
-                复制设备码
-              </button>
-            </div>
-            <p class="lr-onboard__wait">
-              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
-              等待授权完成…
+            <p class="lr-onboard__devlabel">已用隔离浏览器打开授权页，请到那个窗口完成授权</p>
+            <div
+              v-if="onboarding.qrMarkup"
+              class="lr-onboard__qr"
+              v-html="onboarding.qrMarkup"
+            ></div>
+            <p class="lr-onboard__qrnote">
+              在刚打开的浏览器窗口里：① 若显示登录页，先用手机（豆包 / 飞书）扫码登录；
+              ② 再点「开通并授权」。不方便用电脑时，直接手机扫上面的二维码。
             </p>
             <code class="lr-onboard__url lr-selectable">{{ onboarding.verificationUrl }}</code>
             <div class="lr-onboard__devops">
-              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('url')">
+              <button class="lr-btn lr-btn--primary" @click="openVerificationUrl">
+                <AppIcon name="external" :size="14" />
+                重新打开授权页
+              </button>
+              <button class="lr-btn lr-btn--secondary" @click="copyLoginValue('url')">
                 复制链接
+              </button>
+              <button class="lr-btn lr-btn--ghost" @click="copyLoginValue('code')">
+                复制设备码
               </button>
               <button class="lr-btn lr-btn--ghost" @click="cancelLogin">取消</button>
             </div>
+            <p class="lr-onboard__wait">
+              <AppIcon name="spinner" :size="12" class="lr-icon-spin" />
+              等待授权完成…期间请勿重复发起：新的一次会作废当前这次。
+            </p>
+            <code class="lr-onboard__code lr-selectable">{{ onboarding.deviceCode }}</code>
           </div>
 
           <!-- 失败 -->
@@ -744,6 +746,30 @@ onBeforeUnmount(() => {
   gap: var(--lr-space-2);
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* 授权二维码：后端本地渲染的 SVG，经 v-html 注入（scoped 样式需 :deep 才能命中） */
+.lr-onboard__qr {
+  width: 196px;
+  height: 196px;
+  padding: var(--lr-space-2);
+  border-radius: var(--lr-radius-md);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+
+.lr-onboard__qr :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lr-onboard__qrnote {
+  max-width: 440px;
+  text-align: center;
+  font-size: var(--lr-fs-secondary);
+  line-height: 1.6;
+  color: var(--lr-text-tertiary);
 }
 
 .lr-onboard__done {

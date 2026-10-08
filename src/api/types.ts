@@ -34,7 +34,23 @@ export interface EnvStatus {
   logged_in: boolean;
   user_name: string | null;
   token_status: string | null;
+  /** 授权范围巡检结果（未登录时为 skipped） */
+  scope_check: ScopeCheck;
   check_errors: EnvCheckError[];
+}
+
+/**
+ * 授权范围巡检结果（`lark-cli auth check --scope <LOGIN_SCOPES>`）。
+ *
+ * state 语义：ok=必需权限齐全；missing=**确认**缺项（唯一会拦截导出的状态）；
+ * unknown=无法判定（不拦截）；skipped=前置未满足（如未登录）。
+ */
+export interface ScopeCheck {
+  state: "ok" | "missing" | "unknown" | "skipped" | string;
+  required: string[];
+  granted: string[];
+  missing: string[];
+  message: string;
 }
 
 // ---------------------------------------------------------------------------

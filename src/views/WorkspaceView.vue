@@ -10,18 +10,22 @@
 // ============================================================================
 
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useTaskStore } from "../stores/task";
 import { useSettingsStore } from "../stores/settings";
+import { useAuthStore } from "../stores/auth";
 import type { ScanMode } from "../api/wiki";
 import NodeTree from "../components/NodeTree.vue";
 import TaskPanel from "../components/TaskPanel.vue";
 import ResultCard from "../components/ResultCard.vue";
 import DirPicker from "../components/DirPicker.vue";
 import AppIcon from "../components/AppIcon.vue";
-import { message } from "../composables/useMessage";
+import { dialog, message } from "../composables/useMessage";
 
 const task = useTaskStore();
 const settings = useSettingsStore();
+const auth = useAuthStore();
+const router = useRouter();
 
 const inputUrl = ref("");
 // 默认「展开整个知识库」：首次使用贴一个链接就能看到全貌，
@@ -116,8 +120,40 @@ function onDirPick(path: string) {
   void settings.refreshPreflight(path);
 }
 
+/**
+ * 授权范围门禁：确认缺必需权限时拦下本次导出，并给出修复入口。
+ *
+ * 拦截条件是 `state === "missing"`（拿到确切缺项证据）——unknown / skipped 一律放行，
+ * 避免巡检本身把用户挡在功能外面。后端 `start_extract_wiki` 里还有同样口径的第二道
+ * 门禁（防绕过 UI），两道都只在确认缺项时生效。
+ */
+async function ensureScopesReady(): Promise<boolean> {
+  if (!auth.env) await auth.refresh();
+  if (!auth.scopesIncomplete) return true;
+  dialog.warning({
+    title: "飞书授权缺少导出权限",
+    content:
+      `当前授权缺少：${auth.scopeMissing.join("、")}。已暂停本次导出——` +
+      "需要清除本机登录态并重新登录，新令牌才会带上完整权限范围。" +
+      "若飞书开放平台里该应用尚未开通这些权限点，需先在应用「权限管理」中开启。",
+    positiveText: "清除登录态并重新登录",
+    negativeText: "暂不导出",
+    onPositiveClick: async () => {
+      void router.push("/terminal");
+      try {
+        await auth.resetLogin();
+        message.success("已清除旧登录态，请在新打开的授权页完成授权");
+      } catch (err) {
+        message.error(String(err));
+      }
+    },
+  });
+  return false;
+}
+
 async function onStart() {
   if (task.starting) return; // store 内也有守卫，双保险
+  if (!(await ensureScopesReady())) return;
   // 工作台右侧的目录 / 下载图片 / 并发数直接改在 store 草稿上，启动前落盘，
   // 让后端任务读取与右侧展示一致的设置（后端按持久化配置执行）。
   try {

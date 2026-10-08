@@ -1,6 +1,6 @@
 [package]
 name = "lark-reader"
-version = "0.2.1"
+version = "0.2.2"
 description = "飞书文档本地阅读器与导出工具"
 authors = ["LarkReader"]
 license = "GPL-3.0-only"
@@ -37,6 +37,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 base64 = "0.22"
+qrcode = "0.14"
+csv = "1.4.0"
+rust_xlsxwriter = "0.99.1"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

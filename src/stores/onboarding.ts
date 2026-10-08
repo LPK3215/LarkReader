@@ -4,7 +4,7 @@
 // 4 步：环境体检 → 登录飞书 → 输出目录 → 完成
 //
 // 步骤 1：checkEnv 把 EnvStatus 映射成 4 条 CheckItem；缺 lark-cli 时显示"安装"
-// 步骤 2：startLogin 拿设备码 → 浏览器授权 → completeLogin 单次阻塞等待授权完成
+// 步骤 2：startLogin 拿设备码 → 二维码/链接待用户授权 → completeLogin 单次阻塞等待授权完成
 //         （后端跑 `lark-cli auth login --device-code`，最长约 10 分钟；勿并发轮询）
 // 步骤 3：复用 settings store 的 pickDir()，选择完后预检可写性
 // 步骤 4：finish() 跳 /workspace
@@ -19,6 +19,8 @@ import type { EnvStatus } from "../api/types";
 import {
   checkEnv,
   completeLogin,
+  openIsolatedBrowser,
+  qrSvg as qrSvgIpc,
   setupLarkCli,
   startLogin,
 } from "../api/env";
@@ -54,6 +56,8 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const loginState = ref<LoginState>("idle");
   const deviceCode = ref("");
   const verificationUrl = ref("");
+  /** 授权链接的二维码 SVG 源码（后端本地渲染，链接一换就重画） */
+  const qrMarkup = ref("");
   const userName = ref<string | null>(null);
   const loginError = ref<string | null>(null);
   /** 登录会话序号：取消/离开页面后作废在途 complete_login，防旧进程覆盖新会话 */
@@ -172,11 +176,10 @@ export const useOnboardingStore = defineStore("onboarding", () => {
       deviceCode.value = info.device_code;
       verificationUrl.value = info.verification_url;
       loginState.value = "awaiting";
-      try {
-        await openUrl(info.verification_url);
-      } catch {
-        // 用户拒绝了打开外部链接的权限，授权码仍然显示在页面里
-      }
+      // 与飞书终端页同一策略：自动用隔离浏览器打开授权页 + 同时给出二维码；
+      // 后续扫码登录与点「开通并授权」由用户自己完成（2026-10-09 实测）。
+      void loadQr(info.verification_url);
+      void openVerification();
       // 单次阻塞等待授权：后端运行 `lark-cli auth login --device-code <code>`
       // 直到用户在浏览器完成授权（最长约 10 分钟）。不要改成并发轮询——
       // lark-cli 每次重启该命令都会作废上一轮的 device code，并发等于永远无法登录。
@@ -208,6 +211,34 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     loginState.value = "idle";
     deviceCode.value = "";
     verificationUrl.value = "";
+    qrMarkup.value = "";
+  }
+
+  /** 渲染授权链接的二维码；失败不影响"链接"这条路，静默留空即可。 */
+  async function loadQr(url: string) {
+    try {
+      qrMarkup.value = await qrSvgIpc(url);
+    } catch {
+      qrMarkup.value = "";
+    }
+  }
+
+  /**
+   * 用**隔离浏览器**打开授权链接（发起登录时自动调用一次，按钮也可手动触发）。
+   * 隔离 profile 的干净实例是本机实测唯一能走通「开通并授权」的环境；
+   * 兜底退回系统默认浏览器，再失败就交给面板上的二维码/链接。
+   */
+  async function openVerification() {
+    if (!verificationUrl.value) return;
+    try {
+      await openIsolatedBrowser(verificationUrl.value);
+    } catch {
+      try {
+        await openUrl(verificationUrl.value);
+      } catch {
+        // 两条路都不行：二维码与链接仍在页面上
+      }
+    }
   }
 
   function reset() {
@@ -225,11 +256,13 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     loginState,
     deviceCode,
     verificationUrl,
+    qrMarkup,
     userName,
     loginError,
     runCheck,
     installCli,
     beginLogin,
+    openVerification,
     cancelLogin,
     reset,
   };

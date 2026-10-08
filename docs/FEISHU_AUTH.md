@@ -71,9 +71,12 @@
 
 1. 前端调 `start_login` → 后端执行
    `auth login --scope <LOGIN_SCOPES> --no-wait --json`
-2. 解析返回的 `{ device_code, verification_url }`，把 URL 交给前端**打开系统浏览器**。
+2. 解析返回的 `{ device_code, verification_url }`，前端**自动用隔离浏览器打开授权页**，
+   并**同时展示二维码**（后端 `qr_svg` 纯本地渲染 SVG，不联网、不写临时文件）。
+   打开动作只负责"带上链接"，扫码登录与点「开通并授权」由用户完成（见 §3.2）。
    后端代码中的兜底默认 URL：`https://accounts.feishu.cn/oauth/v1/device/verify`。
-3. 用户在浏览器登录飞书账号 → 看到授权页 → 同意。
+3. 用户在隔离浏览器里完成授权：若显示登录页，先用手机（豆包 / 飞书）**扫码登录**，
+   再点「开通并授权」；不方便用电脑时可改用面板上的二维码。
 4. 前端拿 `device_code` 调 `complete_login` → 后端执行
    `auth login --device-code <code>`，**单次阻塞**等待（最长约 10 分钟，后端超时上限 620s，略大于 lark-cli 内部上限，避免临界误杀）。
 5. 后端再跑 `whoami` 校验：`identity == "user"` 且 `token_status ∈ {ready, needs_refresh}` → 判定登录成功。
@@ -89,6 +92,25 @@
 | 并发发起两个 `auth login --device-code` | 后一个会作废前一个的 code | 串行化，禁止并发/重启 |
 | 把阻塞式命令放进 IPC 串行队列 | 卡死其他调用 | 登录放独立线程 |
 | 工具链里残留 `HERMES_HOME` / `OPENCLAW_HOME` / `LARK_CHANNEL` 环境变量 | 污染 lark-cli 行为（报 `hermes context detected but lark-cli is not bound to it`，是**配置错误不是权限错误**） | 每次构造子进程时 `env_remove` 这三个变量；Windows 用户级环境变量重装应用也不会清除 |
+
+### 3.2 为什么用「隔离浏览器 + 二维码」（2026-10-08 ~ 10-09 实测，勿改回）
+
+**三种环境的实测对照**（同一链接、同一设备码）：
+
+| 环境 | 现象 |
+|---|---|
+| 用户**日常浏览器**（有登录态、有扩展、走代理） | 授权页能正常打开、14 项权限也列得出来，但点「开通并授权」**毫无反应**（无报错、连"请先同意"都不弹） |
+| **手机**任意浏览器（无该账号登录态） | 直接提示"链接失效"——拿不到登录态，不是权限问题 |
+| **独立 profile 的干净实例**（`--user-data-dir=<专用目录>`、无扩展） | 先跳"扫码登录"（手机豆包/飞书扫码）→ 登录后同一流程继续 → 点授权**一次成功**，`auth login --device-code` 随即落盘 |
+
+**结论**：卡点不在权限、不在代码，而在**浏览器环境**。因此创建应用向导页与登录授权页
+统一改用 `isolated_browser::open_isolated`：以 `{config_dir}/LarkReader/auth-browser-profile`
+为独立 profile 拉起系统浏览器（Edge 优先，Chrome 次之），**自动打开 + 自动带上链接**，
+后续扫码登录与点授权仍由用户完成。profile 常驻是刻意的——首次扫码后，后续授权不必再扫。
+
+**另外两条经验**：
+- 登录流程**一次只能有一条**：每发起一次都会换新 device code，前一条链接随之作废（用户看到的"链接失效"多源于此）；等待期间 UI 必须提示"请勿重复发起"。
+- 登录页是**豆包账号体系**（`accounts.feishu.cn/accounts/page/login`，`app_id=12`），手机端用豆包或飞书扫码都可以。
 
 ---
 
@@ -209,6 +231,29 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 
 ---
 
+### 4.6 授权范围巡检与缺项修复入口（v0.2.2 起）
+
+登录成功后，环境体检会额外执行一次 **`lark-cli auth check --scope <LOGIN_SCOPES> --json`**
+（`lark.rs::check_scopes` → `models::ScopeCheck`），把「导出时才会撞上的缺权限」提前到体检阶段。
+UI 上是飞书终端页「授权范围」行 + 账号卡提示：
+
+| state | 判定依据 | 界面 | 是否拦截导出 |
+|---|---|---|---|
+| `ok` | 已授予清单覆盖全部必需项，或命令自报通过 | 绿 | 否 |
+| `missing` | 拿到**确切缺项证据**（已授予清单逐项比对，或响应里的 `missing_scopes`） | 红 + 「清除并重新登录」按钮 | **是**（工作台导出前 + 后端任务启动双重门禁） |
+| `unknown` | 无法判定（命令失败 / 输出结构不认识） | 黄，仅提示 | 否 |
+| `skipped` | 前置未满足（如未登录） | 黄 | 否 |
+
+**保守判定是刻意的**：`unknown` / `skipped` 一律放行——巡检是辅助手段，不该把用户挡在功能外面；
+只有确认缺项才拦，且拦截文案会列出缺哪几项。
+
+**「清除登录态并重新登录」= `auth logout` + `auth login --scope <LOGIN_SCOPES>`**：
+lark-cli 只保留一个令牌槽位（`~/.lark-cli`），必须先删掉旧令牌，新令牌才会带上新增的 scope；
+只重登不登出等于继续用旧令牌。⚠️ 应用后台未开通对应权限点时，重新登录也拿不到——
+闸门①（后台开通）与闸门②（登录申请）缺一不可（§4.1、§4.4）。
+
+---
+
 ## 5. 登录状态与判定（UI 显示的依据）
 
 `whoami` 返回字段（后端 `WhoamiResponse`）：
@@ -226,6 +271,7 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 | `app_configured` | `config show` 成功 | 本机已配置飞书应用 |
 | `logged_in` | `whoami`：user 且 ready/needs_refresh | 用户已授权登录 |
 | `token_status` | `whoami` | none = 未登录 |
+| `scope_check` | `auth check --scope <LOGIN_SCOPES>`（仅登录后执行） | 授权范围巡检结果，见 §4.6 |
 | `check_errors` | 检测过程异常 | 分别报告，不互相掩盖 |
 
 登出：`auth logout --json` → 清除 lark-cli 保存的令牌 → 再次体检即回到未登录。登出/切号前应提示用户：**后续任务需要重新授权**。
@@ -239,8 +285,9 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 | `current identity does not have export permission for this Drive file` | `drive +download` 对 zip/pdf 等非可导出类型不适用 | 改用 `drive +preview --type source_file` 直接取原文件（代码注释明示） |
 | 授权页不弹 / device code 失效 | 轮询或并发重启了 `auth login` | 单次阻塞 + 串行（§3.1） |
 | `unsafe output path` | lark-cli 1.0.93 写类命令有输出路径白名单 | 把子进程 cwd 设为输出目录所在目录，使该目录成为白名单内当前目录 |
-| `user lacks permission for the requested resource`（**只有表格导出失败**、其它类型正常时） | 应用后台未开通「导出云文档」权限点（`docs:document:export`，等价 `drive:export:readonly`）；`sheets:spreadsheet:read` 不够用 | 到开放平台该应用「权限管理」开启后重新登录（详见 §4.1 ⚠️） |
+| `user lacks permission for the requested resource`（**只有表格导出失败**、其它类型正常时） | 这类报错有两层，看**错误码**区分：`99991679` = 缺 scope（应用授权层，见 §4.1 ⚠️）；**`1069902` = 文档级**不允许导出/下载或该账号只有阅读权限；`1063002` = 连文档权限设置都无权读（非所有者） | `99991679` → 补 scope 后重新登录；`1069902` → 让文档所有者放开「可导出/下载」，或改用有权限的账号（**与 scope 无关，补权限无效**）；`1063002` → 换所有者账号。应用已把错误码与 `log_id` 一并透出（2026-10-09 实测补充） |
 | 授权成功但业务请求失败（scope 缺失类报错） | 应用后台未开通对应权限点 | 回开放平台补权限点 → 重新登录（新 token 才带新 scope）；报错文案已透出 lark-cli 返回的 `missing_scopes` / `console_url` |
+| 体检「授权范围」标红、导出被拦下 | 令牌缺必需 scope：改过 `LOGIN_SCOPES` 后没重新登录，或应用后台未开通对应权限点 | 点该行「清除并重新登录」（§4.6，先删旧令牌再重登）；仍缺 → 回后台补权限点后重登 |
 | 输出夹带日志行导致 JSON 解析失败 | 命令 stdout 可能混入日志 | 统一先 `extract_json` 再解析 |
 
 ---

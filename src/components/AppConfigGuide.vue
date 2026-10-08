@@ -20,7 +20,7 @@ import { onBeforeUnmount, ref } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import AppIcon from "./AppIcon.vue";
 import { message } from "../composables/useMessage";
-import { getAppInitStatus, startAppInit } from "../api/env";
+import { getAppInitStatus, openIsolatedBrowser, startAppInit } from "../api/env";
 
 defineProps<{ busy?: boolean }>();
 const emit = defineEmits<{
@@ -107,9 +107,9 @@ function consumeStatus(status: {
 async function openLink() {
   if (!linkFound.value || openedOnce.value) return;
   openedOnce.value = true;
-  liveText.value = "已生成创建链接，正在自动打开浏览器…";
+  liveText.value = "已生成创建链接，正在自动打开隔离浏览器…";
   try {
-    await openUrl(linkFound.value);
+    await openIsolatedBrowser(linkFound.value);
   } catch {
     message.warning("自动打开浏览器失败，请点下方「重新打开链接」");
   }
@@ -118,9 +118,14 @@ async function openLink() {
 async function openLinkManually() {
   if (!linkFound.value) return;
   try {
-    await openUrl(linkFound.value);
+    await openIsolatedBrowser(linkFound.value);
   } catch {
-    message.warning("无法自动打开浏览器，请在浏览器中访问上方链接");
+    // 隔离浏览器不可用时退回系统默认浏览器（用户在向导页手动完成即可）
+    try {
+      await openUrl(linkFound.value);
+    } catch {
+      message.warning("无法自动打开浏览器，请在浏览器中访问上方链接");
+    }
   }
 }
 

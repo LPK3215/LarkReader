@@ -93,8 +93,11 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `setup_lark_cli` | — | `String` | 安装固定版本 CLI 并返回版本 |
 | `start_app_init` | `brand`, `lang` | `AppInitStatus` | 后台流式启动创建向导（`config init --new`），立即返回 |
 | `get_app_init_status` | — | `AppInitStatus` | 轮询创建向导状态：running / url / stage / error |
-| `start_login` | — | `DeviceInfo` | 发起设备码登录 |
+| `start_login` | — | `DeviceInfo` | 发起设备码登录（返回 `device_code` + `verification_url`，不自动开浏览器） |
 | `complete_login` | `device_code` | `LoginResult` | 完成设备码登录 |
+| `check_scopes` | — | `ScopeCheck` | 巡检当前 token 的授权范围（`lark-cli auth check`），缺项时界面拦截导出 |
+| `qr_svg` | `text` | `String` | 把授权链接渲染成二维码 SVG（`qrcode` crate，纯本地、不写文件） |
+| `open_isolated_browser` | `url` | `String` | 用隔离 profile（`{config_dir}/LarkReader/auth-browser-profile`）拉起系统浏览器打开链接；创建向导页与授权页共用 |
 | `logout` | — | — | 退出登录 |
 | `get_settings_status` | — | `SettingsStatus` | 获取设置及配置恢复警告 |
 | `set_settings` | `settings` | — | 验证可写性并持久化设置 |

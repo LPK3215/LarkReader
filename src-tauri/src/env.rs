@@ -9,7 +9,7 @@ use std::process::Command;
 
 use crate::error::{AppError, AppResult};
 use crate::lark;
-use crate::models::{DeviceInfo, EnvCheckError, EnvStatus, LoginResult};
+use crate::models::{DeviceInfo, EnvCheckError, EnvStatus, LoginResult, ScopeCheck};
 
 /// Windows 上隐藏子进程控制台窗口（CREATE_NO_WINDOW）。
 #[cfg(windows)]
@@ -150,6 +150,14 @@ pub fn check_env() -> EnvStatus {
             message: error.to_string(),
         }),
     }
+
+    // 授权范围巡检：登录成功后才查（未登录时 auth check 必然失败，只会增加噪音）。
+    // 与 whoami 串行执行——巡检依赖登录结果，无法与之并行。
+    status.scope_check = if status.logged_in {
+        lark::check_scopes()
+    } else {
+        ScopeCheck::skipped("未登录，跳过授权范围检查")
+    };
 
     status
 }
