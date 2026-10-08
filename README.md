@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.2.1-blue)](./docs/BACKEND.md)
+[![Version](https://img.shields.io/badge/version-0.2.2-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -26,7 +26,7 @@
 
 LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可直接阅读、离线可用的文件**。
 
-- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘；
+- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX（**只有只读权限的表格也能导出**：官方导出接口被拒时自动降级为读取单元格生成）、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘；
 - **阅读**：内置「本地阅读」页，直接浏览已导出的 Markdown 与图片，不依赖网络和飞书登录；
 - **边界**：纯本地工具，无自建服务端、无遥测。凭据由官方 `lark-cli` 在本机托管，LarkReader 不保存飞书密码或 token。
 
@@ -243,6 +243,18 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 **LPK3215** — [17538703215@163.com](mailto:17538703215@163.com)
 
 ## 📋 更新日志
+
+### 0.2.2（2026-10-09）
+
+- fix：**只读文档也能导出表格**——官方「导出任务」接口要求文档本身允许导出，只读协作者必被拒
+  （服务端码 `1069902`）；现在导出表格被拒时**自动降级**：改用 `+workbook-info` / `+csv-get` 读取
+  单元格数据、本地生成 xlsx（只有值，公式为计算结果），彻底绕开文档级导出限制（[#1](https://github.com/LPK3215/LarkReader/issues/1)）；
+- fix：权限报错**按错误码分流**（`99991679` 缺 scope / `1069902` 文档级不可导出 / `1063002` 非所有者），
+  并透出 `错误码` 与 `log_id`，不再把"文档不让导出"误判成"应用没开权限"；
+- feat：**隔离浏览器授权**——创建应用与登录授权自动用独立 profile 的干净浏览器（Edge 优先）打开，
+  绕开日常浏览器"点开通并授权毫无反应"的环境问题；首次手机扫码后登录态常驻该 profile；
+- feat：**登录面板二维码**（本地渲染，不联网不写临时文件）与"请勿重复发起"提示；
+- feat：**授权范围巡检**与缺项拦截：登录后自动 `auth check`，缺项时在导出前拦下并提供「清除登录态并重新登录」。
 
 ### 0.2.1（2026-10-08）
 
