@@ -3,6 +3,24 @@
 本文件记录 LarkReader 的用户可感知变更。版本号语义遵循 [SemVer](https://semver.org/lang/zh-CN/)；
 每次发版由 `npm run release -- <版本>` 触发，详细发布流程见 [docs/release-and-update.md](docs/release-and-update.md)。
 
+## [0.2.1] - 2026-10-08
+
+### 修复
+
+- **电子表格导出失败**（[#1](https://github.com/LPK3215/LarkReader/issues/1)）：应用后台未开通
+  「导出云文档」权限点（`docs:document:export`）时，`sheets +workbook-export` 必然报
+  `user lacks permission for the requested resource` —— 登录申请清单 `LOGIN_SCOPES`
+  由 13 项补至 14 项，补上该权限点（等价权限点 `drive:export:readonly`）。
+  文档 / 图片 / 附件 / 多维表格均走非导出 API，故此前症状表现为「只有表格导不出」
+- **权限类报错难懂**：lark-cli 返回的 `missing_scopes` / `console_url` 此前被丢弃，
+  用户只看到一句 `user lacks permission…` 无从下手 → 现一并透出，并新增中文权限引导文案
+
+### 文档
+
+- `docs/FEISHU_AUTH.md`：修正 §4.1 中 `sheets +workbook-export` 的权限映射
+  （它走 drive 的「创建导出任务」API，需要的是 `docs:document:export`，而非
+  `sheets:spreadsheet:read`），补 ⚠️ 说明与 §6 对应故障行；申请清单计数 13 → 14
+
 ## [0.2.0] - 2026-09-15
 
 ### 新增
@@ -52,3 +70,4 @@
 
 [0.1.0]: https://github.com/LPK3215/LarkReader/releases/tag/v0.1.0
 [0.2.0]: https://github.com/LPK3215/LarkReader/releases/tag/v0.2.0
+[0.2.1]: https://github.com/LPK3215/LarkReader/releases/tag/v0.2.1

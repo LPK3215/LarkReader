@@ -109,27 +109,41 @@
          文档/文件是否属于该用户，或已被分享给该用户
 ```
 
-### 4.1 登录申请的最小只读权限集（`LOGIN_SCOPES`，共 13 个）
+### 4.1 登录申请的最小只读权限集（`LOGIN_SCOPES`，共 14 个）
 
 | scope | 覆盖的业务命令 |
 |---|---|
 | `docx:document:readonly` / `docs:document.content:read` | 文档正文：`docs +fetch --as user`（Markdown） |
 | `docs:document.media:download` | 图片/媒体：`docs +media-preview` |
 | `drive:file:download` / `drive:drive.metadata:readonly` | 云盘文件：`drive +preview --type source_file`（下载 Wiki 挂载的普通附件 zip/pdf/…；不能用 `drive +download`，见 §6） |
+| `docs:document:export` | **电子表格导出**：`sheets +workbook-export`（2026-10-08 补，见下方 ⚠️） |
 | `wiki:node:read` / `wiki:node:retrieve` / `wiki:space:retrieve` | 知识库结构：`wiki +node-get` / `wiki +node-list --page-all --as user` |
-| `sheets:spreadsheet:read` | Sheet 导出：`sheets +workbook-export` |
+| `sheets:spreadsheet:read` | 电子表格读取：`sheets +workbook-info` / `+csv-get` 等 |
 | `base:app:read` / `base:table:read` / `base:record:read` / `base:field:read` | 多维表格导出：`base +record-list` |
+
+> ⚠️ **`sheets +workbook-export` 与其它导出不是同一套权限。** 它内部调用飞书
+> **「创建导出任务」** API（`POST /open-apis/drive/v1/export_tasks`）。lark-cli 里该
+> shortcut 自己声明的 scope 是 `sheets:spreadsheet:read` + `docs:document:export` +
+> `drive:drive.metadata:readonly`；飞书该接口也接受 `drive:export:readonly` 作为等价权限点。
+> `sheets:spreadsheet:read` 只够读表格结构 / 数据，**不能**替代导出权限。
+> 此前清单里只有其中 sheets 那条，唯独缺 `docs:document:export`，导致**未额外开通该
+> 权限点的应用表格导出必然失败**，报 `user lacks permission for the requested resource`；
+> 而文档 / 图片 / 附件 / 多维表格都走非导出 API，因此不受影响——症状表现为「只有表格导不出」。
+> 作者本机不失败，是因为早期 `auth login --domain docs drive wiki` 把该权限点批量开通到了
+> 自己应用的后台（见 `LOGIN_ISSUE_20260905.md` §3.2），掩盖了这个缺陷。
 
 需要如实说明的点：
 
-- 登录**只申请以上 13 个只读 scope**（代码常量 `lark.rs::LOGIN_SCOPES`，13 个全部为纯只读，不含任何 write/create/delete）。
-- **硬前提：显式申请 ≠ 最终授权范围。** token 实际 scope 由开放平台应用后台已开通的权限点决定。若应用是通过 `config init --new` 向导创建（勾选”自动完成所有配置”），飞书会把预置权限包一并授予，token 里的 scope 会远多于申请清单（实测 13 申请 → 110 授予）。若应用不是向导创建的（无预置权限包），则**申请清单就是全部**——所以清单必须覆盖全部业务命令，漏了哪个哪个功能就必然失败。
+- 登录**只申请以上 14 个只读 scope**（代码常量 `lark.rs::LOGIN_SCOPES`，14 个全部为纯只读，不含任何 write/create/delete）。
+- **硬前提：显式申请 ≠ 最终授权范围。** token 实际 scope 由开放平台应用后台已开通的权限点决定。若应用是通过 `config init --new` 向导创建（勾选”自动完成所有配置”），飞书会把预置权限包一并授予，token 里的 scope 会远多于申请清单（实测 14 申请 → 110 授予）。若应用不是向导创建的（无预置权限包），则**申请清单就是全部**——所以清单必须覆盖全部业务命令，漏了哪个哪个功能就必然失败。
+- **权限是两层，缺一不可**（lark-cli 官方 lark-shared 技能）：① 应用后台开通对应权限点；② 用户 `auth login` 授权时申请到它。**两层都要满足**——只改 `--scope` 而后台没开通，功能依然失败。
 - **授权取舍定稿：只多不少，不做裁剪**（§4.5）。登录命令只决定授权页展示几项申请，改 `--scope` 无法减少 token 的实际权限；但本工具**不需要**减少，后台裁剪不是端用户要做的交付项。
 
 ### 4.2 `LOGIN_SCOPES` 改动须知
 
 - 代码位置：`src-tauri/src/lark.rs` 的 `LOGIN_SCOPES` 常量，唯一定义处。
 - 新增 scope 必须是业务命令确实需要的，且保持纯只读（不含 write/create/delete）。
+- **新增前先核对命令真实需要的权限，不要凭命令名推断**：`sheets +workbook-export` 名字里带 sheets，但它走的是 drive 的「创建导出任务」API，需要的是 `docs:document:export`（等价 `drive:export:readonly`），而不是 `sheets:spreadsheet:read`。2026-10-08 的「表格导出失败」故障即源于这一处误判。
 - 改完需重新登录（旧 token 不会自动获得新 scope；向导创建的应用因后台已开通，通常无需重开权限点）。
 
 ### 4.3 权限授予模式：三选一的最终结论 =「显式指定」，无悬念
@@ -140,10 +154,10 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 |---|---|---|---|
 | **默认**（按大类目捆绑） | `--domain docs drive wiki` | 申请 101 个，含建文档/删节点/传文件等大量写权限，授权页一大串 | ✗ 弃用 |
 | **推荐**（让 CLI 替你选） | `--recommend` | 101 → 95，几乎无效，仍含大量写权限 | ✗ 弃用 |
-| **直接指定**（自己列清单） | `--scope <LOGIN_SCOPES>` | 申请几个就是几个（现 13 个全只读），授权页只显示这几项 | ✓ **唯一采用** |
+| **直接指定**（自己列清单） | `--scope <LOGIN_SCOPES>` | 申请几个就是几个（现 14 个全只读），授权页只显示这几项 | ✓ **唯一采用** |
 
 - **为什么只有"直接指定"能要**：`--scope` 是唯一能精确控制"这次登录向用户申请什么"的参数；默认/推荐都在捆绑工具用不到的权限。
-- **代码现状**：`lark.rs::LOGIN_SCOPES` = 13 个纯只读（2026-09-05 从 8 补到 13，覆盖 docx / docs / drive / wiki / sheets / base 六类全部业务命令），所有登录路径都走它。
+- **代码现状**：`lark.rs::LOGIN_SCOPES` = 14 个纯只读（2026-09-05 从 8 补到 13；2026-10-08 补 `docs:document:export` 至 14，覆盖 docx / docs / drive / wiki / sheets / base 六类全部业务命令），所有登录路径都走它。
 - **任何未来改动都不得退回 `--domain` / `--recommend`**（历史教训见 LOGIN_ISSUE_20260905.md §3.1）。
 
 ### 4.4 登录侧选完了，为什么还要谈"只读化"？（两件事，别混为一谈）
@@ -156,8 +170,8 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 | **最小权限（真·只读化）** | 安全策略：token 能干的活有多大 | **定稿：不做裁剪（§4.5）**。多授权与登录成败、功能均无关；只读化只是应用作者本人可选的安全动作，不是交付项 |
 
 关键机制（§4.1 硬前提）决定了两件事**不能互相替代**：
-- 登录用 `--scope` 只申请 13 个 → 只决定**授权页展示几项**（观感层面）。
-- token 实际持有的 scope = **开放平台应用后台已开通的权限点**。向导 `config init --new` 创建的应用带预置权限包，后台开通了 110+ 个 → 所以实测 **13 申请 → token 拿 110+（含写权限）**。
+- 登录用 `--scope` 只申请 14 个 → 只决定**授权页展示几项**（观感层面）。
+- token 实际持有的 scope = **开放平台应用后台已开通的权限点**。向导 `config init --new` 创建的应用带预置权限包，后台开通了 110+ 个 → 所以实测 **14 申请 → token 拿 110+（含写权限）**。
 - 因此"token 只读"这一目标，**只能**在后台裁剪达成；代码侧 `--scope` 再怎么改都够不着。而端用户不可能被要求去做后台操作 → 结论：**不为普通用户设"token 只读"目标**，授权采用"只多不少"定稿（§4.5）。
 
 ### 4.5 授权方案定稿：权限只多不少，端用户零后台操作（2026-09-05 拍板）
@@ -169,12 +183,12 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 | 事实 | 推论 |
 |---|---|
 | token 实际 scope = 应用后台已开通的权限点，不随申请清单走（§4.4） | 决定功能成败的是"后台有没有开通"，而向导 `config init --new` 自动完成配置 + 预置权限包 + 发布，是**平台给的开箱可用保证** |
-| 向导预置包多授权（实测 13 申请 → token 拿 110+，含写权限） | **多不影响任何功能**——本工具从不触发这些写权限点，多 = 无行为差异 |
+| 向导预置包多授权（实测 14 申请 → token 拿 110+，含写权限） | **多不影响任何功能**——本工具从不触发这些写权限点，多 = 无行为差异 |
 | 少一项 → 该类导出必失败，scope 缺失报错还难懂 | **少才是唯一故障源**，靠 §4.1 清单 + 向导自动开通双保险堵住 |
 | 后台操作是开发者账号资产，还涉及发布/版本流程 | 把"去后台裁剪"写进端用户流程 = 不可交付 |
 
 **代码侧落实"只多不少"的硬规则**：
-- 登录恒用 `LOGIN_SCOPES`（§4.1 的 13 个只读，覆盖 docx/docs/drive/wiki/sheets/base 六类全部业务命令），**禁止退回 `--domain` / `--recommend`**（§4.3）。
+- 登录恒用 `LOGIN_SCOPES`（§4.1 的 14 个只读，覆盖 docx/docs/drive/wiki/sheets/base 六类全部业务命令），**禁止退回 `--domain` / `--recommend`**（§4.3）。
 - 新增业务命令先核对 `LOGIN_SCOPES` 覆盖性，缺 scope 先补清单再谈功能（§4.2）。
 - 创建应用永远走 `config init --new` 向导（自动完成所有配置），不手工建"裸应用"（§3.1）。
 
@@ -185,7 +199,7 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 如果作者想收窄**自己名下** app 的"token 泄漏爆炸半径"，可做一次性裁剪；对普通用户**不是要求、也不是交付步骤**：
 
 1. 前置：`lark-cli config show` 确认本机绑定的 app_id。
-2. 登录 `open.feishu.cn` 开发者后台 → 应用「权限管理」，**只保留**与 §4.1 的 13 个只读 scope 对应的读权限，其余一律取消（尤其所有 write/create/update/delete/upload）。
+2. 登录 `open.feishu.cn` 开发者后台 → 应用「权限管理」，**只保留**与 §4.1 的 14 个只读 scope 对应的读权限，其余一律取消（尤其所有 write/create/update/delete/upload）。
 3. 改动随版本发布生效（可用范围可先勾本人），发布后本地**退出登录 → 重新走一次设备码登录**。
 4. **裁完必须验 4 类各一个**：wiki 树预览 / docx（含图片）/ sheet / bitable / 带附件容器。某类失败 → 回后台补该类读权限点 → 重登 → 重测（§6"scope 缺失"处理）。
 
@@ -223,7 +237,8 @@ lark-cli 的登录命令有三条拿权限的路，2026-09-05 全部实测过，
 | `current identity does not have export permission for this Drive file` | `drive +download` 对 zip/pdf 等非可导出类型不适用 | 改用 `drive +preview --type source_file` 直接取原文件（代码注释明示） |
 | 授权页不弹 / device code 失效 | 轮询或并发重启了 `auth login` | 单次阻塞 + 串行（§3.1） |
 | `unsafe output path` | lark-cli 1.0.93 写类命令有输出路径白名单 | 把子进程 cwd 设为输出目录所在目录，使该目录成为白名单内当前目录 |
-| 授权成功但业务请求失败（scope 缺失类报错） | 应用后台未开通对应权限点 | 回开放平台补权限点 → 重新登录（新 token 才带新 scope） |
+| `user lacks permission for the requested resource`（**只有表格导出失败**、其它类型正常时） | 应用后台未开通「导出云文档」权限点（`docs:document:export`，等价 `drive:export:readonly`）；`sheets:spreadsheet:read` 不够用 | 到开放平台该应用「权限管理」开启后重新登录（详见 §4.1 ⚠️） |
+| 授权成功但业务请求失败（scope 缺失类报错） | 应用后台未开通对应权限点 | 回开放平台补权限点 → 重新登录（新 token 才带新 scope）；报错文案已透出 lark-cli 返回的 `missing_scopes` / `console_url` |
 | 输出夹带日志行导致 JSON 解析失败 | 命令 stdout 可能混入日志 | 统一先 `extract_json` 再解析 |
 
 ---

@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](./docs/BACKEND.md)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -243,6 +243,12 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 **LPK3215** — [17538703215@163.com](mailto:17538703215@163.com)
 
 ## 📋 更新日志
+
+### 0.2.1（2026-10-08）
+
+- fix：补 `docs:document:export` 权限点，修复「电子表格导出失败」——应用后台未开通该权限时，`sheets +workbook-export` 必然报 `user lacks permission for the requested resource`（[#1](https://github.com/LPK3215/LarkReader/issues/1)）；
+- fix：权限类报错透出 lark-cli 返回的 `missing_scopes` / `console_url`，并新增中文权限引导文案；
+- docs：修正 `FEISHU_AUTH.md` 中表格导出的权限映射（走 drive「创建导出任务」API，需 `docs:document:export` 而非 `sheets:spreadsheet:read`）。
 
 ### 0.2.0（2026-09-15）
 

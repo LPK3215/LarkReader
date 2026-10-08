@@ -372,7 +372,7 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
             let subtype = obj.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
             let message = obj.get("message").and_then(|v| v.as_str()).unwrap_or("");
 
-            match (error_type, subtype) {
+            let base = match (error_type, subtype) {
                 ("authentication", "token_missing") | ("authentication", "token_expired") => {
                     "飞书未登录或登录已过期，请重新登录飞书账号。".to_string()
                 }
@@ -390,7 +390,10 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
                         "操作失败，请稍后重试。".to_string()
                     }
                 }
-            }
+            };
+            // 权限类错误会额外带 missing_scopes / console_url，
+            // 这是用户唯一的可操作出口，必须一并透出。
+            with_permission_hints(base, obj)
         }
         _ => {
             if let Some(c) = code {
@@ -400,6 +403,40 @@ fn format_lark_error(error: &Option<serde_json::Value>, code: Option<i32>) -> St
             }
         }
     }
+}
+
+/// 把 lark-cli 权限错误里的 `missing_scopes` / `console_url` 追加到提示末尾。
+///
+/// 权限不足时 lark-cli 的 error 对象会带这两个字段（见 lark-cli 官方 lark-shared
+/// 技能「权限不足处理」）：缺哪些 scope、去哪个后台链接开通。丢掉它们，用户就只能
+/// 看到一句 “user lacks permission for the requested resource” 而不知道下一步做什么。
+fn with_permission_hints(base: String, obj: &serde_json::Map<String, serde_json::Value>) -> String {
+    let missing: Vec<String> = obj
+        .get("missing_scopes")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let console_url = obj.get("console_url").and_then(|v| v.as_str());
+
+    if missing.is_empty() && console_url.is_none() {
+        return base;
+    }
+
+    let mut out = base;
+    if !missing.is_empty() {
+        out.push_str(&format!(
+            "\n缺少的权限：{}。请在飞书开放平台该应用的「权限管理」中开通后重新登录。",
+            missing.join("、")
+        ));
+    }
+    if let Some(url) = console_url {
+        out.push_str(&format!("\n权限配置链接：{url}"));
+    }
+    out
 }
 
 /// 翻译常见的英文错误消息为中文
@@ -428,6 +465,18 @@ fn translate_error_message(msg: &str) -> String {
         "请求过于频繁，请稍后再试。".to_string()
     } else if msg.contains("network") || msg.contains("connection") {
         "网络连接失败，请检查网络后重试。".to_string()
+    } else if msg.contains("lacks permission")
+        || msg.contains("no permission")
+        || msg.contains("permission denied")
+        || msg.contains("insufficient permission")
+        || msg.contains("forbidden")
+    {
+        "飞书拒绝了本次请求：当前账号或应用缺少对应权限。\
+         若失败的是表格 / 多维表格导出，通常是应用后台未开通「导出云文档」权限点\
+         （docs:document:export，等价权限点 drive:export:readonly）——\
+         请到飞书开放平台该应用的「权限管理」中开启后重新登录；\
+         文档本身若被禁止下载 / 导出，也会返回同样的报错。"
+            .to_string()
     } else {
         msg.to_string()
     }
@@ -571,18 +620,28 @@ pub fn config_init_stream(
     }
 }
 
-/// 登录申请的最小只读权限集（13 个，覆盖本项目全部业务命令）
+/// 登录申请的最小只读权限集（14 个，覆盖本项目全部业务命令）
 ///
 /// 注意不要改回 `--domain docs/drive/wiki`：domain 是"大类目"，会捆绑申请
 /// 95+ 个权限（大量写入类），实测 lark-cli 1.0.93 的 `--recommend` 几乎不起
 /// 作用（101→95）。显式 `--scope` 才是精确申请（docs/LOGIN_ISSUE_20260905.md §3.1）。
 ///
 /// 注意：显式申请≠最终授权范围。token 实际 scope 由开放平台应用后台已开通的
-/// 权限点决定（向导创建的应用会把预置权限包一并授予，实测 13 申请 → 110+ 授权）。
+/// 权限点决定（向导创建的应用会把预置权限包一并授予，实测 14 申请 → 110+ 授权）。
 /// 授权定稿：**只多不少、不做后台裁剪**（docs/FEISHU_AUTH.md §4.5）——本清单必须
 /// 覆盖全部业务命令，漏一项 → 对应类导出必然失败；多授权不影响任何功能。
+///
+/// `docs:document:export`（2026-10-08 补）：`sheets +workbook-export` 内部走飞书
+/// 「创建导出任务」API（`POST /open-apis/drive/v1/export_tasks`）。lark-cli 里该
+/// shortcut 自己声明的 scope 是 `sheets:spreadsheet:read` + `docs:document:export` +
+/// `drive:drive.metadata:readonly`；本清单此前只有其中 sheets 那条，唯独缺
+/// `docs:document:export`，导致表格导出对未额外开通该权限的应用必然失败
+/// （报 `user lacks permission for the requested resource`）。
+/// 注：飞书该接口也接受 `drive:export:readonly` 作为等价权限点，本清单取 lark-cli
+/// 自己声明的那个，以与 CLI 的缺失权限提示保持一致。
 pub const LOGIN_SCOPES: &str = "docx:document:readonly docs:document.content:read \
-     docs:document.media:download drive:file:download drive:drive.metadata:readonly \
+     docs:document.media:download docs:document:export \
+     drive:file:download drive:drive.metadata:readonly \
      wiki:node:read wiki:node:retrieve wiki:space:retrieve \
      sheets:spreadsheet:read base:app:read base:table:read base:record:read base:field:read";
 
