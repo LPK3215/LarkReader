@@ -104,9 +104,23 @@
 | **独立 profile 的干净实例**（`--user-data-dir=<专用目录>`、无扩展） | 先跳"扫码登录"（手机豆包/飞书扫码）→ 登录后同一流程继续 → 点授权**一次成功**，`auth login --device-code` 随即落盘 |
 
 **结论**：卡点不在权限、不在代码，而在**浏览器环境**。因此创建应用向导页与登录授权页
-统一改用 `isolated_browser::open_isolated`：以 `{config_dir}/LarkReader/auth-browser-profile`
-为独立 profile 拉起系统浏览器（Edge 优先，Chrome 次之），**自动打开 + 自动带上链接**，
-后续扫码登录与点授权仍由用户完成。profile 常驻是刻意的——首次扫码后，后续授权不必再扫。
+统一改用 `isolated_browser::open_isolated`：以
+`{config_dir}/LarkReader/auth-browser-profile/<chrome|edge>` 为独立 profile 拉起系统浏览器，
+**自动打开 + 自动带上链接**，后续扫码登录与点授权仍由用户完成。profile 常驻是刻意的——
+首次扫码后，后续授权不必再扫。
+
+**浏览器优先级：Chrome 优先、缺失才退 Edge（2026-10-09 用户要求，勿改回 Edge 优先）**
+原实现是 Edge 优先，用户实测后指出"弹出的应当是我日常在用的 **Chrome** 干净实例"——弹出的窗口
+与预期一致，才不会被误当成"应用打开了我的浏览器"。候选顺序固定为 Chrome（`Program Files` /
+`Program Files (x86)` / `LocalAppData`）→ Edge（同三处），由单测
+`chrome_comes_first_and_edge_is_fallback` 锁死；两者都不在时才退回系统默认浏览器并写 WARN 日志。
+Chrome 与 Edge 的 profile 分两级子目录，**不共用同一份**（同为 Chromium 内核，共用会互相污染）。
+
+**失败面收敛 + 全程留痕**：`open_isolated` 启动后等 1.2 秒自检——进程仍存活 = 新实例已起来；
+子进程秒退 = Chromium 同 profile 单实例机制把请求**交接给已在运行的隔离实例**（页面已在那个窗口
+打开）。两种都算成功，不会误报失败。每次都会写日志
+`授权窗口已打开：<Chrome|Edge> pid=… handoff=… exe=… profile=…`，并把结果回给界面：
+登录面板直接显示"已用 Chrome 的干净窗口打开授权页（独立窗口，没有你的书签与扩展）"。
 
 **另外两条经验**：
 - 登录流程**一次只能有一条**：每发起一次都会换新 device code，前一条链接随之作废（用户看到的"链接失效"多源于此）；等待期间 UI 必须提示"请勿重复发起"。
@@ -267,6 +281,17 @@ lark-cli 只保留一个令牌槽位（`~/.lark-cli`），必须先删掉旧令�
 | ① | `sheets +workbook-export`（导出任务接口） | 官方 xlsx（含样式 / 合并 / 图表） | 默认；有导出权限时 |
 | ② | `+workbook-info` 取子表清单 → 逐表 `+csv-get` 读数据 → 本地拼 xlsx（`rust_xlsxwriter`） | 本地生成的 xlsx（**只有值**，公式落为计算结果） | ① 报 `1069902` / `permission_denied` 时自动切换 |
 
+- **⚠️ `--include-row-prefix` 是布尔 flag（2026-10-09 踩到的严重坑）**：`+csv-get` 该参数默认
+  `true`。代码里曾写成 `--include-row-prefix false`（两个参数）→ lark-cli 判为位置参数并直接报错
+  `positional arguments are not supported (got ["false"])`，**整条降级路径全部失败**；改成
+  `--include-row-prefix=false` 虽能跑通，但 CLI 会在每行前留一个**空格**当占位（` 姓名,…`），
+  空行变成 `" "` 被写进首列。最终方案：**不传该 flag**（保留 `[row=N] ` 前缀），
+  由 `strip_row_annotations` 精确剥离。
+- **「表格导出为纯数据」开关（v0.2.3 起）**：`sheets_export_controlled` 新增 `SheetExportMode`；
+  默认 `Official` 走 ①，用户开启设置里的开关后走 `PureData` —— **跳过 ① 直接走 ②**。
+  为什么需要它：官方 xlsx 里公式单元格**只有公式、没有缓存值**（`<f>E2*12</f>` 而无
+  `<v>148148.04</v>`），Excel / WPS / 飞书打开会自行算出结果，但 pandas 这类不执行公式的程序
+  读到的是空。要"文件里就是值"就开这个开关（代价：丢样式 / 合并 / 图表）。
 - **只有权限类错误才降级**：网络故障、限频、token 过期照旧原样报错，不拿降级把真实问题盖住。
 - 实测：E2E 测试库里那张**只读**的「员工花名册」→ ① 报 `1069902`，② 产出 5719 字节 xlsx，
   内容是完整的（姓名 / 部门 / 工号 / 入职日期 + 公式计算结果）。

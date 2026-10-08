@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.2.2-blue)](./docs/BACKEND.md)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -26,7 +26,7 @@
 
 LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可直接阅读、离线可用的文件**。
 
-- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX（**只有只读权限的表格也能导出**：官方导出接口被拒时自动降级为读取单元格生成）、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘；
+- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX（**只有只读权限的表格也能导出**：官方导出接口被拒时自动降级为读取单元格生成；工作台 / 设置里还可勾选「**表格导出为纯数据**」，让产物里全是算好的值，便于喂给脚本）、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘；
 - **阅读**：内置「本地阅读」页，直接浏览已导出的 Markdown 与图片，不依赖网络和飞书登录；
 - **边界**：纯本地工具，无自建服务端、无遥测。凭据由官方 `lark-cli` 在本机托管，LarkReader 不保存飞书密码或 token。
 

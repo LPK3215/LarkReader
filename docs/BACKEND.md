@@ -82,6 +82,8 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 - 快速检查超时 15 秒，普通操作 120 秒，文件附件下载 300 秒，交互登录/配置 600 秒。
 - 临时网络或命令故障最多重试三次，采用 1 秒、2 秒退避；永久性错误不盲目重试。
 - 写类命令（media-preview/workbook-export/record-list/drive-preview）受 lark-cli 1.0.93 输出路径白名单约束，统一通过“把子进程 cwd 设为输出目录所在目录”的方式写入任意用户目录。
+- **布尔 flag 必须写成 `--flag=false`**：lark-cli 把 `--flag false` 解析成「布尔 flag + 位置参数」，直接报 `positional arguments are not supported`。`+csv-get --include-row-prefix` 踩过一次，后果是整条"读单元格"降级路径全挂；且关掉前缀后 CLI 会给每行留一个空格，空行被写成 `" "`。现用默认前缀 + `strip_row_annotations` 剥离。
+- **表格导出模式**：`lark::SheetExportMode::Official`（官方导出版式优先，被 `1069902` 拒时自动降级为读值）与 `SheetExportMode::PureData`（直接读单元格生成，只有值、无样式）。由设置项 `Settings.export_pure_data` 决定，`#[serde(default)]` 保证旧 `settings.json` 兼容。
 - 输出目录带 `..` / `.` 段时先做词法展开，避免 Windows 下路径字符串不一致导致 rename 失败。
 - Tauri CSP 已启用。
 
