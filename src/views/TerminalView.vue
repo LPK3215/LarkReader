@@ -341,7 +341,9 @@ function onSwitchAccount() {
 
           <!-- 等待授权 -->
           <div v-else-if="auth.loginState === 'awaiting'" class="lr-term__device">
-            <p class="lr-term__devlabel">已用隔离浏览器打开授权页，请到那个窗口完成授权</p>
+            <p class="lr-term__devlabel">
+              {{ auth.browserNote || "正在打开隔离浏览器（干净独立窗口），请稍候…" }}
+            </p>
             <div v-if="auth.qrMarkup" class="lr-term__qr" v-html="auth.qrMarkup"></div>
             <p class="lr-term__qrnote">
               在刚打开的浏览器窗口里：① 若显示登录页，先用手机（豆包 / 飞书）扫码登录；

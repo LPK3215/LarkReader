@@ -71,6 +71,8 @@ export const useAuthStore = defineStore("auth", () => {
   const verificationUrl = ref("");
   /** 授权链接的二维码 SVG 源码（后端本地渲染，链接一换就重画） */
   const qrMarkup = ref("");
+  /** 后端回报的"用了哪个浏览器打开授权页"说明，直接展示，避免用户猜窗口是哪来的 */
+  const browserNote = ref("");
   const loginError = ref<string | null>(null);
   const loggingOut = ref(false);
   /** 登录会话序号：取消后作废在途的 complete_login 响应，防止旧进程覆盖新会话状态 */
@@ -135,6 +137,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function beginLogin() {
     if (loginState.value === "awaiting") return; // 已在等待授权，防止重复发起
     loginError.value = null;
+    browserNote.value = ""; // 清掉上一次的"用哪个浏览器打开"提示
     const seq = ++loginSeq; // 每次发起都作废此前未结束的等待会话
     try {
       const info = await startLogin();
@@ -184,11 +187,15 @@ export const useAuthStore = defineStore("auth", () => {
   async function openVerification() {
     if (!verificationUrl.value) return;
     try {
-      await openIsolatedBrowser(verificationUrl.value);
+      // 后端会回报"用的是哪个浏览器、是否复用了已开窗口"，直接展示给用户：
+      // 出问题时能一眼判断窗口是谁开的，不必靠猜（2026-10-09 加固）。
+      browserNote.value = await openIsolatedBrowser(verificationUrl.value);
     } catch {
       try {
         await openUrl(verificationUrl.value);
+        browserNote.value = "已用系统默认浏览器打开授权页（隔离窗口不可用）";
       } catch {
+        browserNote.value = "";
         // 两条路都不行：二维码与链接仍在页面上，可自行复制处理
       }
     }
@@ -202,6 +209,7 @@ export const useAuthStore = defineStore("auth", () => {
     deviceCode.value = "";
     verificationUrl.value = "";
     qrMarkup.value = "";
+    browserNote.value = "";
   }
 
   /** 退出登录：清除 lark-cli token 后重检。失败会向上抛出，由调用方提示。 */
@@ -246,6 +254,7 @@ export const useAuthStore = defineStore("auth", () => {
     deviceCode,
     verificationUrl,
     qrMarkup,
+    browserNote,
     loginError,
     loggingOut,
     refresh,

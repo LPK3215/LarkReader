@@ -58,6 +58,8 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const verificationUrl = ref("");
   /** 授权链接的二维码 SVG 源码（后端本地渲染，链接一换就重画） */
   const qrMarkup = ref("");
+  /** 后端回报的"用了哪个浏览器打开授权页"说明，直接展示，避免用户猜窗口是哪来的 */
+  const browserNote = ref("");
   const userName = ref<string | null>(null);
   const loginError = ref<string | null>(null);
   /** 登录会话序号：取消/离开页面后作废在途 complete_login，防旧进程覆盖新会话 */
@@ -169,6 +171,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   async function beginLogin() {
     if (loginState.value === "awaiting") return; // 已在等待授权，防止重复发起
     loginError.value = null;
+    browserNote.value = ""; // 清掉上一次的"用哪个浏览器打开"提示
     const seq = ++loginSeq; // 每次发起都作废此前未结束的等待会话
     try {
       const info = await startLogin();
@@ -212,6 +215,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     deviceCode.value = "";
     verificationUrl.value = "";
     qrMarkup.value = "";
+    browserNote.value = "";
   }
 
   /** 渲染授权链接的二维码；失败不影响"链接"这条路，静默留空即可。 */
@@ -231,11 +235,15 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   async function openVerification() {
     if (!verificationUrl.value) return;
     try {
-      await openIsolatedBrowser(verificationUrl.value);
+      // 后端会回报"用的是哪个浏览器、是否复用了已开窗口"，直接展示给用户：
+      // 出问题时能一眼判断窗口是谁开的，不必靠猜（2026-10-09 加固）。
+      browserNote.value = await openIsolatedBrowser(verificationUrl.value);
     } catch {
       try {
         await openUrl(verificationUrl.value);
+        browserNote.value = "已用系统默认浏览器打开授权页（隔离窗口不可用）";
       } catch {
+        browserNote.value = "";
         // 两条路都不行：二维码与链接仍在页面上
       }
     }
@@ -257,6 +265,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     deviceCode,
     verificationUrl,
     qrMarkup,
+    browserNote,
     userName,
     loginError,
     runCheck,

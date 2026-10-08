@@ -306,7 +306,9 @@ onBeforeUnmount(() => {
 
           <!-- 等待授权 -->
           <div v-else-if="onboarding.loginState === 'awaiting'" class="lr-onboard__device">
-            <p class="lr-onboard__devlabel">已用隔离浏览器打开授权页，请到那个窗口完成授权</p>
+            <p class="lr-onboard__devlabel">
+              {{ onboarding.browserNote || "正在打开隔离浏览器（干净独立窗口），请稍候…" }}
+            </p>
             <div
               v-if="onboarding.qrMarkup"
               class="lr-onboard__qr"
