@@ -237,6 +237,8 @@ export interface Settings {
   output_dir: string;
   concurrency: number;
   download_images: boolean;
+  /** 表格导出为"纯数据"：只写算好的值（无公式、无样式），供脚本/其他系统读取 */
+  export_pure_data: boolean;
 }
 
 export interface OutputPreflight {

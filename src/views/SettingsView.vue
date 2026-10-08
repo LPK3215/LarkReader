@@ -205,6 +205,18 @@ onMounted(async () => {
             />
             <span class="lr-field__hint">范围 1–32，网络较差时调低更稳</span>
           </div>
+
+          <label class="lr-settings__switch">
+            <input v-model="settings.settings.export_pure_data" type="checkbox" />
+            <span class="lr-settings__switchtext">
+              表格导出为纯数据
+              <em class="lr-settings__hint">
+                开启后电子表格只写算好的值（不保留公式与样式），适合喂给脚本 / 其他系统；
+                关闭时优先官方导出版式——公式保留为公式，Excel / WPS / 飞书打开会自行算出结果，
+                但不执行公式的程序读到的是空
+              </em>
+            </span>
+          </label>
         </div>
       </section>
 

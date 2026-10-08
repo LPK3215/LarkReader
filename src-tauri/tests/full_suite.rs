@@ -273,6 +273,7 @@ fn test_b06_extract_doc_full() {
         output_dir: temp_dir.to_string_lossy().to_string(),
         concurrency: 3,
         download_images: true,
+        export_pure_data: false,
     };
 
     let result = extract::extract_doc(TEST_URL, &settings.output_dir, &settings).expect("提取失败");
@@ -457,6 +458,7 @@ fn test_e01_repeat_extract_same_doc() {
         output_dir: temp_dir.to_string_lossy().to_string(),
         concurrency: 3,
         download_images: true,
+        export_pure_data: false,
     };
 
     // 第一次提取
@@ -507,6 +509,7 @@ fn test_e02_extract_sub_doc() {
         output_dir: temp_dir.to_string_lossy().to_string(),
         concurrency: 3,
         download_images: true,
+        export_pure_data: false,
     };
 
     let result =

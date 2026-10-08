@@ -1047,7 +1047,19 @@ pub fn docs_media_preview_controlled(
 }
 
 pub fn sheets_export(url: &str, output_path: &str) -> AppResult<String> {
-    sheets_export_controlled(url, output_path, None)
+    sheets_export_controlled(url, output_path, SheetExportMode::Official, None)
+}
+
+/// 表格导出模式（对应设置里的"表格导出为纯数据"开关）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SheetExportMode {
+    /// 官方导出版式优先：保留原表版式；公式只写公式、不写缓存值，
+    /// 被服务端拒绝（1069902 文档级限制）时自动降级为 `PureData`。
+    Official,
+    /// 纯数据：直接"读单元格 → 本地生成 xlsx"，文件里全部是算好的值，无样式。
+    ///
+    /// 给需要把文件喂给脚本 / 其他系统的用户用——那些工具不会执行公式。
+    PureData,
 }
 
 /// 导出电子表格：先走官方「导出任务」接口，被拒时降级为"读单元格 + 本地生成 xlsx"。
@@ -1059,12 +1071,19 @@ pub fn sheets_export(url: &str, output_path: &str) -> AppResult<String> {
 /// 所以被拒时改用读接口取数据、本地拼 xlsx，做到"只读文档也能导出"。
 ///
 /// 取舍：降级产物只有**值**（公式以计算结果落盘），没有原表格的样式/合并/图表；
-/// 官方导出能成功时永远优先官方导出。
+/// 官方导出能成功时永远优先官方导出——除非调用方显式要求 `PureData`。
 pub fn sheets_export_controlled(
     url: &str,
     output_path: &str,
+    mode: SheetExportMode,
     cancelled: Option<&AtomicBool>,
 ) -> AppResult<String> {
+    // 「纯数据」是用户显式选择：跳过官方导出版式，直接读值，避免公式格在
+    // 不执行公式的程序里显示为空。
+    if mode == SheetExportMode::PureData {
+        crate::logger::info(format!("按设置导出纯数据（读单元格生成 xlsx）：{url}"));
+        return sheets_export_via_read_api(url, output_path);
+    }
     match sheets_export_via_task_api(url, output_path, cancelled) {
         Ok(saved) => Ok(saved),
         Err(error) if is_export_permission_denied(&error) => {
@@ -1135,8 +1154,8 @@ fn sheets_export_via_read_api(url: &str, output_path: &str) -> AppResult<String>
     }
 
     let mut book = rust_xlsxwriter::Workbook::new();
-    for (sheet_id, sheet_name) in &sheets {
-        let csv_text = sheets_csv_text(url, sheet_id)?;
+    for (sheet_id, sheet_name, rows, cols) in &sheets {
+        let csv_text = sheets_csv_for_sheet(url, sheet_id, *rows, *cols)?;
         let worksheet = book.add_worksheet();
         let name = sanitize_sheet_name(sheet_name);
         worksheet
@@ -1153,9 +1172,13 @@ fn sheets_export_via_read_api(url: &str, output_path: &str) -> AppResult<String>
                 if field.is_empty() {
                     continue;
                 }
-                worksheet
-                    .write_string(row as u32, col as u16, field)
-                    .map_err(|e| AppError::Other(format!("写入单元格失败: {e}")))?;
+                // 只在"完全可逆"时才写成数字：`001` / `1.50` / `A001` 一律保持文本，
+                // 否则 Excel 会把它们变成 1 / 1.5 / 报错，等于改数据。
+                match parse_exact_number(field) {
+                    Some(number) => worksheet.write_number(row as u32, col as u16, number),
+                    None => worksheet.write_string(row as u32, col as u16, field),
+                }
+                .map_err(|e| AppError::Other(format!("写入单元格失败: {e}")))?;
             }
         }
     }
@@ -1186,8 +1209,11 @@ fn sanitize_sheet_name(raw: &str) -> String {
     }
 }
 
-/// 读电子表格结构：返回 `(标题, [(sheet_id, sheet_name)])`。
-fn sheets_workbook_info(url: &str) -> AppResult<(String, Vec<(String, String)>)> {
+/// 电子表格结构：`(标题, [(sheet_id, sheet_name, row_count, column_count)])`。
+type SheetsWorkbookInfo = (String, Vec<(String, String, u32, u32)>);
+
+/// 读电子表格结构。
+fn sheets_workbook_info(url: &str) -> AppResult<SheetsWorkbookInfo> {
     let stdout = run_lark(&[
         "sheets",
         "+workbook-info",
@@ -1220,7 +1246,14 @@ fn sheets_workbook_info(url: &str) -> AppResult<(String, Vec<(String, String)>)>
                         .get("sheet_name")
                         .and_then(|v| v.as_str())
                         .unwrap_or(id);
-                    Some((id.to_string(), name.to_string()))
+                    // 行列数用于分块读取：绝不能靠"一次读完整表"，
+                    // csv-get 有字符上限，超了只会截断（has_more），会静默丢数据。
+                    let rows = item.get("row_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let cols = item
+                        .get("column_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32;
+                    Some((id.to_string(), name.to_string(), rows, cols))
                 })
                 .collect::<Vec<_>>()
         })
@@ -1228,11 +1261,46 @@ fn sheets_workbook_info(url: &str) -> AppResult<(String, Vec<(String, String)>)>
     Ok((title, sheets))
 }
 
-/// 读单个子表为干净 CSV 文本。
+/// 读单个子表的全部数据（**分块**，可覆盖大表）。
 ///
-/// `+csv-get` 默认返回带 `[row=N] ` 行号前缀的 `annotated_csv`（方便人看），
-/// 这里剥掉前缀得到可直接解析的 CSV；若接口已给纯 `csv` 字段则优先用它。
-fn sheets_csv_text(url: &str, sheet_id: &str) -> AppResult<String> {
+/// 为什么不一次读完：`+csv-get` 有**字符上限**（默认 50 万，超了只会截断并置 `has_more`）——
+/// 一次性读大表会**静默丢数据**。这里按行分块（每块 1000 行）+ 逐块校验 `has_more`，
+/// 任一块仍被截断就**直接报错**，绝不产出"看起来成功"的残缺文件。
+fn sheets_csv_for_sheet(url: &str, sheet_id: &str, rows: u32, cols: u32) -> AppResult<String> {
+    const CHUNK_ROWS: u32 = 1000;
+    let last_col = column_letter(cols);
+    let total_rows = rows.max(1);
+    let mut out = String::new();
+    let mut start = 1u32;
+
+    while start <= total_rows {
+        let end = (start + CHUNK_ROWS - 1).min(total_rows);
+        let range = format!("A{start}:{last_col}{end}");
+        let (chunk, has_more, warning) = csv_get_chunk(url, sheet_id, &range)?;
+        if let Some(warning) = warning {
+            crate::logger::info(format!("csv-get 警告（{range}）：{warning}"));
+        }
+        if has_more {
+            return Err(AppError::LarkCliResponse(format!(
+                "读取表格数据时被截断（区间 {range}）：该区间单元格内容过大，\
+                 已中止以免产出不完整文件。请缩小该子表规模或改用官方导出。"
+            )));
+        }
+        out.push_str(&chunk);
+        if !chunk.is_empty() && !chunk.ends_with('\n') {
+            out.push('\n');
+        }
+        start = end + 1;
+    }
+    Ok(out)
+}
+
+/// 读一个区间，返回 `(CSV 文本, 是否被截断, 警告文案)`。
+fn csv_get_chunk(
+    url: &str,
+    sheet_id: &str,
+    range: &str,
+) -> AppResult<(String, bool, Option<String>)> {
     let stdout = run_lark(&[
         "sheets",
         "+csv-get",
@@ -1240,6 +1308,17 @@ fn sheets_csv_text(url: &str, sheet_id: &str) -> AppResult<String> {
         url,
         "--sheet-id",
         sheet_id,
+        "--range",
+        range,
+        // 刻意**不传** `--include-row-prefix`：
+        // ① 它是布尔 flag，写 `--include-row-prefix false`（两个参数）会被 lark-cli 当成
+        //    位置参数直接报错 `positional arguments are not supported (got ["false"])`
+        //    ——整条降级路径会全挂（2026-10-09 实测踩到）；
+        // ② 写成 `--include-row-prefix=false` 虽能跑通，但 CLI 会**在每行前留一个空格**
+        //    当占位（实测 ` 姓名,...`），空行变成 `" "` → 被写进 A 列，且首列值多一个空格。
+        // 因此保留默认（带 `[row=N] ` 前缀），由 `strip_row_annotations` 精确剥前缀。
+        "--max-chars",
+        "5000000",
         "--as",
         "user",
         "--format",
@@ -1251,24 +1330,72 @@ fn sheets_csv_text(url: &str, sheet_id: &str) -> AppResult<String> {
         .data
         .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
 
-    if let Some(plain) = data.get("csv").and_then(|v| v.as_str()) {
-        return Ok(plain.to_string());
-    }
-    let annotated = data
-        .get("annotated_csv")
+    let text = data
+        .get("csv")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            AppError::LarkCliResponse("csv-get 返回里既没有 csv 也没有 annotated_csv".to_string())
-        })?;
-    Ok(strip_row_annotations(annotated))
+        .map(str::to_string)
+        .or_else(|| {
+            data.get("annotated_csv")
+                .and_then(|v| v.as_str())
+                .map(strip_row_annotations)
+        })
+        .unwrap_or_default();
+    let has_more = data
+        .get("has_more")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let warning = data
+        .get("warning_message")
+        .and_then(|v| v.as_str())
+        .filter(|w| !w.trim().is_empty())
+        .map(str::to_string);
+    Ok((text, has_more, warning))
+}
+
+/// 列号 → 列名（1 → A、27 → AA）
+fn column_letter(column: u32) -> String {
+    let mut out = String::new();
+    let mut n = column.max(1);
+    while n > 0 {
+        let rem = ((n - 1) % 26) as u8;
+        out.insert(0, (b'A' + rem) as char);
+        n = (n - 1) / 26;
+    }
+    out
+}
+
+/// 只在**完全可逆**时把文本当成数字，避免破坏 `001` / `1.50` / `A001` 这类值。
+fn parse_exact_number(field: &str) -> Option<f64> {
+    if field.is_empty() || field.trim() != field {
+        return None;
+    }
+    let value: f64 = field.parse().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    let round_trip = if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
+    };
+    (round_trip == field).then_some(value)
 }
 
 /// 去掉 `[row=N] ` 行号前缀
+///
+/// 仅当方括号内恰为 `row=<数字>` 时才剥（lark-cli 该字段是 `annotated_csv`，
+/// 每行前加 `[row=1] `）。写成"见 `[` 就剥"会误伤恰好以方括号开头的单元格内容。
 fn strip_row_annotations(text: &str) -> String {
     text.lines()
         .map(|line| {
             line.strip_prefix('[')
-                .and_then(|rest| rest.find("] ").map(|idx| &rest[idx + 2..]))
+                .and_then(|rest| {
+                    let close = rest.find("] ")?;
+                    let rows = rest[..close].strip_prefix("row=")?;
+                    let is_row_number =
+                        !rows.is_empty() && rows.chars().all(|c| c.is_ascii_digit());
+                    is_row_number.then(|| &rest[close + 2..])
+                })
                 .unwrap_or(line)
         })
         .collect::<Vec<_>>()
@@ -1553,6 +1680,7 @@ mod sheets_fallback_tests {
         let saved = sheets_export_controlled(
             "https://qcny2iztd1p8.feishu.cn/wiki/IeqYwAakGisB05kIqJqcEcB5nJe",
             &out.to_string_lossy(),
+            SheetExportMode::Official,
             None,
         )
         .expect("只读文档也应当能导出");
@@ -1568,6 +1696,32 @@ mod sheets_fallback_tests {
             strip_row_annotations("[row=1] 姓名,部门\n[row=2] 张三,技术部"),
             "姓名,部门\n张三,技术部"
         );
+        // 只剥 `[数字] ` 前缀：单元格内容恰好以 `[abc] ` 开头时不能被误伤
+        assert_eq!(strip_row_annotations("[abc] x\n[row=2] y"), "[abc] x\ny");
+    }
+
+    #[test]
+    fn maps_column_numbers_to_letters() {
+        assert_eq!(column_letter(1), "A");
+        assert_eq!(column_letter(20), "T");
+        assert_eq!(column_letter(26), "Z");
+        assert_eq!(column_letter(27), "AA");
+        assert_eq!(column_letter(0), "A");
+    }
+
+    #[test]
+    fn only_converts_reversible_numbers() {
+        assert_eq!(parse_exact_number("5"), Some(5.0));
+        assert_eq!(parse_exact_number("3.25"), Some(3.25));
+        assert_eq!(parse_exact_number("-12"), Some(-12.0));
+        // 不可逆的一律保持文本，绝不能让 Excel 把数据改掉
+        assert_eq!(parse_exact_number("001"), None);
+        assert_eq!(parse_exact_number("1.50"), None);
+        assert_eq!(parse_exact_number("A001"), None);
+        assert_eq!(parse_exact_number("2021-03-01"), None);
+        assert_eq!(parse_exact_number(" 5"), None);
+        assert_eq!(parse_exact_number("1e5"), None);
+        assert_eq!(parse_exact_number(""), None);
     }
 
     #[test]

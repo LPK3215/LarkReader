@@ -136,6 +136,7 @@ fn test_logged_in_05_extract_doc() {
         output_dir: temp_dir.to_string_lossy().to_string(),
         concurrency: 3,
         download_images: true,
+        export_pure_data: false,
     };
 
     let result = extract::extract_doc(TEST_URL, &settings.output_dir, &settings);

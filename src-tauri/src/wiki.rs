@@ -571,6 +571,11 @@ pub async fn extract_wiki_tree_controlled(
                 lark::sheets_export_controlled(
                     &extract::build_wiki_url(&node.node_token),
                     &path.to_string_lossy(),
+                    if settings.export_pure_data {
+                        lark::SheetExportMode::PureData
+                    } else {
+                        lark::SheetExportMode::Official
+                    },
                     cancelled.as_deref(),
                 )
                 .map(|saved| vec![saved])

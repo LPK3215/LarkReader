@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS: Settings = {
   output_dir: "D:\\Documents\\LarkReader",
   concurrency: 5,
   download_images: true,
+  // 默认保持官方导出版式（公式保留为公式）；需要"文件里全是值"时用户自行开启
+  export_pure_data: false,
 };
 
 export const useSettingsStore = defineStore("settings", () => {

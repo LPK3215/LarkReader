@@ -527,6 +527,17 @@ pub struct Settings {
     pub concurrency: usize,
     /// 是否下载图片
     pub download_images: bool,
+    /// 表格导出模式：`true` = **纯数据**（只写算好的值，不带公式与样式）
+    ///
+    /// 背景（2026-10-09 实测）：官方导出任务接口产出的 xlsx 里，公式单元格**只有公式、
+    /// 没有缓存值**（`<f>E2*12</f>` 而没有 `<v>148148.04</v>`）——Excel / WPS / 飞书
+    /// 打开会自动算出结果，但 pandas 这类"不执行公式"的程序读到的就是空。
+    /// 置为 `true` 后改走"读单元格 → 本地生成 xlsx"，文件里全部是**写死的值**，
+    /// 代价是没有原表样式 / 合并 / 图表（值、行列位置完全保留）。
+    ///
+    /// `#[serde(default)]`：旧配置文件没有该字段时按 `false` 读取，不破坏兼容。
+    #[serde(default)]
+    pub export_pure_data: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -588,6 +599,8 @@ impl Default for Settings {
             output_dir,
             concurrency: 5,
             download_images: true,
+            // 保持官方导出版式（公式保留为公式）；需要"文件里全是值"时由用户显式开启
+            export_pure_data: false,
         }
     }
 }
@@ -794,4 +807,23 @@ pub struct NodeListItem {
     pub title: Option<String>,
     #[serde(default)]
     pub position: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 旧版 settings.json 没有 `export_pure_data` 字段：必须能按默认值读进来，
+    /// 否则升级后老用户会被"配置损坏"卡住。
+    #[test]
+    fn settings_without_export_pure_data_stays_compatible() {
+        let json = r#"{"output_dir":"D:\\x","concurrency":5,"download_images":true}"#;
+        let settings: Settings = serde_json::from_str(json).expect("旧配置应能反序列化");
+        assert!(!settings.export_pure_data, "缺省必须是官方版式（false）");
+        assert!(settings.validate().is_ok());
+
+        let pure = r#"{"output_dir":"D:\\x","concurrency":5,"download_images":true,"export_pure_data":true}"#;
+        let settings: Settings = serde_json::from_str(pure).expect("新配置应能反序列化");
+        assert!(settings.export_pure_data);
+    }
 }

@@ -395,6 +395,10 @@ function openResultDir() {
                   <input v-model="settings.settings.download_images" type="checkbox" />
                   <span>下载文档中的图片</span>
                 </label>
+                <label class="lr-work__switch" title="只写算好的值（无公式/样式），适合喂给脚本或其他系统">
+                  <input v-model="settings.settings.export_pure_data" type="checkbox" />
+                  <span>表格导出为纯数据</span>
+                </label>
                 <div class="lr-field">
                   <span class="lr-field__label">图片并发数 {{ settings.settings.concurrency }}</span>
                   <input
