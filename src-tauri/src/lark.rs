@@ -632,13 +632,16 @@ pub fn config_init_stream(
 /// 覆盖全部业务命令，漏一项 → 对应类导出必然失败；多授权不影响任何功能。
 ///
 /// `docs:document:export`（2026-10-08 补）：`sheets +workbook-export` 内部走飞书
-/// 「创建导出任务」API（`POST /open-apis/drive/v1/export_tasks`）。lark-cli 里该
-/// shortcut 自己声明的 scope 是 `sheets:spreadsheet:read` + `docs:document:export` +
-/// `drive:drive.metadata:readonly`；本清单此前只有其中 sheets 那条，唯独缺
-/// `docs:document:export`，导致表格导出对未额外开通该权限的应用必然失败
-/// （报 `user lacks permission for the requested resource`）。
-/// 注：飞书该接口也接受 `drive:export:readonly` 作为等价权限点，本清单取 lark-cli
-/// 自己声明的那个，以与 CLI 的缺失权限提示保持一致。
+/// 「创建导出任务」API（`POST /open-apis/drive/v1/export_tasks`，可用
+/// `sheets +workbook-export --dry-run` 看到），该接口的「权限要求」是
+/// **导出云文档**——`docs:document:export` 与 `drive:export:readonly` 二者任选其一。
+/// `sheets:spreadsheet:read` 只够读表格结构与数据，**不能**替代导出权限。
+/// 本清单此前只有 sheets 那条、唯独缺导出权限，导致表格导出对未额外开通该权限
+/// 的应用必然失败（报 `user lacks permission for the requested resource`）。
+///
+/// 取 `docs:document:export` 而非等价项，依据是本机实测：`lark-cli auth check` 显示
+/// 作者本机 token `granted: [docs:document:export]` 而缺 `drive:export:readonly`，
+/// 同一台机器上表格导出可用——它才是本项目已验证可行的那一项。
 pub const LOGIN_SCOPES: &str = "docx:document:readonly docs:document.content:read \
      docs:document.media:download docs:document:export \
      drive:file:download drive:drive.metadata:readonly \

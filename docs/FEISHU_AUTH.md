@@ -122,11 +122,13 @@
 | `base:app:read` / `base:table:read` / `base:record:read` / `base:field:read` | 多维表格导出：`base +record-list` |
 
 > ⚠️ **`sheets +workbook-export` 与其它导出不是同一套权限。** 它内部调用飞书
-> **「创建导出任务」** API（`POST /open-apis/drive/v1/export_tasks`）。lark-cli 里该
-> shortcut 自己声明的 scope 是 `sheets:spreadsheet:read` + `docs:document:export` +
-> `drive:drive.metadata:readonly`；飞书该接口也接受 `drive:export:readonly` 作为等价权限点。
+> **「创建导出任务」** API（`POST /open-apis/drive/v1/export_tasks`，可用
+> `sheets +workbook-export --dry-run` 复现请求），该接口的「权限要求」是**导出云文档**：
+> `docs:document:export` 与 `drive:export:readonly` **二者任选其一**。
 > `sheets:spreadsheet:read` 只够读表格结构 / 数据，**不能**替代导出权限。
-> 此前清单里只有其中 sheets 那条，唯独缺 `docs:document:export`，导致**未额外开通该
+> 本清单取 `docs:document:export`（依据：本机实测 token `granted` 里有它、没有
+> `drive:export:readonly`，而表格导出可用——它才是本项目已验证可行的那个）。
+> 此前清单里只有 sheets 那条，唯独缺导出权限，导致**未额外开通该
 > 权限点的应用表格导出必然失败**，报 `user lacks permission for the requested resource`；
 > 而文档 / 图片 / 附件 / 多维表格都走非导出 API，因此不受影响——症状表现为「只有表格导不出」。
 > 作者本机不失败，是因为早期 `auth login --domain docs drive wiki` 把该权限点批量开通到了

@@ -169,6 +169,23 @@ src-tauri/target/release/bundle/
    ```
 4. **验证**：打开 `https://github.com/LPK3215/LarkReader/releases/latest/download/latest.json`，应返回该版本的清单。
 
+### 3.5 本地测试构建（不产更新产物，无需私钥）
+
+只想在本机装一个可运行版本自测（不发布、不需要 `.sig` / `latest.json`）时，用仓库内的
+免签名配置即可，**全程不需要私钥、也不会卡在密码提示上**：
+
+```bash
+npm run tauri build -- --config src-tauri/tauri.nosign.conf.json
+```
+
+> ⚠️ `--config` 的路径**相对执行命令时的当前目录**（这里是仓库根）解析，**不是**相对
+> `src-tauri/`。因此参数要带 `src-tauri/` 前缀；只写文件名会报
+> `failed to read configuration file tauri.nosign.conf.json: 系统找不到指定的文件`（实测坑）。
+
+它只把 `bundle.createUpdaterArtifacts` 关掉（等价于 `--config '{"bundle":{"createUpdaterArtifacts":false}}'`），
+产物仍是可安装的 NSIS / MSI，输出位置同 3.3。正式发版**必须**走 3.1 + `createUpdaterArtifacts: true`，
+否则 Release 会缺 `.sig` 与 `latest.json`，应用内更新直接失效。
+
 ---
 
 ## 4. 版本号：tag 与产物必须一致
