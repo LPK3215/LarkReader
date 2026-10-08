@@ -1535,6 +1535,64 @@ mod url_tests {
 }
 
 #[cfg(test)]
+mod sheets_fallback_tests {
+    use super::*;
+
+    /// 端到端验证「只读文档降级导出」：需要真实网络 + 本机已登录，因此默认 `#[ignore]`。
+    ///
+    /// 目标文档是 E2E 测试库里的一张**只读**电子表格——导出任务接口对它返回
+    /// `1069902`（文档级不允许导出），正是本降级路径要覆盖的场景。
+    ///
+    /// 手动运行：`cargo test --lib sheets_read_fallback -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn sheets_read_fallback_writes_xlsx() {
+        let out = std::env::temp_dir().join("larkreader-fallback-test.xlsx");
+        let _ = std::fs::remove_file(&out);
+
+        let saved = sheets_export_controlled(
+            "https://qcny2iztd1p8.feishu.cn/wiki/IeqYwAakGisB05kIqJqcEcB5nJe",
+            &out.to_string_lossy(),
+            None,
+        )
+        .expect("只读文档也应当能导出");
+
+        let size = std::fs::metadata(&saved).expect("产物应存在").len();
+        assert!(size > 1000, "xlsx 过小，数据可能没写进去：{size} 字节");
+        println!("降级导出产物：{saved}（{size} 字节）");
+    }
+
+    #[test]
+    fn strips_row_annotation_prefix() {
+        assert_eq!(
+            strip_row_annotations("[row=1] 姓名,部门\n[row=2] 张三,技术部"),
+            "姓名,部门\n张三,技术部"
+        );
+    }
+
+    #[test]
+    fn sanitizes_sheet_name() {
+        assert_eq!(sanitize_sheet_name("Sheet1"), "Sheet1");
+        assert_eq!(sanitize_sheet_name("a/b:c*d?e[f]g"), "a_b_c_d_e_f_g");
+        assert_eq!(sanitize_sheet_name("   "), "Sheet");
+        assert_eq!(sanitize_sheet_name(&"x".repeat(40)).len(), 31);
+    }
+
+    #[test]
+    fn detects_export_permission_denied() {
+        assert!(is_export_permission_denied(&AppError::LarkCliResponse(
+            "飞书拒绝了本次请求（错误码 1069902）".to_string()
+        )));
+        assert!(is_export_permission_denied(&AppError::LarkCliResponse(
+            "user lacks permission for the requested resource".to_string()
+        )));
+        assert!(!is_export_permission_denied(&AppError::LarkCliResponse(
+            "请求过于频繁，请稍后再试。".to_string()
+        )));
+    }
+}
+
+#[cfg(test)]
 mod scope_tests {
     use super::{parse_scope_check, strip_ansi, LOGIN_SCOPES};
     use crate::models::ScopeCheck;

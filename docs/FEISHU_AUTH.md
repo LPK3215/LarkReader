@@ -254,6 +254,27 @@ lark-cli 只保留一个令牌槽位（`~/.lark-cli`），必须先删掉旧令�
 
 ---
 
+### 4.7 只读文档为什么也能导出（降级路径，2026-10-09 实测）
+
+官方「导出任务」接口（`POST /open-apis/drive/v1/export_tasks`）除了应用授权，还要求
+**文档本身允许导出 / 下载**：只读协作者会被拒 `1069902 permission_denied`——而"只能读、
+不能导出"恰恰是本工具最典型的用户场景，所以不能只依赖官方导出。
+
+`lark.rs::sheets_export_controlled` 因此做了**自动降级**：
+
+| 顺序 | 路径 | 产物 | 何时用 |
+|---|---|---|---|
+| ① | `sheets +workbook-export`（导出任务接口） | 官方 xlsx（含样式 / 合并 / 图表） | 默认；有导出权限时 |
+| ② | `+workbook-info` 取子表清单 → 逐表 `+csv-get` 读数据 → 本地拼 xlsx（`rust_xlsxwriter`） | 本地生成的 xlsx（**只有值**，公式落为计算结果） | ① 报 `1069902` / `permission_denied` 时自动切换 |
+
+- **只有权限类错误才降级**：网络故障、限频、token 过期照旧原样报错，不拿降级把真实问题盖住。
+- 实测：E2E 测试库里那张**只读**的「员工花名册」→ ① 报 `1069902`，② 产出 5719 字节 xlsx，
+  内容是完整的（姓名 / 部门 / 工号 / 入职日期 + 公式计算结果）。
+- 端到端复现：`cd src-tauri && cargo test --lib sheets_read_fallback -- --ignored --nocapture`
+  （需本机已 `auth login`；该用例默认 `#[ignore]`，不进 CI）。
+
+---
+
 ## 5. 登录状态与判定（UI 显示的依据）
 
 `whoami` 返回字段（后端 `WhoamiResponse`）：
