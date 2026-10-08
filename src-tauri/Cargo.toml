@@ -1,6 +1,6 @@
 [package]
 name = "lark-reader"
-version = "0.2.2"
+version = "0.2.3"
 description = "飞书文档本地阅读器与导出工具"
 authors = ["LarkReader"]
 license = "GPL-3.0-only"
