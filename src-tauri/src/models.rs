@@ -766,6 +766,9 @@ pub struct FetchDocData {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FetchDocument {
     pub content: String,
+    /// 富对象引用表（内嵌 HTML 内容块的正文就挂在这里，正文里只留一个 `data-ref`）
+    #[serde(default)]
+    pub reference_map: serde_json::Value,
 }
 
 /// docs +media-preview 返回的数据

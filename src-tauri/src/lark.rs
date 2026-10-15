@@ -970,12 +970,59 @@ pub fn auth_logout() -> AppResult<String> {
 /// 执行 `lark-cli docs +fetch --doc <url> --doc-format markdown --as user`
 ///
 /// 对应 Python: fetch_doc(node_token)
-/// 返回文档的 Markdown 正文
+/// 只取正文，不取 `reference_map`
 pub fn docs_fetch(url: &str) -> AppResult<String> {
     docs_fetch_controlled(url, None)
 }
 
 pub fn docs_fetch_controlled(url: &str, cancelled: Option<&AtomicBool>) -> AppResult<String> {
+    Ok(docs_fetch_with_refs_controlled(url, cancelled)?.content)
+}
+
+/// 一次 `docs +fetch` 的结果
+#[derive(Debug, Clone)]
+pub struct DocsFetch {
+    /// 正文（当前实现为 Markdown）
+    pub content: String,
+    /// 富对象引用表：内嵌 HTML 内容块的正文只在这里，正文里只剩一个 `data-ref`
+    pub reference_map: serde_json::Value,
+}
+
+impl DocsFetch {
+    /// 取一个内嵌 HTML 内容块的正文（`<html5-block data-ref="html5_1"/>`）
+    ///
+    /// 服务端把正文放在 `reference_map["html5-block"][data_ref]["data"]`。
+    /// 取不到就返回 `None`，由调用方保持原文并提示，**不假装成功**。
+    pub fn html5_block(&self, data_ref: &str) -> Option<&str> {
+        self.reference_map
+            .get("html5-block")?
+            .get(data_ref)?
+            .get("data")?
+            .as_str()
+    }
+}
+
+/// 取正文 + `reference_map`（内嵌 HTML 内容块的正文挂在里面）
+pub fn docs_fetch_with_refs_controlled(
+    url: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<DocsFetch> {
+    fetch_document_controlled(url, "markdown", cancelled)
+}
+
+/// 取 DocxXML 形态的正文
+///
+/// 只有需要"Markdown 表达不了的信息"时才用（例如 h7~h9 的真实层级——
+/// Markdown 一律塌成 `######`，从 Markdown 里分不出来）。
+pub fn docs_fetch_xml_controlled(url: &str, cancelled: Option<&AtomicBool>) -> AppResult<String> {
+    Ok(fetch_document_controlled(url, "xml", cancelled)?.content)
+}
+
+fn fetch_document_controlled(
+    url: &str,
+    doc_format: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<DocsFetch> {
     let stdout = run_lark_with_timeout(
         &[
             "docs",
@@ -983,7 +1030,7 @@ pub fn docs_fetch_controlled(url: &str, cancelled: Option<&AtomicBool>) -> AppRe
             "--doc",
             url,
             "--doc-format",
-            "markdown",
+            doc_format,
             "--as",
             "user",
         ],
@@ -996,11 +1043,13 @@ pub fn docs_fetch_controlled(url: &str, cancelled: Option<&AtomicBool>) -> AppRe
         .data
         .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
 
-    // 解析 data.document.content
     let fetch_data: crate::models::FetchDocData =
         serde_json::from_value(data).map_err(|e| AppError::JsonParse(e.to_string()))?;
 
-    Ok(fetch_data.document.content)
+    Ok(DocsFetch {
+        content: fetch_data.document.content,
+        reference_map: fetch_data.document.reference_map,
+    })
 }
 
 /// 执行 `lark-cli docs +media-preview --token <token> --output <path> --as user`
@@ -1295,19 +1344,190 @@ fn sheets_csv_for_sheet(url: &str, sheet_id: &str, rows: u32, cols: u32) -> AppR
     Ok(out)
 }
 
-/// 读整张电子表格：返回 `(标题, [(子表名, 该子表 CSV 文本)])`
+/// 一个子表的读取结果（数据 + 图片格位置）
+pub struct SheetCsv {
+    pub sheet_id: String,
+    pub name: String,
+    /// 该子表的 CSV 文本（含表内全部行，空行也在）
+    pub csv: String,
+    /// 含内嵌图片的格子：`(真实行号 1-based, 列下标 0-based)`
+    pub image_cells: Vec<(u32, usize)>,
+    /// `image_cells` 是否完整（读取被截断、或行号无法对齐时为 `false`）
+    pub image_cells_complete: bool,
+}
+
+/// 读整张电子表格：返回 `(标题, 各子表读取结果)`
 ///
 /// 给"文档内嵌电子表格"用（见 `markdown::find_rich_refs`）：内嵌表只有 token，
 /// 正文里没有内容，必须按 token 读回来。复用已有的分块读取路径，因此大表同样
 /// 不会被 `csv-get` 的字符上限静默截断。
-pub fn sheets_read_all_csv(url: &str) -> AppResult<(String, Vec<(String, String)>)> {
+pub fn sheets_read_all_csv(url: &str) -> AppResult<(String, Vec<SheetCsv>)> {
     let (title, sheets) = sheets_workbook_info(url)?;
     let mut out = Vec::with_capacity(sheets.len());
     for (sheet_id, sheet_name, rows, cols) in &sheets {
         let csv_text = sheets_csv_for_sheet(url, sheet_id, *rows, *cols)?;
-        out.push((sheet_name.clone(), csv_text));
+
+        // 图片位置是"锦上添花"：读失败/读不全都不该让整张表读不出来，
+        // 只把 `complete` 置 false，正文里照实说明"位置未读全"。
+        let (mut image_cells, mut complete) = match sheets_image_cells(url, sheet_id, *rows, *cols)
+        {
+            Ok(result) => result,
+            Err(error) => {
+                crate::logger::warn(format!(
+                    "读取子表 {sheet_id} 的内嵌图片位置失败（不影响数据读取）：{error}"
+                ));
+                (Vec::new(), false)
+            }
+        };
+
+        // 图片位置靠"CSV 第 i 行 = 真实第 i 行"对齐；一旦对不上（单元格内含换行等）
+        // 就让标记整体失效——标错格子比不标更糟。
+        if !image_cells.is_empty() && csv_text.lines().count() != *rows as usize {
+            crate::logger::warn(format!(
+                "子表 {sheet_id} 的 CSV 行数（{}）与表行数（{rows}）不一致，跳过图片位置标记",
+                csv_text.lines().count()
+            ));
+            image_cells.clear();
+            complete = false;
+        }
+
+        out.push(SheetCsv {
+            sheet_id: sheet_id.clone(),
+            name: sheet_name.clone(),
+            csv: csv_text,
+            image_cells,
+            image_cells_complete: complete,
+        });
     }
     Ok((title, out))
+}
+
+/// 找出一个子表里含**非文本嵌入内容**（图片）的格子位置
+///
+/// 为什么不能只靠 `+csv-get`：CSV 只能表达文本，图片格在 CSV 里就是空串，
+/// 内联到正文后那格看着像"原表本来就是空的"。这里用 `+cells-get --include value`
+/// 拿 `rich_text`，其中 `type == "embed-image"` 的段就是内嵌图片。
+///
+/// 返回 `(位置, 是否完整)`；`has_more` 为真说明这次读被截断，位置可能不全。
+fn sheets_image_cells(
+    url: &str,
+    sheet_id: &str,
+    rows: u32,
+    cols: u32,
+) -> AppResult<(Vec<(u32, usize)>, bool)> {
+    if rows == 0 || cols == 0 {
+        return Ok((Vec::new(), true));
+    }
+    let range = format!("A1:{}{}", column_letter(cols), rows);
+    let stdout = run_lark(&[
+        "sheets",
+        "+cells-get",
+        "--url",
+        url,
+        "--sheet-id",
+        sheet_id,
+        "--range",
+        &range,
+        "--include",
+        "value",
+        "--max-chars",
+        "5000000",
+        "--as",
+        "user",
+        "--format",
+        "json",
+    ])?;
+    let resp: LarkResponse = serde_json::from_str(&extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
+    let complete = !data
+        .get("has_more")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+
+    let mut out = Vec::new();
+    let Some(ranges) = data.get("ranges").and_then(|value| value.as_array()) else {
+        return Ok((out, complete));
+    };
+    for range in ranges {
+        let row_indices: Vec<u32> = range
+            .get("row_indices")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_u64().map(|n| n as u32))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let col_indices: Vec<usize> = range
+            .get("col_indices")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(fallback, item)| {
+                        item.as_str()
+                            .and_then(column_index)
+                            .unwrap_or(fallback)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let Some(cells) = range.get("cells").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        // 行列索引与二维数组必须一一对应，对不上就整段跳过，避免标错位置
+        let first_row_len = cells
+            .first()
+            .and_then(|row| row.as_array())
+            .map(|row| row.len())
+            .unwrap_or(0);
+        if row_indices.len() != cells.len() || col_indices.len() != first_row_len {
+            continue;
+        }
+        for (row_offset, row) in cells.iter().enumerate() {
+            let Some(cells_in_row) = row.as_array() else {
+                continue;
+            };
+            for (col_offset, cell) in cells_in_row.iter().enumerate() {
+                let has_embedded_image = cell
+                    .get("rich_text")
+                    .and_then(|value| value.as_array())
+                    .map(|segments| {
+                        segments.iter().any(|segment| {
+                            segment.get("type").and_then(|value| value.as_str())
+                                == Some("embed-image")
+                        })
+                    })
+                    .unwrap_or(false);
+                if has_embedded_image {
+                    out.push((row_indices[row_offset], col_indices[col_offset]));
+                }
+            }
+        }
+    }
+    Ok((out, complete))
+}
+
+/// 列名 → 下标（`A` → 0、`AA` → 26）
+fn column_index(letters: &str) -> Option<usize> {
+    let letters = letters.trim();
+    if letters.is_empty() {
+        return None;
+    }
+    let mut index = 0usize;
+    for ch in letters.chars() {
+        let upper = ch.to_ascii_uppercase();
+        if !upper.is_ascii_uppercase() {
+            return None;
+        }
+        index = index * 26 + (upper as usize - 'A' as usize + 1);
+    }
+    Some(index - 1)
 }
 
 /// 读一个区间，返回 `(CSV 文本, 是否被截断, 警告文案)`。

@@ -119,18 +119,11 @@ pub fn extract_title_from_url(url: &str) -> String {
 /// 先尝试获取文档真实标题，获取失败则用 URL token
 pub fn preview_doc(url: &str) -> AppResult<PreviewResult> {
     let wiki_url = normalize_wiki_url(url)?;
-    let node_token = parse_node_token(&wiki_url);
 
-    // 尝试获取真实标题
-    let title = match lark::wiki_node_get(&node_token) {
-        Ok(info) => info
-            .title
-            .unwrap_or_else(|| extract_title_from_url(&wiki_url)),
-        Err(_) => extract_title_from_url(&wiki_url),
-    };
-
-    // 获取文档正文
+    // 先取正文：标题要按"知识库节点 → 正文 `<title>` → token"的顺序兜底，
+    // `docx` 直链没有知识库节点，只能靠正文里那行真实标题。
     let content = lark::docs_fetch(&wiki_url)?;
+    let title = resolve_document_title(&wiki_url, &content);
 
     // 提取图片引用
     let images = markdown::extract_images(&content);
@@ -141,6 +134,25 @@ pub fn preview_doc(url: &str) -> AppResult<PreviewResult> {
         images,
         char_count: content.chars().count(),
     })
+}
+
+/// 解析文档标题：知识库节点标题 → 正文首行 `<title>` → URL token 兜底
+///
+/// `extract_title_from_url` 只能给出"token 前 20 个字符"，对 docx 直链来说
+/// 文件名就成了看不出内容的一串乱码，所以正文里的真实标题必须顶上。
+fn resolve_document_title(wiki_url: &str, content: &str) -> String {
+    let node_token = parse_node_token(wiki_url);
+    if let Ok(info) = lark::wiki_node_get(&node_token) {
+        if let Some(title) = info.title {
+            if !title.trim().is_empty() {
+                return title;
+            }
+        }
+    }
+    if let Some(title) = markdown::extract_document_title(content) {
+        return title;
+    }
+    extract_title_from_url(wiki_url)
 }
 
 /// 提取单篇文档：正文 + 图片下载 + 保存 .md
@@ -169,22 +181,23 @@ fn extract_doc_with_title_controlled(
     cancelled: Option<Arc<AtomicBool>>,
 ) -> AppResult<ExtractResult> {
     let wiki_url = normalize_wiki_url(url)?;
+
+    // 1. 获取文档正文（顺带取回 `reference_map`：内嵌 HTML 内容块的正文只挂在那里）
+    let mut docs = lark::docs_fetch_with_refs_controlled(&wiki_url, cancelled.as_deref())?;
+
+    // 标题优先级：调用方指定 → 知识库节点标题 → 正文首行 `<title>` → token 兜底
+    //
+    // 为什么加 `<title>` 这一档：docx 直链（`/docx/xxx`）不是知识库节点，
+    // `wiki_node_get` 拿不到标题，之前就退化成"token 前 20 个字符"这种看不出
+    // 是什么的目录名；正文首行其实带着真实标题。
     let doc_title = match title {
         Some(t) => t.to_string(),
-        None => {
-            // 尝试从 wiki_node_get 获取真实标题
-            let node_token = parse_node_token(&wiki_url);
-            match lark::wiki_node_get(&node_token) {
-                Ok(info) => info
-                    .title
-                    .unwrap_or_else(|| extract_title_from_url(&wiki_url)),
-                Err(_) => extract_title_from_url(&wiki_url),
-            }
-        }
+        None => resolve_document_title(&wiki_url, &docs.content),
     };
 
-    // 1. 获取文档正文
-    let content = lark::docs_fetch_controlled(&wiki_url, cancelled.as_deref())?;
+    // 正文取出来后就不再需要 `docs.content`，挪走 ownership，
+    // 同时保留 `docs` 供内嵌 HTML 内容块按 `data-ref` 查询。
+    let mut content = std::mem::take(&mut docs.content);
 
     // 2. 提取图片引用
     let images = markdown::extract_images(&content);
@@ -212,7 +225,6 @@ fn extract_doc_with_title_controlled(
     let mut errors = Vec::new();
     let mut images_downloaded = 0usize;
     let mut images_failed = 0usize;
-    let mut content = content;
     let mut url_map = Vec::new();
 
     // 4. 下载图片（按 Settings.concurrency 并发下载，失败计数）
@@ -372,11 +384,35 @@ fn extract_doc_with_title_controlled(
             lark::SheetExportMode::Official
         },
         cancelled: cancelled.as_deref(),
+        fetch: Some(&docs),
     };
     let embedded = extract_embedded_objects(&content, &embedded_ctx);
     let embedded_failed = embedded.failed;
     content = embedded.content;
     errors.extend(embedded.errors);
+
+    // 4.6 深层标题（h7~h9）层级修正
+    //
+    // 服务端把 `<h7>`/`<h8>`/`<h9>` 一律渲染成 `######`，三个不同层级塌成一级。
+    // 但这属于"少数文档才有"的情况，只有真的出现 6 级标题时才值得多花一次
+    // `docs +fetch --doc-format xml`；绝大多数文档不会触发。
+    if markdown::has_six_level_heading(&content) {
+        match lark::docs_fetch_xml_controlled(&wiki_url, cancelled.as_deref()) {
+            Ok(xml) => {
+                let fixed = markdown::fix_deep_headings(&content, &xml);
+                if fixed != content {
+                    crate::logger::info("已按 XML 层级修正深层标题（h7~h9）".to_string());
+                    content = fixed;
+                }
+            }
+            Err(error) => {
+                crate::logger::warn(format!("深层标题层级修正失败（保持 6 级标题）：{error}"));
+                errors.push(format!(
+                    "深层标题层级修正失败，h7~h9 仍按 6 级标题保留：{error}"
+                ));
+            }
+        }
+    }
 
     // 5. 保存 .md 文件
     fs::write(&temp_filepath, content.as_bytes())?;
@@ -543,6 +579,11 @@ struct EmbeddedContext<'a> {
     download_images: bool,
     mode: lark::SheetExportMode,
     cancelled: Option<&'a AtomicBool>,
+    /// `docs +fetch` 的完整结果（正文 + `reference_map`）
+    ///
+    /// 内嵌 HTML 内容块的正文不在文档里，只能靠 `data-ref` 从这里取；
+    /// 没有它这块内容就是整段丢失。
+    fetch: Option<&'a lark::DocsFetch>,
 }
 
 /// 从文档链接取出 `{scheme}://{host}`
@@ -559,6 +600,10 @@ fn feishu_origin(url: &str) -> Option<String> {
 }
 
 /// 同一 token 多次出现时用于去重的键（没有 token 的形态不参与去重）
+///
+/// 电子表格必须把 `sheet-id` 也算进键：同一工作簿的不同子表是两个**独立的块**，
+/// 只用 `token` 去重会把第二个块误判成"同一个对象的重复引用"而整块跳过，
+/// 结果就是正文里只剩第一块的表、两个块的内容还都指向第一块。
 fn rich_ref_key(reference: &markdown::RichRef) -> Option<String> {
     let kind = match reference.kind {
         markdown::RichRefKind::Table | markdown::RichRefKind::Unknown => return None,
@@ -566,11 +611,19 @@ fn rich_ref_key(reference: &markdown::RichRef) -> Option<String> {
         markdown::RichRefKind::Bitable => "bitable",
         markdown::RichRefKind::Whiteboard => "whiteboard",
         markdown::RichRefKind::Image => "image",
+        // 内嵌 HTML 块没有 token，去重键用 `data-ref`
+        markdown::RichRefKind::Html5 => {
+            return reference
+                .data_ref
+                .as_ref()
+                .map(|data_ref| format!("html5:{data_ref}"));
+        }
     };
-    reference
-        .token
-        .as_ref()
-        .map(|token| format!("{kind}:{token}"))
+    let token = reference.token.as_ref()?;
+    match reference.sheet_id.as_deref() {
+        Some(sheet_id) if !sheet_id.is_empty() => Some(format!("{kind}:{token}:{sheet_id}")),
+        _ => Some(format!("{kind}:{token}")),
+    }
 }
 
 /// 全文检出正文里的内嵌对象并逐个处理
@@ -587,6 +640,7 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
         errors: Vec::new(),
     };
     if references.is_empty() {
+        report_leftover_tags(&mut result);
         return result;
     }
 
@@ -594,18 +648,18 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
     let mut seen: HashSet<String> = HashSet::new();
     let mut rendered: std::collections::HashMap<String, Option<String>> =
         std::collections::HashMap::new();
+    // 工作簿 token → 已落盘的 xlsx 序号：同一工作簿被多个块引用时只导出一份文件
+    let mut sheet_file_seq: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut plan: Vec<(usize, usize, String)> = Vec::new();
     let mut table_seq = 0usize;
     let mut image_seq = 0usize;
     let mut failed = 0usize;
-    let mut unknown_tags: Vec<String> = Vec::new();
 
     for reference in &references {
-        // 未识别的块级标签：保持原文（可能还是有效内容），只登记下来做提示
+        // 未识别的块级标签：保持原文（可能还是有效内容），不做替换；
+        // 它会被文末的残留标签扫描统一登记并提示。
         if reference.kind == markdown::RichRefKind::Unknown {
-            if !unknown_tags.contains(&reference.tag) {
-                unknown_tags.push(reference.tag.clone());
-            }
             continue;
         }
 
@@ -622,15 +676,43 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
             seen.insert(key.clone());
         }
 
-        // 产物编号：落文件的形态各自占一个序号
-        if matches!(
-            reference.kind,
-            markdown::RichRefKind::Sheet | markdown::RichRefKind::Bitable
-        ) {
-            table_seq += 1;
-        }
-        if reference.kind == markdown::RichRefKind::Image {
-            image_seq += 1;
+        // 产物编号 + "是否新落一份文件"
+        //
+        // 电子表格按**工作簿 token** 计一份 xlsx：同一工作簿的两个子表被分别嵌入时，
+        // 两个块各自渲染自己引用的子表，但"完整数据"是同一个工作簿，所以只落一份文件、
+        // 两个块指向同一份，避免产出两份内容完全相同的 xlsx。
+        let mut index = 0usize;
+        let mut produce_file = true;
+        match reference.kind {
+            markdown::RichRefKind::Sheet => match reference.token.as_deref() {
+                Some(token) => {
+                    let token_key = format!("sheet:{token}");
+                    match sheet_file_seq.get(&token_key) {
+                        Some(existing) => {
+                            index = *existing;
+                            produce_file = false;
+                        }
+                        None => {
+                            table_seq += 1;
+                            index = table_seq;
+                            sheet_file_seq.insert(token_key, index);
+                        }
+                    }
+                }
+                None => {
+                    table_seq += 1;
+                    index = table_seq;
+                }
+            },
+            markdown::RichRefKind::Bitable => {
+                table_seq += 1;
+                index = table_seq;
+            }
+            markdown::RichRefKind::Image => {
+                image_seq += 1;
+                index = image_seq;
+            }
+            _ => {}
         }
 
         let mut errors: Vec<String> = Vec::new();
@@ -638,8 +720,8 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
             reference,
             ctx,
             origin.as_deref(),
-            table_seq,
-            image_seq,
+            index,
+            produce_file,
             &mut errors,
         );
         result.errors.extend(errors);
@@ -663,37 +745,56 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
         result.content.replace_range(start..end, &text);
     }
 
-    if !unknown_tags.is_empty() {
-        crate::logger::warn(format!(
-            "文档里有 {} 种未能识别的块级标签：{}（已保持原文，未离线还原）",
-            unknown_tags.len(),
-            unknown_tags.join(", ")
-        ));
-        result.content.push_str(&format!(
-            "\n\n---\n\n> 提示：本文档里还有 {} 种内嵌内容没能离线还原（标签：{}），\
-             已按原样保留在正文中，请在飞书里查看。\n",
-            unknown_tags.len(),
-            unknown_tags.join("、")
-        ));
-    }
-
-    crate::logger::info(format!(
-        "文档内嵌对象：发现 {} 处，导出 {} 个，失败 {} 个，未识别 {} 种",
-        result.found,
-        result.exported,
-        result.failed,
-        unknown_tags.len()
-    ));
+    // 文末提示：正文里还留着"按原文保留、没被还原"的标签就明确告知
+    //
+    // 为什么放在替换之后再统一扫一遍：这些标签既有"整行只有一个"的
+    // （`<bookmark …></bookmark>`），也有与文字同行的（`<button …>文字</button>`），
+    // 只靠 `find_rich_refs` 里的整行匹配会漏（整行匹配要求整行就是**一个**标签，
+    // 而 `<bookmark …></bookmark>` 一行里其实有两个）。扫最终正文能把两类一起兜住，
+    // 也顺带覆盖"表格结构解析失败、原样保留"的情况。围栏代码块里的示例文本会被跳过。
+    report_leftover_tags(&mut result);
     result
 }
 
+/// 扫正文里的残留标签：写日志 + 在文末追加一段可见提示
+///
+/// 单独成函数是因为"没有任何富对象引用"的文档也要做这件事——那类文档（例如
+/// 只有书签/按钮的链接型文档）会提前返回，之前就漏掉了提示。
+fn report_leftover_tags(result: &mut EmbeddedTables) {
+    let leftovers = markdown::unresolved_tags(&result.content);
+    if !leftovers.is_empty() {
+        crate::logger::warn(format!(
+            "文档里有 {} 种标签未能离线还原：{}（已保持原文，未做转换）",
+            leftovers.len(),
+            leftovers.join(", ")
+        ));
+        result.content.push_str(&format!(
+            "\n\n---\n\n> 提示：本文档里还有 {} 种内容标记没能离线还原（标签：{}），\
+             已按原样保留在正文中，显示效果可能与飞书里不同；需要完整效果请在飞书里查看。\n",
+            leftovers.len(),
+            leftovers.join("、")
+        ));
+    }
+    crate::logger::info(format!(
+        "文档内嵌对象：发现 {} 处，导出 {} 个，失败 {} 个，残留标签 {} 种",
+        result.found,
+        result.exported,
+        result.failed,
+        leftovers.len()
+    ));
+}
+
 /// 处理单个内嵌引用
+///
+/// `index`：该引用对应的产物序号（电子表格 / 多维表格 / 图片各自成序）。
+/// `produce_file`：是否还要落一份新文件；同一工作簿的第二个引用会传 `false`
+/// （文件已由第一个引用产出，复用同一份，避免重复落盘）。
 fn render_embedded_ref(
     reference: &markdown::RichRef,
     ctx: &EmbeddedContext<'_>,
     origin: Option<&str>,
-    table_index: usize,
-    image_index: usize,
+    index: usize,
+    produce_file: bool,
     errors: &mut Vec<String>,
 ) -> RefOutcome {
     match reference.kind {
@@ -712,7 +813,16 @@ fn render_embedded_ref(
                     failed: true,
                 };
             };
-            render_embedded_sheet(&label, token, ctx, origin, table_index, errors)
+            render_embedded_sheet(
+                &label,
+                token,
+                reference.sheet_id.as_deref(),
+                ctx,
+                origin,
+                index,
+                produce_file,
+                errors,
+            )
         }
         markdown::RichRefKind::Bitable => {
             let Some(token) = reference.token.as_deref() else {
@@ -725,7 +835,7 @@ fn render_embedded_ref(
                     failed: true,
                 };
             };
-            render_embedded_bitable("内嵌多维表格", token, ctx, table_index, errors)
+            render_embedded_bitable("内嵌多维表格", token, ctx, index, errors)
         }
         markdown::RichRefKind::Image => {
             let Some(token) = reference.token.as_deref() else {
@@ -737,7 +847,7 @@ fn render_embedded_ref(
                     failed: false,
                 };
             };
-            render_embedded_image(token, ctx, image_index, errors)
+            render_embedded_image(token, ctx, index, errors)
         }
         markdown::RichRefKind::Whiteboard => {
             let note = format!(
@@ -751,18 +861,43 @@ fn render_embedded_ref(
                 failed: false,
             }
         }
-        // 原生表格片段：里面可能就是真实数据，保持原文不动（宁可见到裸标签，
-        // 也不要把它换成一句提示把数据弄丢）。留一条日志便于定位。
+        // 原生表格片段：整块转成 Markdown 管道表。
+        //
+        // 之前这里是"保持原文"，结果 `.md` 里留着一整段 HTML：列宽、底色丢了，
+        // 单元格里的公式还退回 `<latex>` 字面标签，读者以为没转成功。现在按行/列
+        // 还原成管道表，单元格里的行内标签也转成 Markdown；表里的图片顺便下载落盘
+        // （这类图片藏在表格 HTML 里，`extract_images` 只认 `![]()`，扫不到它）。
         markdown::RichRefKind::Table => {
-            crate::logger::warn(format!(
-                "文档里有未被转成 Markdown 的 <table> 片段（{} 字节），已保持原文；\
-                 该表格在本地阅读时可能无法正常显示，可反馈给开发者",
-                reference.raw.len()
-            ));
-            RefOutcome {
-                replacement: None,
-                exported: false,
-                failed: false,
+            let mut cell_errors: Vec<String> = Vec::new();
+            let mut cell_failed = false;
+            let converted = markdown::html_table_to_markdown(&reference.raw, |src, caption| {
+                match table_cell_image_markdown(src, caption, ctx) {
+                    Ok(text) => text,
+                    Err(message) => {
+                        cell_failed = true;
+                        cell_errors.push(message);
+                        "[图片下载失败]".to_string()
+                    }
+                }
+            });
+            errors.extend(cell_errors);
+            match converted {
+                Some(table) => RefOutcome {
+                    replacement: Some(table),
+                    exported: false,
+                    failed: cell_failed,
+                },
+                None => {
+                    crate::logger::warn(format!(
+                        "文档里有解析不出结构的 <table> 片段（{} 字节），已保持原文",
+                        reference.raw.len()
+                    ));
+                    RefOutcome {
+                        replacement: None,
+                        exported: false,
+                        failed: false,
+                    }
+                }
             }
         }
         // 未识别的块级标签在调用处就已经分流（保持原文 + 文末提示），不会走到这里
@@ -771,7 +906,109 @@ fn render_embedded_ref(
             exported: false,
             failed: false,
         },
+        // 内嵌 HTML 内容块：正文不在文档里，必须靠 `data-ref` 去
+        // `docs +fetch` 的 `reference_map["html5-block"]` 取回。
+        //
+        // 之前这里整个块的内容是丢的（正文里只有一个 `<html5-block …/>` 空标签），
+        // 因为它长得像富对象引用、但其实任何 token 都没有。现在取回后原样包进
+        // 围栏代码块写下：内容是任意 HTML，直接摊在 Markdown 里会污染版式。
+        markdown::RichRefKind::Html5 => {
+            let Some(data_ref) = reference.data_ref.as_deref() else {
+                let message = "内嵌 HTML 内容块缺少 data-ref，内容无法取出".to_string();
+                errors.push(message.clone());
+                crate::logger::warn(format!("文档内嵌 HTML 块：{message}"));
+                return RefOutcome {
+                    replacement: Some(format!("> {message}")),
+                    exported: false,
+                    failed: true,
+                };
+            };
+            match ctx.fetch.and_then(|fetch| fetch.html5_block(data_ref)) {
+                Some(html) => {
+                    crate::logger::info(format!(
+                        "文档内嵌 HTML 块：已还原 {} 字节（data-ref={data_ref}）",
+                        html.len()
+                    ));
+                    RefOutcome {
+                        replacement: Some(markdown::wrap_fence("html", html)),
+                        exported: false,
+                        failed: false,
+                    }
+                }
+                None => {
+                    let message =
+                        format!("内嵌 HTML 内容块在引用表里取不到（data-ref={data_ref}）");
+                    errors.push(message.clone());
+                    crate::logger::warn(format!("文档内嵌 HTML 块：{message}"));
+                    RefOutcome {
+                        replacement: Some(format!("> {message}，内容未能还原")),
+                        exported: false,
+                        failed: true,
+                    }
+                }
+            }
+        }
     }
+}
+
+/// 表格单元格里的 `<img src="token"/>`：下载到 `_images`，改写成 Markdown 图片
+///
+/// 这类图片藏在表格 HTML 里，`extract_images`（只认 `![]()` 形态）扫不到它：
+/// 不处理就是"图还在表里，但没落盘、正文只剩一个裸 token"。
+///
+/// 文件名直接用文件 token 命名：同一张图被多处引用时天然复用一个文件，
+/// 不需要额外维护计数器。
+fn table_cell_image_markdown(
+    src: &str,
+    caption: &str,
+    ctx: &EmbeddedContext<'_>,
+) -> Result<String, String> {
+    let token = markdown::extract_file_token(src);
+    let alt = table_image_alt(caption);
+    if !ctx.download_images || token.is_empty() {
+        // 不下载时保留原始引用：源码里仍看得出这是哪张图
+        return Ok(format!("![{alt}]({src})"));
+    }
+
+    fs::create_dir_all(ctx.img_dir).map_err(|error| format!("创建图片目录失败：{error}"))?;
+
+    let stem = format!("img_cell_{}", markdown::safe_filename(&token));
+    let output_base = ctx.img_dir.join(&stem);
+    let saved = lark::docs_media_preview_controlled(
+        &token,
+        &output_base.to_string_lossy(),
+        ctx.cancelled,
+    )
+    .map_err(|error| format!("表格内图片 {token} 下载失败：{error}"))?;
+
+    let saved = PathBuf::from(&saved);
+    if !saved.is_file() {
+        return Err(format!("表格内图片 {token} 下载结果不存在"));
+    }
+    let ext = saved
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_else(|| ".png".to_string());
+    let file_name = format!("{stem}{ext}");
+    let final_path = ctx.img_dir.join(&file_name);
+    if saved != final_path {
+        if final_path.exists() {
+            let _ = fs::remove_file(&final_path);
+        }
+        fs::rename(&saved, &final_path)
+            .map_err(|error| format!("表格内图片 {token} 重命名失败：{error}"))?;
+    }
+
+    Ok(format!("![{alt}]({}/{})", ctx.img_dir_name, file_name))
+}
+
+/// 图片 alt 文案：折叠空白、转义会破坏 `![…]` 结构的方括号
+fn table_image_alt(caption: &str) -> String {
+    let cleaned: String = caption.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() {
+        return "图片".to_string();
+    }
+    cleaned.replace(']', "\\]")
 }
 
 /// 处理一个标签形态的内嵌图片：下载到 `_images` 并改写为 Markdown 图片
@@ -879,12 +1116,19 @@ fn compose_embedded_note(
 }
 
 /// 处理一个内嵌电子表格：内联 Markdown 表格 + 整份导出 xlsx
+///
+/// `sheet_id`：该块真正引用的子表（引用里带的 `sheet-id`）。只渲染这一张子表，
+/// 避免"文档里嵌了两个子表，结果正文里每块都把整份工作簿渲染一遍"这种错位。
+/// 引用没带 `sheet-id`、或带的 id 在表里找不到时，退回渲染全部子表——宁可多给，
+/// 也不能少给。
 fn render_embedded_sheet(
     label: &str,
     token: &str,
+    sheet_id: Option<&str>,
     ctx: &EmbeddedContext<'_>,
     origin: Option<&str>,
     index: usize,
+    produce_file: bool,
     errors: &mut Vec<String>,
 ) -> RefOutcome {
     let Some(origin) = origin else {
@@ -901,17 +1145,38 @@ fn render_embedded_sheet(
     // ① 把数据读回来内联进正文 —— 这一步才真正解决"表格是空的"
     match lark::sheets_read_all_csv(&url) {
         Ok((_title, sheets)) => {
-            let multiple = sheets.len() > 1;
+            let selected: Vec<&lark::SheetCsv> = match sheet_id.filter(|id| !id.is_empty()) {
+                Some(id) => {
+                    let matched: Vec<&lark::SheetCsv> =
+                        sheets.iter().filter(|sheet| sheet.sheet_id == id).collect();
+                    if matched.is_empty() {
+                        crate::logger::warn(format!(
+                            "{label}（{token}）里找不到 sheet-id={id} 的子表，改为渲染全部子表"
+                        ));
+                        sheets.iter().collect()
+                    } else {
+                        matched
+                    }
+                }
+                None => sheets.iter().collect(),
+            };
+            // 指定了具体子表、或确实是多子表工作簿时，把子表名字打出来，
+            // 让"这一块对应的到底哪张表"一目了然。
+            let show_name = selected.len() > 1 || sheet_id.is_some();
             let mut inline = String::new();
-            for (name, csv) in &sheets {
-                let table = markdown::csv_to_markdown_table(csv, MAX_INLINE_TABLE_ROWS);
+            for sheet in &selected {
+                let table = markdown::csv_to_markdown_table_marked(
+                    &sheet.csv,
+                    MAX_INLINE_TABLE_ROWS,
+                    &sheet.image_cells,
+                );
                 if table.rows_used == 0 {
                     continue;
                 }
-                if multiple {
+                if show_name {
                     inline.push_str(&format!(
-                        "**{name}**（{} 行 × {} 列）\n\n",
-                        table.rows_total, table.columns
+                        "**{}**（{} 行 × {} 列）\n\n",
+                        sheet.name, table.rows_total, table.columns
                     ));
                 }
                 inline.push_str(&table.markdown);
@@ -919,6 +1184,19 @@ fn render_embedded_sheet(
                     inline.push_str(&format!(
                         "（该子表共 {} 行，此处只内联前 {} 行，完整数据见下方 xlsx）",
                         table.rows_total, table.rows_used
+                    ));
+                }
+                // 图片格在 CSV 里就是空串：不说明的话，正文那格看着像"原表本来就是空的"
+                if !sheet.image_cells.is_empty() {
+                    inline.push_str(&format!(
+                        "（该子表含 {} 处图片，Markdown 不能内联图片，已在对应格子标出 [图片]{}；\
+                         完整内容见下方 xlsx）",
+                        sheet.image_cells.len(),
+                        if sheet.image_cells_complete {
+                            ""
+                        } else {
+                            "，位置未读全"
+                        }
                     ));
                 }
                 inline.push('\n');
@@ -943,37 +1221,48 @@ fn render_embedded_sheet(
     }
 
     // ② 整份导出 xlsx（完整数据，与内联互不依赖：一边成功一边失败也照常报告）
+    //
+    // 同一个工作簿的第二个引用不再重复落盘，直接指向第一份；只有当第一份没落成
+    // （导出失败）时才补导，避免出现"链接指向一个不存在的文件"。
     let file_name = format!("内嵌表格_{:02}.xlsx", index.max(1));
-    match fs::create_dir_all(ctx.tables_dir) {
-        Ok(()) => {
-            let target = ctx.tables_dir.join(&file_name);
-            match lark::sheets_export_controlled(
-                &url,
-                &target.to_string_lossy(),
-                ctx.mode,
-                ctx.cancelled,
-            ) {
-                Ok(_) => {
-                    parts.push(format!(
-                        "完整数据：[{file_name}]({}/{file_name})",
-                        ctx.tables_dir_name
-                    ));
-                    exported = true;
-                }
-                Err(error) => {
-                    failed = true;
-                    let message = format!("{label}（{token}）导出 xlsx 失败：{error}");
-                    crate::logger::warn(format!("文档内嵌表格：{message}"));
-                    errors.push(message.clone());
-                    parts.push(message);
+    let reused = ctx.tables_dir.join(&file_name);
+    if !produce_file && reused.is_file() {
+        parts.push(format!(
+            "完整数据：[{file_name}]({}/{file_name})",
+            ctx.tables_dir_name
+        ));
+    } else {
+        match fs::create_dir_all(ctx.tables_dir) {
+            Ok(()) => {
+                let target = ctx.tables_dir.join(&file_name);
+                match lark::sheets_export_controlled(
+                    &url,
+                    &target.to_string_lossy(),
+                    ctx.mode,
+                    ctx.cancelled,
+                ) {
+                    Ok(_) => {
+                        parts.push(format!(
+                            "完整数据：[{file_name}]({}/{file_name})",
+                            ctx.tables_dir_name
+                        ));
+                        exported = true;
+                    }
+                    Err(error) => {
+                        failed = true;
+                        let message = format!("{label}（{token}）导出 xlsx 失败：{error}");
+                        crate::logger::warn(format!("文档内嵌表格：{message}"));
+                        errors.push(message.clone());
+                        parts.push(message);
+                    }
                 }
             }
-        }
-        Err(error) => {
-            failed = true;
-            let message = format!("创建内嵌表格目录失败：{error}");
-            errors.push(message.clone());
-            parts.push(message);
+            Err(error) => {
+                failed = true;
+                let message = format!("创建内嵌表格目录失败：{error}");
+                errors.push(message.clone());
+                parts.push(message);
+            }
         }
     }
 
