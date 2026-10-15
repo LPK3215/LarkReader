@@ -294,6 +294,26 @@ pub fn find_rich_refs(content: &str) -> Vec<RichRef> {
         });
     }
 
+    // ②-b 成对标签：服务端把内嵌表格写成 `<sheet …></sheet>` 这种**成对**形态，
+    // 而不是自闭合。只吃开标签的话，渲染结果后面会拖一个裸 `</sheet>` 留在正文里。
+    // Rust 的 regex 不支持反向引用，没法在一条正则里配对，所以这里按"紧随其后的
+    // 同名闭合标签"补齐区间：命中才扩展，`<image …/>` 这类自闭合写法不受影响。
+    for reference in refs.iter_mut() {
+        if !KNOWN_BLOCK_TAGS.contains(&reference.tag.as_str()) {
+            continue;
+        }
+        let rest = &content[reference.end..];
+        let trimmed = rest.trim_start();
+        let close = format!("</{}>", reference.tag);
+        let Some(head) = trimmed.get(..close.len()) else {
+            continue;
+        };
+        if head.eq_ignore_ascii_case(&close) {
+            reference.end += (rest.len() - trimmed.len()) + close.len();
+            reference.raw = content[reference.start..reference.end].to_string();
+        }
+    }
+
     // ③ IM 形态：`[sheet s1](https://xxx.feishu.cn/sheets/<token>)`
     let link_re = Regex::new(r"\[sheet\s+([^\]]*)\]\((https?://[^)\s]+)\)").unwrap();
     for caps in link_re.captures_iter(content) {
@@ -603,6 +623,27 @@ mod tests {
         assert_eq!(refs[0].token.as_deref(), Some("ShtToken1"));
         assert_eq!(refs[0].sheet_id.as_deref(), Some("abc"));
         assert_eq!(&content[refs[0].start..refs[0].end], refs[0].raw);
+    }
+
+    /// 成对标签形态：服务端实际输出的是 `<sheet …></sheet>`（不是自闭合）。
+    /// 只吃开标签的话，渲染结果后面会拖一个裸 `</sheet>` 留在正文里。
+    #[test]
+    fn test_find_rich_refs_paired_closing_tag_is_consumed() {
+        let content = "正文\n\n<sheet sheet-id=\"1FFRaa\" token=\"TOK\"></sheet>\n\n尾部";
+        let refs = find_rich_refs(content);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].kind, RichRefKind::Sheet);
+        assert_eq!(refs[0].token.as_deref(), Some("TOK"));
+        assert_eq!(
+            &content[refs[0].start..refs[0].end],
+            "<sheet sheet-id=\"1FFRaa\" token=\"TOK\"></sheet>"
+        );
+        assert_eq!(refs[0].raw, &content[refs[0].start..refs[0].end]);
+
+        // 自闭合写法不受影响：区间仍只覆盖标签本身
+        let self_closing = "<sheet token=\"TOK\"/>";
+        let refs = find_rich_refs(self_closing);
+        assert_eq!(refs[0].end, self_closing.len());
     }
 
     /// 属性顺序不固定：`sheet-id` 写在 `token` 前面也必须能取到 token。
