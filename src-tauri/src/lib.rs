@@ -70,6 +70,7 @@ pub fn run() {
             commands::start_login,
             commands::complete_login,
             commands::logout,
+            commands::purge_auth_data,
             commands::check_scopes,
             commands::qr_svg,
             commands::open_isolated_browser,

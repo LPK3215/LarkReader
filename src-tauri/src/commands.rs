@@ -330,6 +330,21 @@ pub async fn logout() -> Result<String, AppError> {
     Ok(result)
 }
 
+/// 彻底清除本机保存的授权与登录信息（终端页「清除所有授权与信息」按钮）。
+///
+/// 删除 lark-cli 的用户令牌、应用绑定与过程缓存，以及隔离浏览器的整个 profile
+/// （豆包/飞书的登录态都在里面）；保留导出设置与历史记录。清理后环境回到
+/// "飞书应用未配置"，需要重新走创建应用向导并登录。
+///
+/// 与 `logout` 的分工：logout 只清令牌，用于日常退出与切换账号；本命令是
+/// "换账号怎么都登不上"时的收尾手段，只能由用户显式点击触发，不接任何自动流程。
+#[tauri::command]
+pub async fn purge_auth_data() -> Result<String, AppError> {
+    tauri::async_runtime::spawn_blocking(env::purge_credentials)
+        .await
+        .map_err(|e| AppError::Other(format!("清除授权任务异常: {e}")))?
+}
+
 /// 巡检当前飞书 token 的授权范围（`lark-cli auth check --scope <LOGIN_SCOPES>`）。
 ///
 /// 只读命令：不改登录态、不发业务请求。体检里的 `scope_check` 是同一实现的附带结果，

@@ -311,6 +311,85 @@ pub fn logout() -> AppResult<String> {
     lark::auth_logout().map(|_| "已退出飞书登录".to_string())
 }
 
+/// 彻底清除本机保存的授权与登录信息。
+///
+/// 与 `logout()` 的区别（2026-10-15 本机实测，勿合并两者）：
+/// `logout` 只删 lark-cli 里的**用户令牌**，应用绑定与隔离浏览器的 profile 原样留着。
+/// 换账号时会因此残留旧绑定——授权页反复显示"当前账号（豆包账号）无法使用 xx 的
+/// 飞书 CLI"，退出重登也没用，因为每次用的还是同一份带旧登录态的 profile。
+///
+/// 本函数按"清完就当这台机器没登录过"的标准处理三处：
+///   1. lark-cli 用户令牌（`auth logout`，失败不阻断其余清理）
+///   2. lark-cli 应用绑定与过程缓存（`~/.lark-cli` 下的 config.json / cache / locks / logs）
+///   3. 隔离浏览器 profile（`{config_dir}/LarkReader/auth-browser-profile`）
+///
+/// **保留** `settings.json` 与 `task_history.json`：它们不是授权信息，清掉只会让用户
+/// 把导出目录、并发数重设一遍。返回一段可直接展示的中文说明。
+pub fn purge_credentials() -> AppResult<String> {
+    let mut removed: Vec<String> = Vec::new();
+
+    // 1) 令牌：本来就是未登录也照样往下清，不因为"没登录"就少清一处
+    if let Err(error) = lark::auth_logout() {
+        crate::logger::warn(format!("清除授权：auth logout 失败，继续清理其余项：{error}"));
+    }
+
+    // 2) 应用绑定与过程缓存
+    if let Some(home) = dirs::home_dir() {
+        let cli_home = home.join(".lark-cli");
+        for name in ["config.json", "cache", "locks", "logs"] {
+            let path = cli_home.join(name);
+            if !path.exists() {
+                continue;
+            }
+            let result = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            match result {
+                Ok(()) => removed.push(format!("lark-cli {name}")),
+                Err(error) => crate::logger::warn(format!(
+                    "清除授权：删除 {} 失败：{error}",
+                    path.display()
+                )),
+            }
+        }
+    }
+
+    // 3) 隔离浏览器 profile：豆包/飞书的登录态就存在这里，是"换了账号还显示旧账号"的根因
+    let profile = dirs::config_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+        .join("LarkReader")
+        .join("auth-browser-profile");
+    if profile.exists() {
+        match std::fs::remove_dir_all(&profile) {
+            Ok(()) => removed.push("隔离浏览器 profile".to_string()),
+            Err(error) => crate::logger::warn(format!(
+                "清除授权：删除浏览器 profile 失败：{error}（可能有窗口正在使用它）"
+            )),
+        }
+    }
+
+    crate::logger::info(format!(
+        "已清除本机授权与登录信息：{}",
+        if removed.is_empty() {
+            "无（本来就是干净状态）".to_string()
+        } else {
+            removed.join("、")
+        }
+    ));
+
+    Ok(if removed.is_empty() {
+        "本机没有可清除的授权与登录信息（已经是干净状态）".to_string()
+    } else {
+        format!(
+            "已清除：{}。飞书应用绑定与浏览器登录态均已移除，下次登录会重新创建应用；\
+             导出设置与历史记录保留，已导出的本地文件不受影响。",
+            removed.join("、")
+        )
+    })
+}
+
 /// 从可能包含日志行的输出中提取 JSON
 fn extract_json(stdout: &str) -> &str {
     let trimmed = stdout.trim();

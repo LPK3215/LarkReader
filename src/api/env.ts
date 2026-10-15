@@ -79,3 +79,14 @@ export async function openIsolatedBrowser(url: string): Promise<string> {
 export async function logout(): Promise<string> {
   return invoke<string>("logout");
 }
+
+/**
+ * 彻底清除本机保存的授权与登录信息（终端页「清除所有授权与信息」）。
+ *
+ * 比 logout 更彻底：连 lark-cli 的应用绑定、过程缓存，以及隔离浏览器的整个
+ * profile（豆包 / 飞书的登录态都在里面）一并删除。导出设置与历史记录保留。
+ * 清理后需重新创建飞书应用并登录。仅由用户显式点击触发。
+ */
+export async function purgeAuthData(): Promise<string> {
+  return invoke<string>("purge_auth_data");
+}

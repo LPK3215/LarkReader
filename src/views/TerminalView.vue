@@ -283,6 +283,34 @@ function onSwitchAccount() {
     },
   });
 }
+
+/**
+ * 彻底清除本机授权与登录信息 —— 比「退出登录」更狠的一档，只在异常时用。
+ *
+ * 什么时候用：退出重登后授权页仍提示「当前账号（豆包账号）无法使用 xx 的飞书 CLI」，
+ * 或环境卡里「飞书应用配置」怎么都配不对时。根因是隔离浏览器的 profile 里留着旧账号的
+ * 登录态、lark-cli 里留着旧应用绑定——光退出登录清不掉这两处，所以只能整体清零重来。
+ */
+function onPurgeAll() {
+  dialog.warning({
+    title: "清除所有授权与信息",
+    content:
+      "将删除本机保存的全部授权与登录信息：lark-cli 的飞书令牌、飞书应用绑定、" +
+      "登录过程缓存与刷新锁，以及隔离浏览器的整个 profile" +
+      "（豆包 / 飞书的登录态都在里面，这也是「换了账号仍显示旧账号」的原因）。" +
+      "清完后需要重新创建飞书应用并登录。导出设置（导出目录、并发数）与历史记录会保留，" +
+      "已导出的本地文件不受影响。确定继续吗？",
+    positiveText: "全部清除",
+    onPositiveClick: async () => {
+      try {
+        const note = await auth.purgeAll();
+        message.success(note || "已清除本机全部授权与登录信息");
+      } catch (err) {
+        message.error(String(err));
+      }
+    },
+  });
+}
 </script>
 
 <template>
@@ -469,6 +497,28 @@ function onSwitchAccount() {
           <p v-if="auth.envError" class="lr-term__errors">
             <AppIcon name="alert-circle" :size="13" />
             体检失败：{{ auth.envError }}
+          </p>
+        </div>
+      </section>
+
+      <!-- 清除所有授权与信息（危险操作，仅用户显式点击触发） -->
+      <section class="lr-card">
+        <header class="lr-card__head">
+          <span class="lr-card__title">清除所有授权与信息</span>
+        </header>
+        <div class="lr-card__body">
+          <p class="lr-term__tip">
+            删除本机全部授权与登录信息：飞书令牌、飞书应用绑定与过程缓存，
+            以及隔离浏览器的整个 profile（豆包 / 飞书的登录态都在里面）。
+            换账号后仍显示旧账号、或「飞书应用配置」怎么都配不对时，用它收尾重来。
+          </p>
+          <div class="lr-term__actions">
+            <button class="lr-btn lr-btn--danger" @click="onPurgeAll">
+              清除所有授权与信息
+            </button>
+          </div>
+          <p class="lr-term__hint">
+            导出设置（导出目录、并发数）与历史记录保留；已导出的本地文件不受影响。清完后需重新创建飞书应用并登录。
           </p>
         </div>
       </section>

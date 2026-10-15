@@ -22,6 +22,7 @@ import {
   completeLogin,
   logout as logoutIpc,
   openIsolatedBrowser,
+  purgeAuthData as purgeAuthDataIpc,
   qrSvg as qrSvgIpc,
   setupLarkCli,
   startLogin,
@@ -226,6 +227,21 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
+   * 彻底清除本机授权与登录信息 —— "换账号怎么都登不上"时的收尾手段。
+   *
+   * 比 logout 彻底：连 lark-cli 的应用绑定、过程缓存，以及隔离浏览器的整个 profile
+   * 一起删掉。profile 里留着的旧账号登录态，正是"换了账号仍显示旧账号"的根因；
+   * 光退出登录清不掉它。清理后环境回到"应用未配置"，需重新创建应用并登录。
+   * 导出设置与历史记录不受影响。返回后端给的逐项清除说明。
+   */
+  async function purgeAll(): Promise<string> {
+    cancelLogin();
+    const note = await purgeAuthDataIpc();
+    await refresh();
+    return note;
+  }
+
+  /**
    * 清除本机登录态并重新登录 —— 授权范围缺项的唯一修复入口。
    *
    * 顺序本身就是要义：`auth logout` 先删掉 lark-cli 里保存的旧令牌（旧令牌里没有
@@ -263,6 +279,7 @@ export const useAuthStore = defineStore("auth", () => {
     openVerification,
     cancelLogin,
     logout,
+    purgeAll,
     resetLogin,
   };
 });
