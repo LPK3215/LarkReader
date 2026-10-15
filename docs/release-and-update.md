@@ -16,6 +16,51 @@
 
 ---
 
+## 0. 默认发版流程（本机 CLI，当前唯一可用路径）
+
+> 本仓库**不用 CI 出包**：GitHub 账号的付费类功能不可用，tag 触发的 `publish` 工作流无法启动
+> runner（报 `account is locked due to a billing issue`）。仓库是 **public**，Actions 分钟数本就
+> 免费、不计费——所以这是**账号级**限制（支付挂起 / 风控），**与使用方式无关，也不是额度耗尽**。
+> 产物发布统一走本机 CLI，v0.3.0 已端到端验证可用。
+
+在项目根目录，按顺序执行：
+
+```powershell
+# 0) 确认工作区干净
+git status --short
+
+# 1) 发布门禁（cargo fmt / clippy / lib 单测 / 前端构建）
+npm run verify
+
+# 2) 回写三处版本号 + 提交 + 打 tag + 推送分支与 tag（CI 不会跑，tag 仅作版本标记）
+npm run release -- 0.3.0
+
+# 3) 本机出包：带签名私钥，产出 MSI / NSIS 安装包 + .sig 侧车
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.larkreader-signing\larkreader.key" -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+npm run tauri build
+
+# 4) 生成 updater 清单 latest.json（脚本已随仓库版本控制）
+node scripts/gen-latest.mjs 0.3.0 "本版更新要点…"
+
+# 5) 建 Release 并上传产物（--latest 让更新端点指向它）
+gh release create v0.3.0 --title "LarkReader v0.3.0" --notes-file <说明.md> --latest `
+  "src-tauri/target/release/bundle/nsis/LarkReader_0.3.0_x64-setup.exe" `
+  "src-tauri/target/release/bundle/nsis/LarkReader_0.3.0_x64-setup.exe.sig" `
+  "src-tauri/target/release/bundle/msi/LarkReader_0.3.0_x64_en-US.msi" `
+  "src-tauri/target/release/bundle/msi/LarkReader_0.3.0_x64_en-US.msi.sig" `
+  "src-tauri/target/release/bundle/latest.json"
+
+# 6) 验证：更新端点返回该版本、落地页显示该版本
+#    https://github.com/LPK3215/LarkReader/releases/latest/download/latest.json
+#    https://lpk3215.github.io/LarkReader/
+```
+
+> ⚠️ 同一版本**不要重跑 CI**：Release 与资产已存在，重跑 `publish` 会撞同名资产 / 重复发布。
+> 若同时也维护 Gitee / CNB，只需补推分支与 tag（`git push gitee main && git push gitee v<版本>`，CNB 同理）。
+
+---
+
 ## 1. 环境准备（第一次构建前）
 
 ### 1.1 通用工具
@@ -71,7 +116,8 @@ npm install        # 首次；或用 npm ci（按 lockfile 精确安装）
 | 只查前端 | `node scripts/verify.mjs --web-only` |
 | 打包当前平台 | `npm run tauri build` |
 | 预览一次发版会改哪些文件 | `npm run release -- 0.2.0 --dry-run` |
-| 正式发版并触发 CI | `npm run release -- 0.2.0` |
+| 正式发版（门禁 + 版本回写 + 打 tag） | `npm run release -- 0.3.0` |
+| 生成应用内更新清单 `latest.json` | `node scripts/gen-latest.mjs 0.3.0 "说明"` |
 
 > `npm run tauri dev` 会自动执行 `package.json` 里配置的 `beforeDevCommand`（即 `npm run dev`，Vite 起在 `http://localhost:1420`）。
 
@@ -139,9 +185,9 @@ src-tauri/target/release/bundle/
 
 > Tauri 的 GUI 依赖系统 WebView，跨操作系统交叉编译通常不可行——各平台包要在对应系统上构建。这正是 CI 用四平台矩阵的原因。
 
-### 3.4 CI 不可用时的本地补发路径（实测可行，2026-09-15）
+### 3.4 本机 CLI 发版路径（**当前默认**，见 §0；2026-09-15 首验、2026-10-16 v0.3.0 复用）
 
-当 GitHub Actions 因账号计费等问题跑不起来时，可以本地出 Windows 包、手动挂到 Release：
+本仓库 GitHub Actions 因账号级限制跑不起来（见 §0），产物一律本地出 Windows 包、手动挂到 Release：
 
 > **实测记录（2026-10-16，v0.3.0）**：tag 推上去后 publish workflow 未启动，报
 > `The job was not started because your account is locked due to a billing issue`。

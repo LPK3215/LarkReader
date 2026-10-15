@@ -138,7 +138,7 @@ npm run tauri dev        # 带 Rust 后端的桌面开发窗口
 ```powershell
 npm run verify           # 发布门禁：fmt / clippy / 单测 / 前端构建，任一失败即停
 npm run clean:e2e        # 清空 E2E 下载回归输出目录（跑批前必做）
-npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI 三平台出包
+npm run release -- <版本> # 发版：门禁 → 版本回写 → tag → 推送（产物走本机 CLI 路径，见 docs/release-and-update.md §0）
 ```
 
 > `npm run dev` 仅启动前端（Vite）。完整功能需要真实 Rust 后端，请使用 `npm run tauri dev`。
