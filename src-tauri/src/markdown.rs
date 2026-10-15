@@ -105,7 +105,13 @@ pub fn safe_filename(name: &str) -> String {
     // `&#xA;` 解码出的换行，原样落进文件名在 Windows 上是非法字符。
     let cleaned: String = cleaned
         .chars()
-        .map(|character| if character.is_control() { '_' } else { character })
+        .map(|character| {
+            if character.is_control() {
+                '_'
+            } else {
+                character
+            }
+        })
         .collect();
     let trimmed = cleaned.trim().trim_end_matches('.').to_string();
     // 安全截断到 100 个字符（不切断多字节字符）
@@ -211,9 +217,41 @@ const KNOWN_BLOCK_TAGS: &[&str] = &[
 
 /// 正文里合法出现的 HTML 标签：正常写法，不代表"有内容没被还原"
 const HTML_TAGS: &[&str] = &[
-    "a", "b", "blockquote", "br", "center", "code", "del", "details", "div", "em", "font", "h1",
-    "h2", "h3", "h4", "h5", "h6", "hr", "i", "ins", "kbd", "li", "mark", "ol", "p", "pre", "s",
-    "small", "span", "strong", "sub", "summary", "sup", "title", "ul",
+    "a",
+    "b",
+    "blockquote",
+    "br",
+    "center",
+    "code",
+    "del",
+    "details",
+    "div",
+    "em",
+    "font",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "ins",
+    "kbd",
+    "li",
+    "mark",
+    "ol",
+    "p",
+    "pre",
+    "s",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "title",
+    "ul",
 ];
 
 /// 残留了也不算"内容没还原"的标签
@@ -585,8 +623,11 @@ fn escape_link_text(text: &str) -> String {
 /// 围栏代码块里的同名写法是**示例文本**，跳过不转。
 pub fn restore_inline_server_tags(content: &str) -> String {
     let fenced = fenced_code_ranges(content);
-    let in_fence =
-        |start: usize| fenced.iter().any(|(open, close)| start >= *open && start < *close);
+    let in_fence = |start: usize| {
+        fenced
+            .iter()
+            .any(|(open, close)| start >= *open && start < *close)
+    };
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
 
     let bookmark_re = Regex::new(r#"(?is)<bookmark\b([^>]*)>\s*</bookmark>"#).unwrap();
@@ -744,11 +785,7 @@ pub fn fix_deep_headings(content: &str, xml: &str) -> String {
         if *md_level != 6 || xml_level <= 6 {
             continue;
         }
-        replacements.push((
-            *start,
-            *end,
-            format!("###### [h{}] {}\n", xml_level, text),
-        ));
+        replacements.push((*start, *end, format!("###### [h{}] {}\n", xml_level, text)));
     }
     if replacements.is_empty() {
         return content.to_string();
@@ -801,10 +838,7 @@ fn xml_heading_levels(xml: &str) -> Vec<usize> {
     let heading_re = Regex::new(r"(?is)<h([1-9])\b").unwrap();
     let mut out = Vec::new();
     for caps in heading_re.captures_iter(xml) {
-        if let Some(level) = caps
-            .get(1)
-            .and_then(|m| m.as_str().parse::<usize>().ok())
-        {
+        if let Some(level) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
             out.push(level);
         }
     }
@@ -987,9 +1021,8 @@ where
 
     // 组装网格：`None` 表示该位置还没被任何单元格占用
     let mut grid: Vec<Vec<Option<String>>> = Vec::new();
-    let mut row_index = 0usize;
     let mut header_index: Option<usize> = None;
-    for row in &rows {
+    for (row_index, row) in rows.iter().enumerate() {
         while grid.len() <= row_index {
             grid.push(Vec::new());
         }
@@ -1024,7 +1057,6 @@ where
         if row.is_header && header_index.is_none() {
             header_index = Some(row_index);
         }
-        row_index += 1;
     }
 
     let columns = grid.iter().map(Vec::len).max().unwrap_or(0);
@@ -1083,8 +1115,10 @@ struct HtmlTableCell {
 
 fn parse_html_table_rows(html: &str) -> Vec<HtmlTableRow> {
     let thead_re = Regex::new(r"(?is)<thead\b[^>]*>.*?</thead\s*>").unwrap();
-    let header_ranges: Vec<(usize, usize)> =
-        thead_re.find_iter(html).map(|m| (m.start(), m.end())).collect();
+    let header_ranges: Vec<(usize, usize)> = thead_re
+        .find_iter(html)
+        .map(|m| (m.start(), m.end()))
+        .collect();
 
     let tr_re = Regex::new(r"(?is)<tr\b[^>]*>(.*?)</tr\s*>").unwrap();
     let cell_re = Regex::new(r"(?is)<t([dh])\b([^>]*?)(?:/>|>(.*?)</t[dh]\s*>)").unwrap();
@@ -1144,9 +1178,7 @@ pub fn attr_value(attrs: &str, name: &str) -> Option<String> {
                     }
                 }
                 Some(_) => {
-                    let end = rest
-                        .find(|c: char| c.is_whitespace())
-                        .unwrap_or(rest.len());
+                    let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
                     if end > 0 {
                         return Some(decode_entities(&rest[..end]));
                     }
@@ -1164,8 +1196,8 @@ fn html_inline_to_markdown<F>(html: &str, image: &mut F) -> String
 where
     F: FnMut(&str, &str) -> String,
 {
-    let tag_re = Regex::new(r"(?is)<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9_-]*)((?:\s[^<>]*?)?)\s*/?>")
-        .unwrap();
+    let tag_re =
+        Regex::new(r"(?is)<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9_-]*)((?:\s[^<>]*?)?)\s*/?>").unwrap();
     let mut out = String::new();
     let mut rest = html;
     loop {
@@ -1306,7 +1338,10 @@ fn decode_entity(entity: &str) -> Option<char> {
         "nbsp" => return Some(' '),
         _ => {}
     }
-    if let Some(hex) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
+    if let Some(hex) = entity
+        .strip_prefix("#x")
+        .or_else(|| entity.strip_prefix("#X"))
+    {
         return u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);
     }
     if let Some(decimal) = entity.strip_prefix('#') {
@@ -1379,7 +1414,10 @@ mod tests {
             "a_b_c_d_e_f_g_h_i_j"
         );
         // 换行 / 制表 / 其他控制字符不进文件名（`<title>` 里可能解码出换行）
-        assert_eq!(safe_filename("换行\n标题\t制表\u{7}响铃"), "换行_标题_制表_响铃");
+        assert_eq!(
+            safe_filename("换行\n标题\t制表\u{7}响铃"),
+            "换行_标题_制表_响铃"
+        );
         // 首尾空白与尾点
         assert_eq!(safe_filename("  点结尾..  "), "点结尾");
         // 全空白 → untitled
@@ -1469,7 +1507,10 @@ mod tests {
 引用文献：<cite type="citation"><a href="https://www.feishu.cn" url-type="5">飞书官网文献</a></cite>
 "#;
         let out = restore_inline_server_tags(content);
-        assert!(out.contains("[飞书官网书签](https://www.feishu.cn)"), "{out}");
+        assert!(
+            out.contains("[飞书官网书签](https://www.feishu.cn)"),
+            "{out}"
+        );
         assert!(
             out.contains("[打开飞书官网按钮](https://www.feishu.cn)"),
             "{out}"
@@ -1498,7 +1539,10 @@ mod tests {
         );
         // 不能就地还原的标签保持原文，交给文末提示兜底
         assert!(out.contains("<callout emoji=\"💡\">"), "{out}");
-        assert!(out.contains("<source name=\"附件.png\" token=\"T\"/>"), "{out}");
+        assert!(
+            out.contains("<source name=\"附件.png\" token=\"T\"/>"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -1634,7 +1678,11 @@ mod tests {
     #[test]
     fn test_find_rich_refs_ignores_inline_html_and_autolinks() {
         let content = "行内 <span>文字</span> 与 <br>\n\n<div align=\"center\">居中</div>\n\n<https://example.com>\n\n<details>\n<summary>展开</summary>\n</details>\n";
-        assert!(find_rich_refs(content).is_empty(), "{:?}", find_rich_refs(content));
+        assert!(
+            find_rich_refs(content).is_empty(),
+            "{:?}",
+            find_rich_refs(content)
+        );
     }
 
     /// 围栏代码块里的标签是示例文本，处理它会反过来把正文改坏。
@@ -1644,7 +1692,10 @@ mod tests {
         let refs = find_rich_refs(content);
         assert_eq!(refs.len(), 1, "{:?}", refs);
         assert_eq!(refs[0].token.as_deref(), Some("REAL"));
-        assert_eq!(&content[refs[0].start..refs[0].end], "<sheet token=\"REAL\"/>");
+        assert_eq!(
+            &content[refs[0].start..refs[0].end],
+            "<sheet token=\"REAL\"/>"
+        );
     }
 
     /// 未闭合的围栏也要算进保护区，不能因为少了收尾就漏出去。
@@ -1679,8 +1730,16 @@ mod tests {
         let table = csv_to_markdown_table("h\nA|B\nC\nD", 3);
         assert_eq!(table.rows_total, 4);
         assert_eq!(table.rows_used, 3, "含表头最多取 3 行");
-        assert!(table.markdown.contains("A\\|B"), "竖线必须转义：{}", table.markdown);
-        assert!(!table.markdown.contains("D"), "超出行数不应写入：{}", table.markdown);
+        assert!(
+            table.markdown.contains("A\\|B"),
+            "竖线必须转义：{}",
+            table.markdown
+        );
+        assert!(
+            !table.markdown.contains("D"),
+            "超出行数不应写入：{}",
+            table.markdown
+        );
     }
 
     /// 网格比实际用到的列宽时，尾部全空列要裁掉（否则正文拖一串 `|  |  |`）。
@@ -1689,7 +1748,10 @@ mod tests {
         // 网格 4 列，实际只用到前 2 列
         let table = csv_to_markdown_table("姓名,部门,,\n张三,技术部,,\n李四,产品部,,\n", 200);
         assert_eq!(table.columns, 2, "尾部全空列应裁掉：{}", table.markdown);
-        assert_eq!(table.markdown, "| 姓名 | 部门 |\n| --- | --- |\n| 张三 | 技术部 |\n| 李四 | 产品部 |\n");
+        assert_eq!(
+            table.markdown,
+            "| 姓名 | 部门 |\n| --- | --- |\n| 张三 | 技术部 |\n| 李四 | 产品部 |\n"
+        );
         // 中间的空列保留（表的真实结构，裁了会错位）
         let middle = csv_to_markdown_table("a,,c\n1,2,3\n", 200);
         assert_eq!(middle.columns, 3);
@@ -1723,7 +1785,11 @@ mod tests {
     fn test_csv_to_markdown_table_keeps_image_only_row() {
         let csv = "名称,截图\n数据1,x\n,\n";
         let table = csv_to_markdown_table_marked(csv, 200, &[(3, 1)]);
-        assert_eq!(table.rows_total, 3, "只有图片的行必须保留：{}", table.markdown);
+        assert_eq!(
+            table.rows_total, 3,
+            "只有图片的行必须保留：{}",
+            table.markdown
+        );
         assert!(
             table.markdown.ends_with("|  | [图片] |\n"),
             "图片格应标成 [图片]：{}",
@@ -1744,9 +1810,15 @@ mod tests {
         let table = html_table_to_markdown(html, |_, _| "[img]".to_string()).expect("应能解析");
         assert!(table.contains("| A | B |"), "{table}");
         assert!(table.contains("| 1 | **粗** & `c` |"), "{table}");
-        assert!(table.contains("| 跨列 |  |"), "colspan 只写首格、其余留空：{table}");
+        assert!(
+            table.contains("| 跨列 |  |"),
+            "colspan 只写首格、其余留空：{table}"
+        );
         assert!(table.contains("| 纵跨 | r1b |"), "{table}");
-        assert!(table.contains("|  | $E=mc^2$ |"), "rowspan 要向下占列：{table}");
+        assert!(
+            table.contains("|  | $E=mc^2$ |"),
+            "rowspan 要向下占列：{table}"
+        );
     }
 
     #[test]
@@ -1754,9 +1826,8 @@ mod tests {
         let html = "<table><thead><tr><th>h</th></tr></thead><tbody>\
             <tr><td><img name=\"local1.png\" caption=\"截&#xA;图\" src=\"https://feishu.cn/file/TOKEN1\"/></td></tr>\
             <tr><td>a | b</td></tr></tbody></table>";
-        let table =
-            html_table_to_markdown(html, |src, caption| format!("[{caption}]({src})"))
-                .expect("应能解析");
+        let table = html_table_to_markdown(html, |src, caption| format!("[{caption}]({src})"))
+            .expect("应能解析");
         assert!(
             table.contains("[截 图]"),
             "caption 要解码实体、再随单元格折叠空白：{table}"
@@ -1786,7 +1857,10 @@ mod tests {
         assert!(nested.starts_with("````html\n"), "{nested}");
         assert!(nested.ends_with("\n````"), "{nested}");
         // 尾部换行由结构负责，不会多出空行
-        assert_eq!(wrap_fence("html", "<p>hi</p>\n\n"), "```html\n<p>hi</p>\n```");
+        assert_eq!(
+            wrap_fence("html", "<p>hi</p>\n\n"),
+            "```html\n<p>hi</p>\n```"
+        );
     }
 
     #[test]
@@ -1865,7 +1939,10 @@ mod tests {
             !has_six_level_heading("```markdown\n###### 示例\n```\n"),
             "围栏里的示例不算标题"
         );
-        assert!(!has_six_level_heading("######不是标题\n"), "# 后没有空格不算标题");
+        assert!(
+            !has_six_level_heading("######不是标题\n"),
+            "# 后没有空格不算标题"
+        );
     }
 
     #[test]

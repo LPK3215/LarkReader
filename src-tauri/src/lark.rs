@@ -1437,7 +1437,7 @@ fn sheets_image_cells(
         "--format",
         "json",
     ])?;
-    let resp: LarkResponse = serde_json::from_str(&extract_json(&stdout))
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
         .map_err(|e| AppError::JsonParse(e.to_string()))?;
     let data = resp
         .data
@@ -1470,9 +1470,7 @@ fn sheets_image_cells(
                     .iter()
                     .enumerate()
                     .map(|(fallback, item)| {
-                        item.as_str()
-                            .and_then(column_index)
-                            .unwrap_or(fallback)
+                        item.as_str().and_then(column_index).unwrap_or(fallback)
                     })
                     .collect()
             })

@@ -406,7 +406,7 @@ fn extract_doc_with_title_controlled(
             Ok(xml) => {
                 let fixed = markdown::fix_deep_headings(&content, &xml);
                 if fixed != content {
-                    crate::logger::info("已按 XML 层级修正深层标题（h7~h9）".to_string());
+                    crate::logger::info("已按 XML 层级修正深层标题（h7~h9）");
                     content = fixed;
                 }
             }
@@ -464,8 +464,12 @@ fn unique_markdown_filename(output_dir: &Path, title: &str) -> String {
     // 第二次导出时会把这些资源目录当成自己新建的，导致图片/内嵌表格互相覆盖。
     let taken = |filename: &str| {
         output_dir.join(filename).exists()
-            || output_dir.join(markdown::images_dir_name(filename)).exists()
-            || output_dir.join(markdown::tables_dir_name(filename)).exists()
+            || output_dir
+                .join(markdown::images_dir_name(filename))
+                .exists()
+            || output_dir
+                .join(markdown::tables_dir_name(filename))
+                .exists()
     };
     let filename = format!("{}.md", title);
     if !taken(&filename) {
@@ -819,11 +823,13 @@ fn render_embedded_ref(
                 };
             };
             render_embedded_sheet(
-                &label,
-                token,
-                reference.sheet_id.as_deref(),
+                SheetTarget {
+                    label: &label,
+                    token,
+                    sheet_id: reference.sheet_id.as_deref(),
+                    origin,
+                },
                 ctx,
-                origin,
                 index,
                 produce_file,
                 errors,
@@ -979,12 +985,9 @@ fn table_cell_image_markdown(
 
     let stem = format!("img_cell_{}", markdown::safe_filename(&token));
     let output_base = ctx.img_dir.join(&stem);
-    let saved = lark::docs_media_preview_controlled(
-        &token,
-        &output_base.to_string_lossy(),
-        ctx.cancelled,
-    )
-    .map_err(|error| format!("表格内图片 {token} 下载失败：{error}"))?;
+    let saved =
+        lark::docs_media_preview_controlled(&token, &output_base.to_string_lossy(), ctx.cancelled)
+            .map_err(|error| format!("表格内图片 {token} 下载失败：{error}"))?;
 
     let saved = PathBuf::from(&saved);
     if !saved.is_file() {
@@ -1077,10 +1080,7 @@ fn render_embedded_image(
     if saved != final_path {
         if final_path.exists() {
             if let Err(error) = fs::remove_file(&final_path) {
-                return fail(
-                    format!("内嵌图片 {token} 无法替换旧文件：{error}"),
-                    errors,
-                );
+                return fail(format!("内嵌图片 {token} 无法替换旧文件：{error}"), errors);
             }
         }
         if let Err(error) = fs::rename(&saved, &final_path) {
@@ -1120,6 +1120,17 @@ fn compose_embedded_note(
     }
 }
 
+/// 一个内嵌电子表格块要渲染的"目标定位信息"。
+///
+/// 打包成结构体，是为了不让 `render_embedded_sheet` 的参数越堆越多
+/// （clippy `too_many_arguments`）；函数体里照旧拆回局部变量使用。
+struct SheetTarget<'a> {
+    label: &'a str,
+    token: &'a str,
+    sheet_id: Option<&'a str>,
+    origin: Option<&'a str>,
+}
+
 /// 处理一个内嵌电子表格：内联 Markdown 表格 + 整份导出 xlsx
 ///
 /// `sheet_id`：该块真正引用的子表（引用里带的 `sheet-id`）。只渲染这一张子表，
@@ -1127,15 +1138,18 @@ fn compose_embedded_note(
 /// 引用没带 `sheet-id`、或带的 id 在表里找不到时，退回渲染全部子表——宁可多给，
 /// 也不能少给。
 fn render_embedded_sheet(
-    label: &str,
-    token: &str,
-    sheet_id: Option<&str>,
+    sheet: SheetTarget<'_>,
     ctx: &EmbeddedContext<'_>,
-    origin: Option<&str>,
     index: usize,
     produce_file: bool,
     errors: &mut Vec<String>,
 ) -> RefOutcome {
+    let SheetTarget {
+        label,
+        token,
+        sheet_id,
+        origin,
+    } = sheet;
     let Some(origin) = origin else {
         let message = format!("{label}（{token}）未能导出：无法从文档链接推断飞书域名");
         errors.push(message.clone());

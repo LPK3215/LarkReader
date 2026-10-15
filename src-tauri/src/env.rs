@@ -330,7 +330,9 @@ pub fn purge_credentials() -> AppResult<String> {
 
     // 1) 令牌：本来就是未登录也照样往下清，不因为"没登录"就少清一处
     if let Err(error) = lark::auth_logout() {
-        crate::logger::warn(format!("清除授权：auth logout 失败，继续清理其余项：{error}"));
+        crate::logger::warn(format!(
+            "清除授权：auth logout 失败，继续清理其余项：{error}"
+        ));
     }
 
     // 2) 应用绑定与过程缓存
@@ -348,10 +350,9 @@ pub fn purge_credentials() -> AppResult<String> {
             };
             match result {
                 Ok(()) => removed.push(format!("lark-cli {name}")),
-                Err(error) => crate::logger::warn(format!(
-                    "清除授权：删除 {} 失败：{error}",
-                    path.display()
-                )),
+                Err(error) => {
+                    crate::logger::warn(format!("清除授权：删除 {} 失败：{error}", path.display()))
+                }
             }
         }
     }
