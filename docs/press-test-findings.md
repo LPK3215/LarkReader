@@ -170,3 +170,64 @@ lark-cli sheets +cells-set-image --spreadsheet-token <TOKEN> --sheet-id <SID> --
 ```
 
 > 备注：压测期间飞书 OpenAPI 出现过多次 DNS/超时抖动，均通过重试恢复，非代码问题。
+
+---
+
+## 六、第二轮压测（扩展块 / 样式 / 下拉 / 外壳边界）
+
+> 第一轮覆盖了符号公式、嵌套、超链接、大体积；第二轮专撞第一轮没碰过的面：扩展块
+> （callout/grid/bookmark/button/time/cite/附件/画板）、文档样式（颜色/对齐/底色/合并）、
+> 独立表格（下拉/数字格式/合并/公式）、导出外壳边界（非法文件名/超长标题/重名/空文档/纯图/纯表）。
+
+### 新增压测对象
+
+| 对象 | 链接 |
+|---|---|
+| 压测E · 样式与表格地狱2 | <https://qcny2iztd1p8.feishu.cn/docx/Ol8CdBMPto087hxJIE3c06cUnEc> |
+| 压测F · 扩展块与富对象（重复标题一份） | <https://qcny2iztd1p8.feishu.cn/docx/NfD3dykzuo3ECdxD25rcjKufn1d> ／ <https://qcny2iztd1p8.feishu.cn/docx/YMBRdnRzZoDViHxcMyKcliEBnBb> |
+| 压测H1 · 标题含非法文件名字符 | <https://qcny2iztd1p8.feishu.cn/docx/DojjdvVvao4YEgx10pycJLmHnqb> |
+| 压测H2 · 空文档 | <https://qcny2iztd1p8.feishu.cn/docx/AbKqdwsizoiocwxddN3cEHTbneh> |
+| 压测H3 · 纯图文档 | <https://qcny2iztd1p8.feishu.cn/docx/MnEhdDc67oDCWnxBDC7c0YRvnTh> |
+| 压测H4 · 纯表文档 | <https://qcny2iztd1p8.feishu.cn/docx/VEoNddTHpojXfkxCtEBc98VtnHc> |
+| 压测H5 · 172 字超长标题 | <https://qcny2iztd1p8.feishu.cn/docx/DJ1Ed1sxxo0cMIxaEoBcA2e3nNf> |
+| 压测G · 表格格式与下拉 | <https://qcny2iztd1p8.feishu.cn/sheets/Yir9sf2tGhDRlDt46AkcsYiynQh> |
+
+### 本轮发现并修复
+
+1. **docx 直链标题再退化（缺口 8 的漏网）** —— 文档正文里**一个标题块都没有**时，飞书把文档
+   标题渲染成首个 `# 一级标题` 而**不是** `<title>` 标签；`extract_document_title` 只认
+   `<title>`，文件名于是又退回 "token 前 20 字符"。实测 docH1/H2/H3/H4/H5 全部中招。
+   修复：取不到 `<title>` 时，把首个非空行的 `# 一级标题` 当作文档标题（有 `<title>` 时仍优先它）。
+   修复后 `压测H2 · 空文档.md`、`压测H4 · 纯表文档.md`、长标题截断到 100 字等均正确。
+2. **文件名安全化两处加固** —— ① 控制字符（`<title>` 可能解码出换行）此前不进 `safe_filename`，
+   会生成 Windows 非法文件名，现统一换成 `_`；② 截断到 100 字时截断点可能正好落在点号/空格上，
+   留下 Windows 不接受的结尾，现截断后再收一次尾。
+3. **可还原的残留标签就地转 Markdown** —— `<bookmark>` / `<button>` / `<cite user|doc|citation>` 的
+   数据全在属性里、不联网就能还原，之前却让导出正文留一串 XML。现转成
+   `[书签](url)` / `[按钮文字](url)` / `@用户名` / `@文档标题` / `[文献标题](url)`，围栏代码块里的
+   示例跳过。文末"残留标签"从 9 种降到 6 种（剩 callout、grid、column、time、figure、source）。
+
+### 本轮实测结论（无需修复）
+
+- **独立表格导出（xlsx）完整保留**：`mergeCell A6:D6`、2 个下拉（`dataValidation` D2:D4 / E2:E4）、
+  3 条公式（`A2+B2` / `SUM(A2:A3)` / `ROUND(A2*100,1)`）、数字格式（`0.00%`、`$#,##0.00`、
+  `yyyy-mm-dd`）、含 `| , " * _ #` 与换行的单元格文本。
+- **同批重名文档**导出到同一目录 → 第二份自动加 ` (2)` 后缀（`压测F · 扩展块与富对象 (2).md`）。
+- **含非法文件名字符的标题** → `压测H1 · 非法字符_ 反斜杠_ 冒号_ 星号__ …` 正常落盘。
+- **空文档 / 纯图 / 纯表** 均 `Success`；纯图文档图片 1/1 下载成功。
+- **文档样式**：`<span text-color/background-color>`、`align`、表头底色 `background-color`、
+  `colspan`/`rowspan`、`vertical-align`、嵌套有序/无序列表、`checkbox` → 任务列表、`pre/code` 带
+  `caption`；表格单元内 `**粗**` / `` `代码` `` / `$latex$` / 链接 / `\|` 转义均正确。
+- **画板**：`whiteboard type=plantuml` → ```plantuml 围栏；`type=svg` → 服务端只给
+  `<whiteboard token>`，导出端改写为"内嵌画板无法离线还原"的提示（图形内容无法文本化，属预期）。
+
+### 未能覆盖 / 写入端限制（如实记录，非导出端缺陷）
+
+- `<bitable token=…/>`：**create API 静默吞掉**（fetch 回来那一节是空的）→ "文档内嵌多维表格"
+  无法用 CLI 造数；导出端已有 `RichRefKind::Bitable` 分支（每张表 → `.ndjson`），需 UI 手插一次补验。
+- `okr` / `task` / `chat_card`：当前登录态缺 `okr:*`、`task:task:write`、`im:chat:read` 权限，无法造数。
+- 表格 `隐藏行列 / 冻结 / 分组`（写入端 `sheet_ai/…/invoke_write` 一度连败，网络恢复后已补上）——
+  导出的 xlsx 里 `<pane state="frozen" ySplit="1">`、H 列 `<col hidden="true">`、第 8 行
+  `<row hidden="true" r="8">`、第 10~12 行 `<row outlineLevel="1">` 全部在 → **冻结 / 隐藏 / 分组均保留**。
+- 单元格内嵌图片（`+cells-set-image`）→ xlsx 内 `xl/media/image1.jpeg` + `<drawing>` ✅ 保留。
+- 表格 `筛选 / 条件格式`：`--properties` 要按 schema 传 `rules`，本轮没造数，待补。

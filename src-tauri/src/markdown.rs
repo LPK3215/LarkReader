@@ -101,6 +101,12 @@ pub fn replace_image_urls(content: &str, url_map: &[(String, String)]) -> String
 pub fn safe_filename(name: &str) -> String {
     let re = Regex::new(r#"[\\/:*?"<>|]"#).unwrap();
     let cleaned = re.replace_all(name, "_").to_string();
+    // 控制字符（换行、制表、零宽等）一律换成下划线：正文里的 `<title>` 可能夹带
+    // `&#xA;` 解码出的换行，原样落进文件名在 Windows 上是非法字符。
+    let cleaned: String = cleaned
+        .chars()
+        .map(|character| if character.is_control() { '_' } else { character })
+        .collect();
     let trimmed = cleaned.trim().trim_end_matches('.').to_string();
     // 安全截断到 100 个字符（不切断多字节字符）
     let trimmed = if trimmed.is_empty() {
@@ -119,7 +125,14 @@ pub fn safe_filename(name: &str) -> String {
         trimmed
     };
     if trimmed.chars().count() > 100 {
-        trimmed.chars().take(100).collect()
+        // 截断点可能正好落在点号或空格上——原样留下会在 Windows 上生成非法文件名，
+        // 所以截断后再收一次尾。
+        trimmed
+            .chars()
+            .take(100)
+            .collect::<String>()
+            .trim_end_matches([' ', '.'])
+            .to_string()
     } else {
         trimmed
     }
@@ -550,19 +563,147 @@ pub fn unresolved_tags(content: &str) -> Vec<String> {
     seen
 }
 
+/// 链接文字里的 `[` `]` 转义，否则会破坏 `[文字](url)` 的结构
+fn escape_link_text(text: &str) -> String {
+    text.replace('[', "\\[").replace(']', "\\]")
+}
+
+/// 把服务端"原样保留"、但**数据全在属性里、无需联网即可还原**的标签就地转成 Markdown。
+///
+/// 为什么只认这三个：`bookmark` / `button` / `cite` 的 `href` / `src` / `name` /
+/// `user-name` / `title` 都写在属性或紧邻的正文里，不依赖任何请求；留着原文只会让用户
+/// 对着一串 XML 发懵（"导出成功"但看着像坏文件）。其余标签要么要下载附件
+/// （`source` / `figure`），要么是结构块（`callout` / `grid`），要么语义已丢
+/// （`time`），一律保持原文，由文末的统一提示兜底，不在这里硬转。
+///
+/// - `<bookmark name="N" href="U"></bookmark>` → `[N](U)`
+/// - `<button … src="U">文字</button>` → `[文字](U)`
+/// - `<cite type="user" … user-name="张三">` → `@张三`
+/// - `<cite type="doc" … title="某文档">` → `@某文档`
+/// - `<cite type="citation"><a href="U">标题</a></cite>` → `[标题](U)`
+///
+/// 围栏代码块里的同名写法是**示例文本**，跳过不转。
+pub fn restore_inline_server_tags(content: &str) -> String {
+    let fenced = fenced_code_ranges(content);
+    let in_fence =
+        |start: usize| fenced.iter().any(|(open, close)| start >= *open && start < *close);
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+
+    let bookmark_re = Regex::new(r#"(?is)<bookmark\b([^>]*)>\s*</bookmark>"#).unwrap();
+    let button_re = Regex::new(r#"(?is)<button\b([^>]*)>(.*?)</button>"#).unwrap();
+    let cite_re = Regex::new(r#"(?is)<cite\b([^>]*)>(.*?)</cite>"#).unwrap();
+
+    for caps in bookmark_re.captures_iter(content) {
+        let Some(whole) = caps.get(0) else { continue };
+        if in_fence(whole.start()) {
+            continue;
+        }
+        let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let (Some(name), Some(href)) = (attr_value(attrs, "name"), attr_value(attrs, "href"))
+        else {
+            continue;
+        };
+        let (name, href) = (name.trim(), href.trim());
+        if name.is_empty() || href.is_empty() {
+            continue;
+        }
+        edits.push((
+            whole.start(),
+            whole.end(),
+            format!("[{}]({})", escape_link_text(name), href),
+        ));
+    }
+
+    for caps in button_re.captures_iter(content) {
+        let Some(whole) = caps.get(0) else { continue };
+        if in_fence(whole.start()) {
+            continue;
+        }
+        let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let text = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+        let Some(src) = attr_value(attrs, "src") else {
+            continue;
+        };
+        let src = src.trim();
+        if text.is_empty() || src.is_empty() {
+            continue;
+        }
+        edits.push((
+            whole.start(),
+            whole.end(),
+            format!("[{}]({})", escape_link_text(text), src),
+        ));
+    }
+
+    for caps in cite_re.captures_iter(content) {
+        let Some(whole) = caps.get(0) else { continue };
+        if in_fence(whole.start()) {
+            continue;
+        }
+        let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let inner = caps.get(2).map(|m| m.as_str()).unwrap_or("").trim();
+        let kind = attr_value(attrs, "type")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let replacement = match kind.as_str() {
+            "user" => attr_value(attrs, "user-name")
+                .filter(|name| !name.trim().is_empty())
+                .map(|name| format!("@{}", name.trim())),
+            "doc" => attr_value(attrs, "title")
+                .filter(|title| !title.trim().is_empty())
+                .map(|title| format!("@{}", title.trim())),
+            "citation" => {
+                let mut without_image = |_src: &str, _caption: &str| String::new();
+                let converted = html_inline_to_markdown(inner, &mut without_image);
+                let converted = converted.trim().to_string();
+                if converted.is_empty() {
+                    None
+                } else {
+                    Some(converted)
+                }
+            }
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            edits.push((whole.start(), whole.end(), replacement));
+        }
+    }
+
+    // 按位置倒序替换，避免前面的替换挪动后面的偏移
+    edits.sort_by_key(|(start, _, _)| *start);
+    let mut result = content.to_string();
+    for (start, end, replacement) in edits.into_iter().rev() {
+        result.replace_range(start..end, &replacement);
+    }
+    result
+}
+
 /// 从服务端 Markdown 正文里取出文档标题（首行的 `<title>…</title>`）
 ///
 /// 用途：docx 直链（非知识库节点）拿不到 `wiki_node_get` 的标题，此前退化成
 /// "token 前 20 个字符"；正文首行其实带着真实标题，用它兜底。
 pub fn extract_document_title(content: &str) -> Option<String> {
     let title_re = Regex::new(r"(?is)<title>(.*?)</title>").unwrap();
-    let raw = title_re.captures(content)?.get(1)?.as_str().trim();
-    let title = decode_entities(raw);
-    let title = title.trim();
-    if title.is_empty() {
+    if let Some(raw) = title_re.captures(content).and_then(|caps| caps.get(1)) {
+        let title = decode_entities(raw.as_str().trim());
+        let title = title.trim();
+        if !title.is_empty() {
+            return Some(title.to_string());
+        }
+    }
+    // 正文里一个标题块都没有时，服务端把**文档标题**渲染成首个 `# 一级标题`
+    // （例如 `# 压测H1 · 非法字符/ …`），而不是 `<title>` 标签——那种情况下这一行
+    // 就是文档标题，不认它文件名会退化成 20 位 token，用户根本认不出是哪篇。
+    let first = content
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    let heading = decode_entities(first.strip_prefix("# ")?.trim());
+    let heading = heading.trim();
+    if heading.is_empty() {
         None
     } else {
-        Some(title.to_string())
+        Some(heading.to_string())
     }
 }
 
@@ -1231,6 +1372,136 @@ mod tests {
     }
 
     #[test]
+    fn test_safe_filename_strips_control_chars_and_illegal_set() {
+        // 全部 Windows 非法字符
+        assert_eq!(
+            safe_filename(r#"a\b/c:d*e?f"g<h>i|j"#),
+            "a_b_c_d_e_f_g_h_i_j"
+        );
+        // 换行 / 制表 / 其他控制字符不进文件名（`<title>` 里可能解码出换行）
+        assert_eq!(safe_filename("换行\n标题\t制表\u{7}响铃"), "换行_标题_制表_响铃");
+        // 首尾空白与尾点
+        assert_eq!(safe_filename("  点结尾..  "), "点结尾");
+        // 全空白 → untitled
+        assert_eq!(safe_filename("     "), "untitled");
+    }
+
+    #[test]
+    fn test_safe_filename_truncation_does_not_end_on_dot_or_space() {
+        // 第 100 个字符正好是点号：截断后必须再收尾，不能留下 "." 结尾
+        let name = format!("{}.{}", "a".repeat(99), "b".repeat(10));
+        let out = safe_filename(&name);
+        assert_eq!(out, "a".repeat(99));
+        assert!(!out.ends_with('.'));
+
+        // 第 100 个字符正好是空格：同理
+        let name = format!("{} {}", "a".repeat(99), "b".repeat(5));
+        let out = safe_filename(&name);
+        assert_eq!(out, "a".repeat(99));
+        assert!(!out.ends_with(' '));
+
+        // 恰好 100 个字符的标题原样保留
+        assert_eq!(safe_filename(&"字".repeat(100)), "字".repeat(100));
+    }
+
+    #[test]
+    fn test_safe_filename_reserved_names() {
+        let expected = if cfg!(windows) { "_CON" } else { "CON" };
+        assert_eq!(safe_filename("CON"), expected);
+        assert_eq!(
+            safe_filename("nul"),
+            if cfg!(windows) { "_nul" } else { "nul" }
+        );
+    }
+
+    /// 扩展块（callout/grid/column/bookmark/button/time/cite/figure/source）在飞书
+    /// markdown 输出里的真实形态，必须逐个被"残留标签"扫描到——否则用户会以为
+    /// 导出成功但其实内容被悄悄改了样。
+    #[test]
+    fn test_unresolved_tags_reports_extended_blocks() {
+        let content = r#"<callout emoji="💡">
+高亮块正文
+- [ ] 高亮块内待办
+</callout>
+
+<grid>
+<column width-ratio="0.500000">
+左栏
+</column>
+</grid>
+
+<bookmark name="书签" href="https://example.com"></bookmark>
+
+<button action="OpenLink" src="https://example.com">按钮文字</button>
+
+提醒：<time expire-time="1" should-notify="false"></time>时间文字
+
+@人：<cite type="user" user-id="ou_x" user-name="lpk"></cite>
+
+文献：<cite type="citation"><a href="https://example.com" url-type="5">文献标题</a></cite>
+
+<figure view-type="Card"><source name="卡片附件.png" size="1" token="T"/></figure>
+
+行内附件：<source name="行内附件.png" size="1" token="T"/>
+"#;
+        let tags = unresolved_tags(content);
+        assert_eq!(
+            tags,
+            vec![
+                "callout", "grid", "column", "bookmark", "button", "time", "cite", "figure",
+                "source"
+            ]
+        );
+        // 里面的 `<a>` 是常见 HTML 写法，不算"没还原"
+        assert!(!tags.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_restore_inline_server_tags_converts_bookmark_button_and_cite() {
+        let content = r#"<bookmark name="飞书官网书签" href="https://www.feishu.cn"></bookmark>
+
+<button action="OpenLink" src="https://www.feishu.cn">打开飞书官网按钮</button>
+
+@人：<cite type="user" user-id="ou_x" user-name="lpk"></cite>
+
+@文档：<cite doc-id="QVQ" file-type="docx" title="压测A · 符号公式排版地狱" type="doc"></cite>
+
+引用文献：<cite type="citation"><a href="https://www.feishu.cn" url-type="5">飞书官网文献</a></cite>
+"#;
+        let out = restore_inline_server_tags(content);
+        assert!(out.contains("[飞书官网书签](https://www.feishu.cn)"), "{out}");
+        assert!(
+            out.contains("[打开飞书官网按钮](https://www.feishu.cn)"),
+            "{out}"
+        );
+        assert!(out.contains("@人：@lpk"), "{out}");
+        assert!(out.contains("@文档：@压测A · 符号公式排版地狱"), "{out}");
+        assert!(
+            out.contains("[飞书官网文献](https://www.feishu.cn)"),
+            "{out}"
+        );
+        // 转干净的这三个不再被算作"残留标签"
+        let tags = unresolved_tags(&out);
+        assert!(!tags.contains(&"bookmark".to_string()), "{tags:?}");
+        assert!(!tags.contains(&"button".to_string()), "{tags:?}");
+        assert!(!tags.contains(&"cite".to_string()), "{tags:?}");
+    }
+
+    #[test]
+    fn test_restore_inline_server_tags_skips_fence_and_keeps_unrecoverable() {
+        let content = "```html\n<bookmark name=\"示例\" href=\"https://example.com\"></bookmark>\n```\n\n<callout emoji=\"💡\">\n正文\n</callout>\n\n<source name=\"附件.png\" token=\"T\"/>\n";
+        let out = restore_inline_server_tags(content);
+        // 围栏代码块里的同名写法是示例，原样保留
+        assert!(
+            out.contains("<bookmark name=\"示例\" href=\"https://example.com\"></bookmark>"),
+            "{out}"
+        );
+        // 不能就地还原的标签保持原文，交给文末提示兜底
+        assert!(out.contains("<callout emoji=\"💡\">"), "{out}");
+        assert!(out.contains("<source name=\"附件.png\" token=\"T\"/>"), "{out}");
+    }
+
+    #[test]
     fn test_prefixed_filename() {
         assert_eq!(prefixed_filename(0, "第一章"), "00_第一章");
         assert_eq!(prefixed_filename(3, "技术"), "03_技术");
@@ -1560,6 +1831,30 @@ mod tests {
             Some("压测A · 符号&公式")
         );
         assert_eq!(extract_document_title("没有标题行"), None);
+    }
+
+    #[test]
+    fn test_extract_document_title_falls_back_to_leading_heading() {
+        // 没有 `<title>` 时，服务端把文档标题渲染成首个 `# 一级标题`
+        assert_eq!(
+            extract_document_title("# 压测H1 · 标题\n\n正文段落").as_deref(),
+            Some("压测H1 · 标题")
+        );
+        // 空文档：正文只剩标题这一行
+        assert_eq!(
+            extract_document_title("# 压测H2 · 空文档").as_deref(),
+            Some("压测H2 · 空文档")
+        );
+        // 有 `<title>` 时优先用它，不拿正文一级标题顶替
+        assert_eq!(
+            extract_document_title("<title>真标题</title>\n\n# 正文一级标题").as_deref(),
+            Some("真标题")
+        );
+        // 首个非空行不是一级标题（二级 / 普通文本）就不猜，避免误用正文标题
+        assert_eq!(extract_document_title("## 二级标题\n正文"), None);
+        assert_eq!(extract_document_title("普通正文\n\n# 后面才有一级"), None);
+        // 全空白
+        assert_eq!(extract_document_title("   \n  "), None);
     }
 
     #[test]

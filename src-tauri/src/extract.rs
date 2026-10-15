@@ -386,6 +386,11 @@ fn extract_doc_with_title_controlled(
         cancelled: cancelled.as_deref(),
         fetch: Some(&docs),
     };
+    // 先把"数据全在属性里、无需联网"的标签（bookmark / button / cite）落成 Markdown，
+    // 免得导出的正文里留一串 XML；还原不了的（callout / grid / source / …）仍保持
+    // 原文，由 `extract_embedded_objects` 末尾的统一提示兜底。
+    content = markdown::restore_inline_server_tags(&content);
+
     let embedded = extract_embedded_objects(&content, &embedded_ctx);
     let embedded_failed = embedded.failed;
     content = embedded.content;
