@@ -1295,6 +1295,21 @@ fn sheets_csv_for_sheet(url: &str, sheet_id: &str, rows: u32, cols: u32) -> AppR
     Ok(out)
 }
 
+/// 读整张电子表格：返回 `(标题, [(子表名, 该子表 CSV 文本)])`
+///
+/// 给"文档内嵌电子表格"用（见 `markdown::find_rich_refs`）：内嵌表只有 token，
+/// 正文里没有内容，必须按 token 读回来。复用已有的分块读取路径，因此大表同样
+/// 不会被 `csv-get` 的字符上限静默截断。
+pub fn sheets_read_all_csv(url: &str) -> AppResult<(String, Vec<(String, String)>)> {
+    let (title, sheets) = sheets_workbook_info(url)?;
+    let mut out = Vec::with_capacity(sheets.len());
+    for (sheet_id, sheet_name, rows, cols) in &sheets {
+        let csv_text = sheets_csv_for_sheet(url, sheet_id, *rows, *cols)?;
+        out.push((sheet_name.clone(), csv_text));
+    }
+    Ok((title, out))
+}
+
 /// 读一个区间，返回 `(CSV 文本, 是否被截断, 警告文案)`。
 fn csv_get_chunk(
     url: &str,
