@@ -143,6 +143,20 @@ src-tauri/target/release/bundle/
 
 当 GitHub Actions 因账号计费等问题跑不起来时，可以本地出 Windows 包、手动挂到 Release：
 
+> **实测记录（2026-10-16，v0.3.0）**：tag 推上去后 publish workflow 未启动，报
+> `The job was not started because your account is locked due to a billing issue`。
+> 本仓库是 **public**（`gh api /repos/LPK3215/LarkReader --jq '.visibility'` → `public`），
+> public 仓库的 Actions 分钟数本就**免费、不计费**——所以这是**账号级**的支付挂起 / 风控标记，
+> 与"用的是免费基础版、没有付费行为"无关，也不是 Actions 额度耗尽。只能由账号本人在
+> `github.com/settings/billing` 处理（检查 Payment methods 与 Actions spending limit；
+> 仓库 Actions 页顶部通常也有黄色横幅）。
+>
+> 本次即走本节流程本地补发成功：`npm run tauri build`（带 `TAURI_SIGNING_PRIVATE_KEY` 签名）
+> → 生成 `latest.json` → `gh release create v0.3.0 --latest <exe> <exe.sig> <msi> <msi.sig> latest.json`；
+> Release、`releases/latest/download/latest.json` 更新端点、GitHub Pages 落地页均正常。
+> ⚠️ **同一个版本不要重跑 CI**：Release 与资产已手工存在，重跑 publish workflow 会撞同名资产 /
+> 重复发布。CI 留给下一个版本用。
+
 1. **补签名**（构建阶段没签上时；脚本/无人值守场景必用）：
    ```bash
    npx tauri signer sign -f "$USERPROFILE/.larkreader-signing/larkreader.key" -p "" <安装包路径>

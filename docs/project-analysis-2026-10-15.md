@@ -152,3 +152,13 @@ HEAD = `afcac4a`（2026-10-16 00:16，「第二轮压测」修复提交）时复
   `npm run release` 仍会被拦；
 - `afcac4a` 提交信息写「新增 4 个单元测试（80 → 84 passed）」，实测基线为 77（cff0d26），
   本次新增 7 个测试函数，计数与实际有出入。
+
+## 修复完成记录（2026-10-16，v0.3.0）
+
+- `674d47a fix(build): 修绿发布门禁（cargo fmt + clippy）` 修掉了第 4 节全部红项
+  （4 个文件的 fmt diff + 4 处 clippy，`render_embedded_sheet` 按建议收敛为 `SheetTarget` 结构体）；
+- 本机在 HEAD = `4dae5bd`（v0.3.0 发布后）复跑 `npm run verify`：**全绿** ——
+  fmt / clippy 通过，lib 单测 84 passed / 0 failed / 1 ignored，前端构建通过；
+- 第 5 节文档漂移项由 `9c82834` 同步（README 命令数 27 → 31、测试数 26 → 84、版本 0.3.0）；
+- tag `v0.3.0` 已推送远程（指向 `9bbb59a` 版本回写提交；其后 `4dae5bd` 仅同步
+  Cargo.lock 版本号，无代码差异）。
