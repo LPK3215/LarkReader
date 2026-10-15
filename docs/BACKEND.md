@@ -1,6 +1,6 @@
 # LarkReader 后端功能与维护手册
 
-> 当前状态：2026-09-06。本文是后端功能、接口和验证状态的唯一主文档；代码实现始终是最终依据。
+> 当前状态：2026-10-16。本文是后端功能、接口和验证状态的唯一主文档；代码实现始终是最终依据。
 
 ## 1. 项目定位
 
@@ -33,6 +33,14 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 - 文档先写入临时位置，成功后再提交到正式目录。
 - 同名文件自动使用 `(2)`、`(3)` 等后缀，避免覆盖。
 - 文件名兼容 Windows 非法字符、保留名称和超长 Unicode 标题。
+- 内嵌富对象还原：内嵌电子表格（按引用里的 `sheet-id` 只渲染对应子表、同工作簿只落一份 xlsx）、
+  表格单元格图片下载落盘并本地化、`<html5-block>` 内容块（读 `reference_map` 按 `data-ref` 取回）、
+  文档级原生 `<table>` 转 Markdown 管道表（含 `colspan` / `rowspan` 与行内样式）、深层标题
+  `h7~h9` 保层级。
+- 服务端标签处理：`bookmark` / `button` / `cite`（@用户 / @文档 / 文献）就地转 Markdown；
+  其余离线还原不了的标签保持原文，并在正文文末统一提示（不静默丢内容）。
+- 标题兜底与文件名加固：正文无 `<title>` 时用首个 `# 一级标题` 兜底；控制字符换 `_`，
+  截断到 100 字后再收尾，避免产生 Windows 非法文件名。
 
 ### 2.3 Wiki 知识库
 
@@ -101,6 +109,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 | `qr_svg` | `text` | `String` | 把授权链接渲染成二维码 SVG（`qrcode` crate，纯本地、不写文件） |
 | `open_isolated_browser` | `url` | `String` | 用隔离 profile（`{config_dir}/LarkReader/auth-browser-profile`）拉起系统浏览器打开链接；创建向导页与授权页共用 |
 | `logout` | — | — | 退出登录 |
+| `purge_auth_data` | — | `String` | 清除所有授权与本机登录信息，一键重置登录态 |
 | `get_settings_status` | — | `SettingsStatus` | 获取设置及配置恢复警告 |
 | `set_settings` | `settings` | — | 验证可写性并持久化设置 |
 | `preflight_output_dir` | `path` | `OutputPreflight` | 检查可写性和磁盘空间 |
@@ -190,7 +199,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           26 项通过
+cargo test --lib                           84 项通过
 cargo build                                通过
 npm run build                              通过
 ```

@@ -4,12 +4,12 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.2.3-blue)](./docs/BACKEND.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)](#-验证与实测)
+[![Tests](https://img.shields.io/badge/tests-84%20passing-brightgreen)](#-验证与实测)
 [![lark-cli](https://img.shields.io/badge/lark--cli-1.0.93-purple)](./docs/BACKEND.md)
 
 **飞书文档 · 本地阅读与导出工具**
@@ -44,6 +44,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 |---|---|
 | 🔐 环境与认证 | 自动检测 Node.js / lark-cli / 应用配置 / 登录状态（并行检测，区分 5 种异常）；固定安装 `@larksuite/cli@1.0.93`，支持自动 / 手动双方式安装，自动失败重试 3 次并写入日志；设备码登录，设备码与授权链接可一键复制，配置向导自动弹浏览器；首次使用自动进入引导，设置页可重新运行引导 |
 | 📄 单文档导出 | 接受 Wiki URL 或节点 token；Markdown 正文 + 图片并发下载（1–32 并发）并本地化 URL；同名自动 `(2)(3)` 编号不覆盖；事务式落盘，失败不留半截文件 |
+| 🧩 内嵌内容还原 | 内嵌电子表格按子表渲染并另存 xlsx、单元格图片落盘、多维表格转 NDJSON、`<html5-block>` 内容块还原、文档级表格转 Markdown 管道表、深层标题 `h7~h9` 保留层级、可还原标签（书签 / 按钮 / @提及 / 文献）就地转 Markdown；离线还原不了的内容在文末如实提示，不静默丢内容 |
 | 🌲 Wiki 递归导出 | 保留目录层级与飞书排序；选文件夹自动含全部后代；循环 / 深度 ≤ 64 层 / 节点 ≤ 10,000 三重保护；同名知识库原子建目录不互覆 |
 | 📊 表格与数据库 | Sheet → XLSX；Bitable 每张数据表 → NDJSON + `.manifest.json` 元数据（base_token / table_id / rev / 记录统计） |
 | 📎 文件附件 | Wiki 页面挂载的 `file` 节点（zip / pdf / docx 等）按原始字节下载，文件名 = 位置前缀 + 原标题，字节数与上传一致 |
@@ -62,7 +63,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 <img src="./docs/assets/export-pipeline.svg" alt="导出流水线" width="100%"/>
 </div>
 
-前后端通过 Tauri IPC 通信：**27 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
+前后端通过 Tauri IPC 通信：**31 个命令**，入参 camelCase / 出参 snake_case，业务错误统一走 `AppError{code, message, retryable}`，模型以 `src-tauri/src/models.rs` 与 `src/api/types.ts` 为准（改一侧必须同步另一侧）。
 
 ## 🛠 技术栈
 
@@ -148,7 +149,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 |---|---|
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | **使用说明（面向最终用户）**：界面总览、首次引导、知识库下载/扫描模式、本地阅读、历史、日志、设置、更新、FAQ |
 | [docs/manual-checklist.md](docs/manual-checklist.md) | **人工验收清单**：安装发布版后逐项过功能，全绿再对外宣传 |
-| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、27 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
+| [docs/BACKEND.md](docs/BACKEND.md) | 后端功能、31 个 Tauri 命令接口、数据结构、模块职责、验证状态（唯一主文档） |
 
 | [docs/release-and-update.md](docs/release-and-update.md) | 构建 · 发布 · 应用内更新完整手册（环境、本地打包、签名密钥、GitHub Actions 三平台出包、问题排查） |
 | [docs/FEISHU_AUTH.md](docs/FEISHU_AUTH.md) | 飞书自建应用创建、权限清单、登录链路说明 |
@@ -163,7 +164,7 @@ npm run release -- <版本> # 一键发版：门禁 → tag → 推送 → CI �
 ```text
 cargo fmt --all -- --check                 通过
 cargo clippy --all-targets -- -D warnings  通过
-cargo test --lib                           26 项通过
+cargo test --lib                           84 项通过
 npm run build                              通过
 ```
 
@@ -243,6 +244,18 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 **LPK3215** — [17538703215@163.com](mailto:17538703215@163.com)
 
 ## 📋 更新日志
+
+### 0.3.0（2026-10-16）
+
+- feat：**内嵌内容与极端排版还原**——用 lark-cli 写入端造了两轮共 15 个"刁钻"在线文档
+  （公式 / 符号地狱、多层嵌套、超链接地狱、大体积宽表、下拉 / 数字格式 / 冻结 / 隐藏 / 分组、
+  扩展块与导出外壳边界），逐篇导出对拍后补齐还原能力：内嵌电子表格按子表渲染并另存 xlsx、
+  表格单元格图片落盘、`<html5-block>` 内容块还原、文档级 `<table>` 转 Markdown 管道表、
+  深层标题 `h7~h9` 保层级、可还原标签（书签 / 按钮 / @提及 / 文献）就地转 Markdown；
+- feat：导出结束统一"残留标签"提示——离线还原不了的内容在文末如实列出，不静默丢内容；
+- fix：docx 直链标题兜底（正文无标题块时用首个 `# 一级标题`），文件名安全化加固
+  （控制字符、截断后尾点 / 空格）；
+- chore：修绿发布门禁 `cargo fmt` / `cargo clippy -D warnings`；lib 单测 65 → 84（两轮共新增 19 个）。
 
 ### 0.2.2（2026-10-09）
 
