@@ -39,7 +39,7 @@ DATA = {
     "concurrency": "1–32",
     "history_hours": 24,
     "history_max": 100,
-    "phases": 8,
+    "phases": 9,
 }
 
 

@@ -36,10 +36,11 @@ C = {
 }
 
 DATA = {
-    "commands": 27,
-    "rust_files": 12,
-    "rust_loc": 5120,
-    "unit_tests": 26,
+    "commands": 31,
+    "rust_files": 13,
+    "rust_loc": 9762,
+    "unit_tests": 90,
+    "phases": 9,
     "cli": "1.0.93",
 }
 
@@ -113,7 +114,7 @@ IPC_BOXES = [
 ]
 
 RUST_BOXES = [
-    ("commands.rs", ["27 个 IPC 命令 / 设置 / 任务与历史"]),
+    ("commands.rs", [f"{DATA['commands']} 个 IPC 命令 / 设置 / 任务与历史"]),
     ("env.rs", ["Node · CLI · 应用配置 · 登录检测"]),
     ("lark.rs", ["子进程执行 / 超时 / 取消 / 重试 / cwd 白名单"]),
     ("extract.rs", ["单文档预览 / 导出 / 图片落盘 / 事务提交"]),
@@ -206,7 +207,7 @@ def build() -> str:
 
     # ---------------- 底部横切能力 ----------------
     p.append(t(BX, H - 16,
-               "横切能力：结构化错误（retryable）· 后台任务 8 阶段进度与协作式取消 · 任务历史持久化（24h / ≤100 条）· 原子写盘与配置备份回滚 · 运行日志",
+               f"横切能力：结构化错误（retryable）· 后台任务 {DATA['phases']} 阶段进度与协作式取消 · 任务历史持久化（24h / ≤100 条）· 原子写盘与配置备份回滚 · 运行日志",
                size=11.5, fill=C["dim"]))
 
     p.append("</svg>")

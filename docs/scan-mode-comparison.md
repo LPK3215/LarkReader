@@ -38,7 +38,7 @@
 ### FullSpace 模式
 
 ```
-[0] LarkReader-E2E-测试库 (obj_type=Folder, has_child=true, children=8, depth=0)
+[0] LarkReader-E2E-测试库 (obj_type=Folder, has_child=true, children=10, depth=0)
   [0] 01_文本排版 (obj_type=Doc, has_child=false, depth=1)
   [0] 01_文本排版 (obj_type=Doc, has_child=true, children=3, depth=1)
     [0] 一级标题：标题与列表 (obj_type=Doc, depth=2)
@@ -77,22 +77,24 @@
     [15] sample-sheet.xlsx (obj_type=File, depth=2)
     [16] sample-deck.pptx (obj_type=File, depth=2)
     [17] photo.jpg (obj_type=File, depth=2)
+  [0] 07_画板测试文档 (obj_type=Doc, has_child=false, depth=1)
+  [0] 07_画板文档 (obj_type=Doc, has_child=false, depth=1)
 ```
 
 | 指标 | 数值 |
 |------|------|
-| 顶层子节点 | 8 |
-| Doc | 18 |
+| 顶层子节点 | 10 |
+| Doc | 20 |
 | Sheet | 1 |
 | Bitable | 1 |
 | File | 18 |
-| **扫描总数** | **38** |
+| **扫描总数** | **40** |
 
 ## 下载结果对比
 
 | | Auto 模式 | FullSpace 模式 |
 |---|---|---|
-| 成功下载 | 1 项 | 38 项 |
+| 成功下载 | 1 项 | 40 项 |
 | 失败 | 0 | 0 |
 | 跳过 | 0 | 0 |
 
@@ -156,17 +158,31 @@ LarkReader-E2E-测试库/
   15_sample-sheet.xlsx
   16_sample-deck.pptx
   17_photo.jpg
+  00_07_画板/
+    00_画板测试文档.md
+    00_画板测试文档_images/
+      wb_tag_01.jpg
+      wb_tag_01.mmd
+      wb_tag_02.jpg
+      wb_tag_02.mmd
+    00_画板文档.md
+    00_画板文档_images/
+      wb_tag_01.jpg
+      wb_tag_01.mmd
+    00_独立画板节点测试.jpg
+    00_独立画板节点测试.mmd
 ```
 
-整个知识库的 8 个顶层节点及其子树全部下载，包括文档、电子表格、多维表格、附件等全部内容。
+整个知识库的 10 个顶层节点及其子树全部下载，包括文档、电子表格、多维表格、附件、画板等全部内容。
+完整产物清单见 [docs/e2e-download-case/README.md](e2e-download-case/README.md)（快照更新于 2026-11-13）。
 
 ## 总结
 
 | 维度 | Auto 模式 | FullSpace 模式 |
 |------|----------------|----------------------|
 | 扫描范围 | 目标节点及子树 | 整个知识库空间 |
-| 扫描节点数 | 1 | 38 |
-| 下载项数 | 1 | 38 |
+| 扫描节点数 | 1 | 40 |
+| 下载项数 | 1 | 40 |
 | 适用场景 | 明确只要某一支时，精准导出该节点及其子树 | 默认方式：一次拿到整个知识库 |
 | 副作用 | 无 | 无 |
 | 兼容性 | 现有行为不变 | 新增能力，不影响 Auto 模式 |

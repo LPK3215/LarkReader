@@ -4,7 +4,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./docs/BACKEND.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue)](./docs/BACKEND.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-green)](./LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -36,7 +36,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 
 当知识库内容多、目录深、要在网络不稳定的环境下翻阅已读资料时，LarkReader 可以帮你把内容备份到本地、用更顺手的方式阅读。详细示例与典型场景图见 [docs/use-cases.md](docs/use-cases.md)。
 
-已用一个真实的飞书知识库做过端到端验证：[docs/e2e-download-case/](docs/e2e-download-case/) 是那次导出的完整产物，8 个顶层节点、38 项成功 / 0 失败 / 0 跳过，覆盖 docx 正文、Sheet、Bitable、文件附件四类节点，目录层级与飞书一致。
+已用一个真实的飞书知识库做过端到端验证：[docs/e2e-download-case/](docs/e2e-download-case/) 是那次导出的完整产物，10 个顶层节点、40 项成功 / 0 失败 / 0 跳过，覆盖 docx 正文、Sheet、Bitable、文件附件、画板五类节点，目录层级与飞书一致。
 
 ## ✨ 核心功能
 
@@ -48,7 +48,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 | 🌲 Wiki 递归导出 | 保留目录层级与飞书排序；选文件夹自动含全部后代；循环 / 深度 ≤ 64 层 / 节点 ≤ 10,000 三重保护；同名知识库原子建目录不互覆 |
 | 📊 表格与数据库 | Sheet → XLSX；Bitable 每张数据表 → NDJSON + `.manifest.json` 元数据（base_token / table_id / rev / 记录统计） |
 | 📎 文件附件 | Wiki 页面挂载的 `file` 节点（zip / pdf / docx 等）按原始字节下载，文件名 = 位置前缀 + 原标题，字节数与上传一致 |
-| 🧭 后台任务 | 任务立即返回 ID 后台执行；8 阶段进度（总数 / 完成数 / 当前标题 / 预计剩余）；协作式取消并返回部分结果；历史持久化（24 小时 / ≤ 100 条） |
+| 🧭 后台任务 | 任务立即返回 ID 后台执行；9 阶段进度（总数 / 完成数 / 当前标题 / 预计剩余）；协作式取消并返回部分结果；历史持久化（24 小时 / ≤ 100 条） |
 | 📚 本地阅读 | 新增 Reader 页：浏览导出目录、渲染 Markdown 与图片（data URL 内联），离线可用 |
 | 🔄 应用内更新 | 设置页一键「检查更新」；下载进度可见；公钥签名校验；Windows 自动安装并重启，macOS/Linux 安装后自动 relaunch |
 | 🧱 可靠性 | 结构化错误协议（`code / message / retryable`）、输出目录预检（可写性 + 磁盘空间）、设置临时文件 / 备份 / 回滚、临时故障指数退避重试、运行日志页 |
@@ -87,10 +87,10 @@ LarkReader/
 │   ├── stores/                 #   Pinia 状态（auth / task / settings / history / onboarding）
 │   ├── views/                  #   页面（Workspace / Reader / History / Logs / Terminal / Settings / Onboarding）
 │   └── styles/                 #   主题与组件样式
-├── src-tauri/                  # Rust 后端（Tauri 2，12 模块 / 约 5.0k 行）
+├── src-tauri/                  # Rust 后端（Tauri 2，13 模块 / 约 9.8k 行）
 │   ├── src/                    #   commands / env / lark / extract / wiki / reader / markdown
-│   │                           #   models / error / logger / lib / main
-│   ├── tests/                  #   集成测试 5 套件（真实下载类需登录环境）
+│   │                           #   models / error / logger / isolated_browser / lib / main
+│   ├── tests/                  #   集成测试 6 套件（真实下载类需登录环境）
 │   └── Cargo.toml
 ├── docs/
 │   ├── assets/                 # README 可视化资产（SVG，由脚本生成）
@@ -103,7 +103,7 @@ LarkReader/
 │   ├── release-and-update.md   # 构建 · 发版 · 应用内更新完整手册（环境、打包、签名密钥、CI、问题排查）
 │   ├── FEISHU_AUTH.md          # 飞书登录与应用权限说明
 │   └── LOGIN_ISSUE_20260905.md # 登录问题排查记录
-├── scripts/                    # 仓库操作脚本（Node）：verify / clean-e2e / release
+├── scripts/                    # 仓库操作脚本：verify / clean-e2e / release / gen-latest（Node）+ sigcheck（Rust 验签自检）
 └── .github/workflows/          # publish.yml：三平台发布流水线
 ```
 
@@ -176,7 +176,7 @@ npm run build                              通过
 
 - 实测大型知识库（A）：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
 - E2E 测试库 10 个顶层节点：**40 项成功 / 0 失败 / 0 跳过**，产物 52 文件、19 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
-- 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · Auto 模式（仅导出本节点，1 项）vs FullSpace 模式（展开整个知识库，38 项，前端默认）；
+- 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · Auto 模式（仅导出本节点，1 项）vs FullSpace 模式（展开整个知识库，40 项，前端默认）；
 - 父文档带子页面整棵导出、空文档 / 超长标题 / 特殊字符文件名清洗与还原、重复导出自动编号。
 
 ## ❓ FAQ
@@ -245,6 +245,17 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 
 ## 📋 更新日志
 
+### 0.4.0（2026-11-13）
+
+- feat：**画板导出保留源码**——飞书画板本质是「源码 + 渲染」，导出不再只给一张图，三种形态都产出
+  「预览图 + Markdown 内嵌源码块 + 独立源码文件」：文档内嵌画板、Markdown 正文残留 `<whiteboard>` 标签、
+  独立画板文件节点、board/whiteboard 节点直出，源码单独落 `.mmd` / `.puml` 文件；源码导出失败时不静默，
+  预览图已保存时正文留可见提示并计入文档错误，整篇文档标为部分成功；
+- feat：前端配套——画板类型色与图标、勾选计数「画板」、任务阶段「导出画板」（进度条 8 → 9 阶段）；
+- docs：E2E 用例归档第 10 个顶层节点（画板文档），全量 **40 项成功 / 0 失败 / 0 跳过**、52 文件 / 19 种扩展名；
+- chore：**应用内更新签名公钥已轮换**（v0.3.0 私钥丢失）——v0.3.0 及更早版本的用户无法通过应用内更新直接升到
+  0.4.0，需从 Releases 手动下载安装一次，0.4.0 之后恢复正常；新增签名自检工具 `scripts/sigcheck`。
+
 ### 0.3.0（2026-10-16）
 
 - feat：**内嵌内容与极端排版还原**——用 lark-cli 写入端造了两轮共 15 个"刁钻"在线文档
@@ -256,6 +267,16 @@ Tauri 2 跨平台：Windows / macOS / Linux。推送 `v*` tag 后由 GitHub Acti
 - fix：docx 直链标题兜底（正文无标题块时用首个 `# 一级标题`），文件名安全化加固
   （控制字符、截断后尾点 / 空格）；
 - chore：修绿发布门禁 `cargo fmt` / `cargo clippy -D warnings`；lib 单测 65 → 84（两轮共新增 19 个）。
+
+### 0.2.3（2026-10-09）
+
+- feat：**表格「纯数据」导出开关**（设置 → 导出行为）——开启后电子表格只写算好的值，不保留公式与样式，
+  适合把产物喂给脚本；关闭（默认）时优先官方导出版式，公式保留为公式；
+- fix：登录授权浏览器改为 Chrome 优先（原先 Edge 优先），Chrome 缺失时才退 Edge，两者都没有才用系统默认浏览器；
+- fix：**「读单元格」降级路径全挂**——`+csv-get` 的 `--include-row-prefix` 是布尔 flag，写成
+  `--include-row-prefix false` 会被判为位置参数直接报错，只读文档的表格导出降级路径整体失效；改用默认前缀，
+  由 `strip_row_annotations` 精确剥离 `[row=N] `；
+- fix：`settings.json` 新增字段用 `#[serde(default)]` 读取，老用户升级不会被判「配置损坏」。
 
 ### 0.2.2（2026-10-09）
 

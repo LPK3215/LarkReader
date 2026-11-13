@@ -57,7 +57,7 @@
 <text x="92" y="208" font-size="14.5" fill="#93A6BD" font-weight="400" text-anchor="start" >Tauri 2 + Rust + Vue 3 桌面应用 · 知识库递归导出 · 纯本地运行、数据不出机</text>
 <rect x="92" y="232" width="84" height="34" rx="17" ry="17" fill="#111C2B" stroke="#3FCF8E" stroke-width="1"/>
 <circle cx="108" cy="249" r="4" fill="#3FCF8E"/>
-<text x="120" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >v0.1.0</text>
+<text x="120" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >v0.4.0</text>
 <rect x="188" y="232" width="96" height="34" rx="17" ry="17" fill="#111C2B" stroke="#4C8DFF" stroke-width="1"/>
 <circle cx="204" cy="249" r="4" fill="#4C8DFF"/>
 <text x="216" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >GPL-3.0</text>
@@ -66,26 +66,26 @@
 <text x="324" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >lark-cli 1.0.93</text>
 <rect x="448" y="232" width="142" height="34" rx="17" ry="17" fill="#111C2B" stroke="#FFB454" stroke-width="1"/>
 <circle cx="464" cy="249" r="4" fill="#FFB454"/>
-<text x="476" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >27 个 IPC 命令</text>
+<text x="476" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >31 个 IPC 命令</text>
 <rect x="602" y="232" width="142" height="34" rx="17" ry="17" fill="#111C2B" stroke="#3FCF8E" stroke-width="1"/>
 <circle cx="618" cy="249" r="4" fill="#3FCF8E"/>
-<text x="630" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >26 项单测通过</text>
+<text x="630" y="254" font-size="13.5" fill="#93A6BD" font-weight="400" text-anchor="start" >90 项单测通过</text>
 <rect x="830" y="36" width="390" height="248" rx="16" ry="16" fill="#16212F" stroke="#2A3A50" stroke-width="1"/>
 <text x="858" y="74" font-size="14" fill="#93A6BD" font-weight="600" text-anchor="start" >E2E 全量下载实测 · 2026-09-05</text>
 <rect x="858" y="88" width="160" height="74" rx="12" ry="12" fill="#111C2B" stroke="#2A3A50" stroke-width="1"/>
-<text x="938.0" y="127.0" font-size="30" fill="#3FCF8E" font-weight="700" text-anchor="middle" >38</text>
-<text x="968.0" y="127.0" font-size="13" fill="#6B7F97" font-weight="400" text-anchor="start" >/ 38</text>
+<text x="938.0" y="127.0" font-size="30" fill="#3FCF8E" font-weight="700" text-anchor="middle" >40</text>
+<text x="968.0" y="127.0" font-size="13" fill="#6B7F97" font-weight="400" text-anchor="start" >/ 40</text>
 <text x="938.0" y="151.0" font-size="12" fill="#93A6BD" font-weight="400" text-anchor="middle" >项成功 / 总数</text>
 <rect x="1032" y="88" width="160" height="74" rx="12" ry="12" fill="#111C2B" stroke="#2A3A50" stroke-width="1"/>
 <text x="1112.0" y="127.0" font-size="30" fill="#4C8DFF" font-weight="700" text-anchor="middle" >0</text>
 <text x="1142.0" y="127.0" font-size="13" fill="#6B7F97" font-weight="400" text-anchor="start" ></text>
 <text x="1112.0" y="151.0" font-size="12" fill="#93A6BD" font-weight="400" text-anchor="middle" >失败 · 跳过</text>
 <rect x="858" y="176" width="160" height="74" rx="12" ry="12" fill="#111C2B" stroke="#2A3A50" stroke-width="1"/>
-<text x="938.0" y="215.0" font-size="30" fill="#FFB454" font-weight="700" text-anchor="middle" >42</text>
+<text x="938.0" y="215.0" font-size="30" fill="#FFB454" font-weight="700" text-anchor="middle" >52</text>
 <text x="968.0" y="215.0" font-size="13" fill="#6B7F97" font-weight="400" text-anchor="start" ></text>
 <text x="938.0" y="239.0" font-size="12" fill="#93A6BD" font-weight="400" text-anchor="middle" >产物文件</text>
 <rect x="1032" y="176" width="160" height="74" rx="12" ry="12" fill="#111C2B" stroke="#2A3A50" stroke-width="1"/>
-<text x="1112.0" y="215.0" font-size="30" fill="#A97BFF" font-weight="700" text-anchor="middle" >18</text>
+<text x="1112.0" y="215.0" font-size="30" fill="#A97BFF" font-weight="700" text-anchor="middle" >19</text>
 <text x="1142.0" y="215.0" font-size="13" fill="#6B7F97" font-weight="400" text-anchor="start" > 种</text>
 <text x="1112.0" y="239.0" font-size="12" fill="#93A6BD" font-weight="400" text-anchor="middle" >扩展名覆盖</text>
 </svg>

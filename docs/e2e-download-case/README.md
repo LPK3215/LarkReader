@@ -182,4 +182,4 @@ e2e-download-case/
 - **Auto 模式**：仅导出目标节点及其子树。适合已知"目标节点就是一个含子文档的父节点"的场景。
 - **FullSpace 模式**：当目标节点 `has_child=false` 时自动 fallback 到 `wiki +node-list --space-id` 抓取空间全部顶层节点，再递归各自的子树。适合"知识库首页本身只是个入口页、子文档都挂在 space 级别"的场景——本案例就属于这一种。
 
-本案例 Auto 模式仅能扫到 1 项（首页正文），FullSpace 模式扫到 38 项（整库）。两种模式完全兼容，按需切换。原理与差异详见 [docs/scan-mode-comparison.md](../scan-mode-comparison.md)。
+本案例 Auto 模式仅能扫到 1 项（首页正文），FullSpace 模式扫到 40 项（整库）。两种模式完全兼容，按需切换。原理与差异详见 [docs/scan-mode-comparison.md](../scan-mode-comparison.md)。

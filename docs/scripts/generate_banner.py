@@ -38,17 +38,17 @@ C = {
 }
 
 DATA = {
-    "version": "0.1.0",
+    "version": "0.4.0",
     "license": "GPL-3.0",
     "cli": "1.0.93",
-    "commands": 27,
-    "unit_tests": 26,
-    "e2e_success": 38,
-    "e2e_total": 38,
+    "commands": 31,
+    "unit_tests": 90,
+    "e2e_success": 40,
+    "e2e_total": 40,
     "failed": 0,
     "skipped": 0,
-    "files": 42,
-    "extensions": 18,
+    "files": 52,
+    "extensions": 19,
 }
 
 

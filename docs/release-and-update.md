@@ -21,7 +21,7 @@
 > 本仓库**不用 CI 出包**：GitHub 账号的付费类功能不可用，tag 触发的 `publish` 工作流无法启动
 > runner（报 `account is locked due to a billing issue`）。仓库是 **public**，Actions 分钟数本就
 > 免费、不计费——所以这是**账号级**限制（支付挂起 / 风控），**与使用方式无关，也不是额度耗尽**。
-> 产物发布统一走本机 CLI，v0.3.0 已端到端验证可用。
+> 产物发布统一走本机 CLI，v0.4.0 已端到端验证可用。
 
 在项目根目录，按顺序执行：
 
@@ -33,7 +33,7 @@ git status --short
 npm run verify
 
 # 2) 回写三处版本号 + 提交 + 打 tag + 推送分支与 tag（CI 不会跑，tag 仅作版本标记）
-npm run release -- 0.3.0
+npm run release -- 0.4.0
 
 # 3) 本机出包：产出 MSI / NSIS 安装包
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.larkreader-signing\larkreader.key" -Raw
@@ -43,14 +43,14 @@ npm run tauri build
 #    npx tauri signer sign -f "$env:USERPROFILE\.larkreader-signing\larkreader.key" -p "" <安装包路径>
 
 # 4) 生成 updater 清单 latest.json（脚本已随仓库版本控制）
-node scripts/gen-latest.mjs 0.3.0 "本版更新要点…"
+node scripts/gen-latest.mjs 0.4.0 "本版更新要点…"
 
 # 5) 建 Release 并上传产物（--latest 让更新端点指向它）
-gh release create v0.3.0 --title "LarkReader v0.3.0" --notes-file <说明.md> --latest `
-  "src-tauri/target/release/bundle/nsis/LarkReader_0.3.0_x64-setup.exe" `
-  "src-tauri/target/release/bundle/nsis/LarkReader_0.3.0_x64-setup.exe.sig" `
-  "src-tauri/target/release/bundle/msi/LarkReader_0.3.0_x64_en-US.msi" `
-  "src-tauri/target/release/bundle/msi/LarkReader_0.3.0_x64_en-US.msi.sig" `
+gh release create v0.4.0 --title "LarkReader v0.4.0" --notes-file <说明.md> --latest `
+  "src-tauri/target/release/bundle/nsis/LarkReader_0.4.0_x64-setup.exe" `
+  "src-tauri/target/release/bundle/nsis/LarkReader_0.4.0_x64-setup.exe.sig" `
+  "src-tauri/target/release/bundle/msi/LarkReader_0.4.0_x64_en-US.msi" `
+  "src-tauri/target/release/bundle/msi/LarkReader_0.4.0_x64_en-US.msi.sig" `
   "src-tauri/target/release/bundle/latest.json"
 
 # 6) 验证：更新端点返回该版本、落地页显示该版本
@@ -117,9 +117,9 @@ npm install        # 首次；或用 npm ci（按 lockfile 精确安装）
 | 只查 Rust | `node scripts/verify.mjs --rust-only` |
 | 只查前端 | `node scripts/verify.mjs --web-only` |
 | 打包当前平台 | `npm run tauri build` |
-| 预览一次发版会改哪些文件 | `npm run release -- 0.2.0 --dry-run` |
-| 正式发版（门禁 + 版本回写 + 打 tag） | `npm run release -- 0.3.0` |
-| 生成应用内更新清单 `latest.json` | `node scripts/gen-latest.mjs 0.3.0 "说明"` |
+| 预览一次发版会改哪些文件 | `npm run release -- 0.4.0 --dry-run` |
+| 正式发版（门禁 + 版本回写 + 打 tag） | `npm run release -- 0.4.0` |
+| 生成应用内更新清单 `latest.json` | `node scripts/gen-latest.mjs 0.4.0 "说明"` |
 
 > `npm run tauri dev` 会自动执行 `package.json` 里配置的 `beforeDevCommand`（即 `npm run dev`，Vite 起在 `http://localhost:1420`）。
 
@@ -188,7 +188,7 @@ src-tauri/target/release/bundle/
 
 > Tauri 的 GUI 依赖系统 WebView，跨操作系统交叉编译通常不可行——各平台包要在对应系统上构建。这正是 CI 用四平台矩阵的原因。
 
-### 3.4 本机 CLI 发版路径（**当前默认**，见 §0；2026-09-15 首验、2026-10-16 v0.3.0 复用）
+### 3.4 本机 CLI 发版路径（**当前默认**，见 §0；2026-09-15 首验、2026-10-16 v0.3.0 复用、2026-11-13 v0.4.0 复用）
 
 本仓库 GitHub Actions 因账号级限制跑不起来（见 §0），产物一律本地出 Windows 包、手动挂到 Release：
 
@@ -205,6 +205,15 @@ src-tauri/target/release/bundle/
 > Release、`releases/latest/download/latest.json` 更新端点、GitHub Pages 落地页均正常。
 > ⚠️ **同一个版本不要重跑 CI**：Release 与资产已手工存在，重跑 publish workflow 会撞同名资产 /
 > 重复发布。CI 留给下一个版本用。
+>
+> **实测记录（2026-11-13，v0.4.0）**：v0.3.0 的签名私钥丢失，重新生成密钥对并轮换公钥（见 §8.1）。
+> 三个新情况与应对：
+> 1. 带 `TAURI_SIGNING_PRIVATE_KEY` 构建时签名阶段停在密码提示（Windows 空密码坑），改走事后补签；
+> 2. 公钥变更在 tag 之后 → `git tag -f v0.4.0` 把 tag 移到含新公钥的提交再强推，
+>    保证 tag 快照与发布产物一致；
+> 3. 仓库里的 `TAURI_SIGNING_PRIVATE_KEY` secret 仍是旧私钥，必须覆盖为新私钥，
+>    否则 CI 恢复后会用旧私钥签出与新公钥不匹配的包；
+> 4. 发布后用 `scripts/sigcheck` 做了端到端验签：线上清单的签名 + 线上下载的安装包 + 配置公钥 → VERIFIED。
 
 1. **补签名**（构建阶段没签上时；脚本/无人值守场景必用）：
    ```bash
@@ -259,20 +268,20 @@ npm run tauri build -- --config src-tauri/tauri.nosign.conf.json
 - `src-tauri/tauri.conf.json` → 打包产物版本（`version` 字段）
 - `src-tauri/Cargo.toml` → Rust crate 版本（写入日志、应用内版本展示）
 
-只打 tag 不改三处会出现「tag 是 0.2.0、安装包却是 0.1.0」的错位。`scripts/release.mjs` 已自动回写：
+只打 tag 不改三处会出现「tag 是 0.4.0、安装包却是 0.3.0」的错位。`scripts/release.mjs` 已自动回写：
 
 ```bash
-npm run release -- 0.2.0
+npm run release -- 0.4.0
 ```
 
 内部步骤：
 1. 校验版本号格式（`x.y.z`）；
 2. 检查工作区干净（有未提交改动会拒绝，除非 `--force`）；
 3. 运行 `npm run verify` 门禁（`--no-verify` 跳过）；
-4. 检查 `v0.2.0` tag 是否已存在；
+4. 检查 `v0.4.0` tag 是否已存在；
 5. 自动回写三个版本文件；
-6. 提交 `chore: bump version to v0.2.0`；
-7. 打 tag `v0.2.0` 并推送分支与 tag → 触发 CI。
+6. 提交 `chore: bump version to v0.4.0`；
+7. 打 tag `v0.4.0` 并推送分支与 tag → 触发 CI。
 
 ---
 
@@ -305,7 +314,7 @@ npm run release -- 0.2.0
 ### 5.3 查看发布结果
 
 构建进度：仓库 **Actions** 页 → publish workflow。
-发布产物：仓库 **Releases** 页 → `v0.2.0`。
+发布产物：仓库 **Releases** 页 → `v0.4.0`。
 
 ---
 
@@ -313,12 +322,12 @@ npm run release -- 0.2.0
 
 产品名 **LarkReader**，标识 `com.larkreader.app`。命名规则：`产品名_版本号_架构.格式`（`.deb` 按 Debian 规范全小写）。
 
-| 平台 | 架构 | 以 v0.1.0 为例 |
+| 平台 | 架构 | 以 v0.4.0 为例 |
 |---|---|---|
-| Windows | x64 | `LarkReader_0.1.0_x64-setup.exe`（NSIS）<br>`LarkReader_0.1.0_x64_en-US.msi`（MSI） |
-| macOS | Apple Silicon | `LarkReader_0.1.0_aarch64.dmg` |
-| macOS | Intel | `LarkReader_0.1.0_x64.dmg` |
-| Linux | amd64 | `larkreader_0.1.0_amd64.deb`<br>`LarkReader_0.1.0_amd64.AppImage` |
+| Windows | x64 | `LarkReader_0.4.0_x64-setup.exe`（NSIS）<br>`LarkReader_0.4.0_x64_en-US.msi`（MSI） |
+| macOS | Apple Silicon | `LarkReader_0.4.0_aarch64.dmg` |
+| macOS | Intel | `LarkReader_0.4.0_x64.dmg` |
+| Linux | amd64 | `larkreader_0.4.0_amd64.deb`<br>`LarkReader_0.4.0_amd64.AppImage` |
 
 每个 Release 还会附带应用内更新所需文件：
 
@@ -412,12 +421,12 @@ npx tauri signer generate -w (Join-Path $dir 'larkreader.key') --ci
 
 ```bash
 npm run verify                             # fmt + clippy + lib 单测 + 前端构建
-node scripts/release.mjs 0.2.0 --dry-run  # 预览版本回写，不写盘不提交不推送
+node scripts/release.mjs 0.4.0 --dry-run  # 预览版本回写，不写盘不提交不推送
 ```
 
 真实验证「自动更新闭环」的唯一方式：
 1. 配置好 `TAURI_SIGNING_PRIVATE_KEY` secret；
-2. `npm run release -- 0.2.0` 发一个真实版本；
+2. `npm run release -- 0.4.0` 发一个真实版本；
 3. 在低版本机器上打开应用 → 收到提示 → 下载安装 → 重启后版本变化。
 
 此步依赖真实 tag 与 GitHub 远端，无法本地自证。
@@ -452,7 +461,7 @@ cargo run --manifest-path scripts/sigcheck/Cargo.toml -- "$env:TEMP\online.pub" 
 | 现象 | 原因 / 处理 |
 |---|---|
 | `npm run release` 报“工作区有未提交改动” | 先提交；确要带脏区发版加 `--force`（风险自负） |
-| 报 `tag v0.2.0 已存在` | 换版本号；或 `git tag -d v0.2.0 && git push origin :v0.2.0` 删旧 tag（慎用） |
+| 报 `tag v0.4.0 已存在` | 换版本号；或 `git tag -d v0.4.0 && git push origin :v0.4.0` 删旧 tag（慎用） |
 | 本地 `npm run tauri build` 报签名相关错误 | 忘了给 `TAURI_SIGNING_PRIVATE_KEY(PATH)` 环境变量，见第 3.1 节 |
 | Actions 的 guard job 标红 | 缺 `TAURI_SIGNING_PRIVATE_KEY` secret → 按报错指引添加后重跑 |
 | 所有 job 2~4 秒就失败、无任何日志（runner 未分配） | **账号被计费问题锁定**：报错原文 `The job was not started because your account is locked due to a billing issue.` → 到 https://github.com/settings/billing 处理逾期账单 / 支付方式后重跑。公开仓库的 Actions 本身免费，与额度无关；锁定期间可走 3.4 的本地补发路径 |
