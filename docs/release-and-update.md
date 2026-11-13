@@ -35,10 +35,12 @@ npm run verify
 # 2) 回写三处版本号 + 提交 + 打 tag + 推送分支与 tag（CI 不会跑，tag 仅作版本标记）
 npm run release -- 0.3.0
 
-# 3) 本机出包：带签名私钥，产出 MSI / NSIS 安装包 + .sig 侧车
+# 3) 本机出包：产出 MSI / NSIS 安装包
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.larkreader-signing\larkreader.key" -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
 npm run tauri build
+#    Windows 非交互环境下签名阶段会停在等密码回车（见 3.1 实测坑 2）。
+#    此时安装包已生成但没有 .sig，改走事后补签（见 3.4 步骤 1）：
+#    npx tauri signer sign -f "$env:USERPROFILE\.larkreader-signing\larkreader.key" -p "" <安装包路径>
 
 # 4) 生成 updater 清单 latest.json（脚本已随仓库版本控制）
 node scripts/gen-latest.mjs 0.3.0 "本版更新要点…"
@@ -144,6 +146,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.larkreader-signi
 > **实测坑（2026-09-15）**：
 > 1. `npm run tauri build` 只读 `TAURI_SIGNING_PRIVATE_KEY`（私钥内容），**不认 `TAURI_SIGNING_PRIVATE_KEY_PATH`**。用方式 A 会以 `A public key has been found, but no private key.` 收尾——安装包已生成，但没有 `.sig` 侧车。
 > 2. Windows 上**无法通过环境变量传空密码**（空值会被系统丢弃），此时 CLI 会停在 `Decrypting updater signing key, expect a prompt for password` 等你回车。交互式终端里直接回车即可；脚本 / CI 场景改用事后补签（见 3.4）。
+> 3. 2026-11-13（v0.4.0）复现第 2 条：非交互环境里带 `TAURI_SIGNING_PRIVATE_KEY` 构建，命令停在密码提示不返回，安装包已生成但没有 `.sig`。事后补签解决，产物用客户端同款 `minisign-verify` 校验通过。
 
 ### 3.2 打包命令
 
@@ -419,6 +422,29 @@ node scripts/release.mjs 0.2.0 --dry-run  # 预览版本回写，不写盘不提
 
 此步依赖真实 tag 与 GitHub 远端，无法本地自证。
 
+### 9.1 签名自检（发版后必做）
+
+「客户端能验签通过」可以在命令行自证，不必等真实用户升级。`scripts/sigcheck` 是一个独立小工具，
+用客户端同款 `minisign-verify` 库（tauri-plugin-updater 的依赖）执行同一套校验：
+
+```powershell
+# 1) 从线上清单取签名（signature 字段本身就是 base64 文本）
+$j = (Invoke-WebRequest "https://github.com/LPK3215/LarkReader/releases/latest/download/latest.json").Content | ConvertFrom-Json
+Set-Content "$env:TEMP\online.sig" $j.platforms.'windows-x86_64'.signature
+
+# 2) 公钥取自 tauri.conf.json 的 plugins.updater.pubkey
+$pub = (Get-Content src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).plugins.updater.pubkey
+Set-Content "$env:TEMP\online.pub" $pub
+
+# 3) 下载线上安装包并验签
+curl.exe -L -o "$env:TEMP\LarkReader.exe" $j.platforms.'windows-x86_64'.url
+cargo run --manifest-path scripts/sigcheck/Cargo.toml -- "$env:TEMP\online.pub" "$env:TEMP\online.sig" "$env:TEMP\LarkReader.exe"
+```
+
+输出 `VERIFIED` 即表示清单、签名、公钥三者一致，应用内更新链路可用。
+
+反向对照：把公钥换成旧版本的值重跑，会得到 `FAILED ... different key`，说明公钥确实换过。
+
 ---
 
 ## 10. 常见问题排查
@@ -444,6 +470,8 @@ node scripts/release.mjs 0.2.0 --dry-run  # 预览版本回写，不写盘不提
 |---|---|
 | 一键发版脚本（版本回写 + tag） | `scripts/release.mjs` |
 | 发布门禁（fmt/clippy/test/build） | `scripts/verify.mjs` |
+| 更新清单生成 | `scripts/gen-latest.mjs` |
+| 签名自检工具 | `scripts/sigcheck/` |
 | CI 构建发布工作流 | `.github/workflows/publish.yml` |
 | updater 端点 / 公钥 / 更新产物 | `src-tauri/tauri.conf.json` |
 | 插件注册 | `src-tauri/src/lib.rs` |

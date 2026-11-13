@@ -90,3 +90,6 @@ Desktop.ini
 
 # 本地发版用的临时发布说明（仅用于 gh release --notes-file）
 /.release-notes-*.md
+
+# 独立验签工具 scripts/sigcheck 的构建产物
+/scripts/sigcheck/target/

@@ -1,0 +1,11 @@
+[package]
+name = "sigcheck"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# 独立于主工程的小工具：用客户端同款 minisign-verify 校验安装包签名。
+# 不属于 src-tauri 的依赖树，不会影响主工程的 Cargo.lock。
+[dependencies]
+minisign-verify = "0.2"
+base64 = "0.22"
