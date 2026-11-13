@@ -583,6 +583,111 @@ pub fn config_show() -> AppResult<Option<(String, String)>> {
 // 授权范围巡检（auth check）
 // ============================================================================
 
+/// 画板源码：画板本质是「源码 + 渲染」（与思维导图同理），预览图只是渲染结果，
+/// 源码才能复用/再编辑。`whiteboard +export --output-type source` 返回原始源码与语法类型。
+#[derive(Debug, Clone)]
+pub struct WhiteboardSource {
+    /// 原始源码（mermaid / plantuml 文本）
+    pub code: String,
+    /// 语法类型：mermaid / plantuml
+    pub syntax_type: String,
+}
+
+/// 画板源码对应的文件扩展名：mermaid→.mmd、plantuml→.puml，未知类型退化 .txt。
+pub fn whiteboard_source_extension(syntax_type: &str) -> &'static str {
+    match syntax_type.to_ascii_lowercase().as_str() {
+        "mermaid" => "mmd",
+        "plantuml" | "puml" => "puml",
+        _ => "txt",
+    }
+}
+
+/// 取画板源码（`whiteboard +export --output-type source`）
+///
+/// 与 `whiteboard_export_controlled` 互补：预览图给「用户端看到的样子」，源码给
+/// 「可复用/再编辑的结构」。不指定 `--output` 时 lark-cli 直接把源码放进 JSON 的
+/// `data.code`，一次调用即可拿到全部内容。
+pub fn whiteboard_export_source_controlled(
+    whiteboard_token: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<WhiteboardSource> {
+    let stdout = run_lark_in(
+        &[
+            "whiteboard",
+            "+export",
+            "--whiteboard-token",
+            whiteboard_token,
+            "--output-type",
+            "source",
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+        None,
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
+    let code = data
+        .get("code")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::LarkCliResponse("画板源码响应缺少 code 字段".to_string()))?
+        .to_string();
+    let syntax_type = data
+        .get("syntax_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("mermaid")
+        .to_ascii_lowercase();
+    Ok(WhiteboardSource { code, syntax_type })
+}
+
+/// 取画板预览图（`whiteboard +export --output-type preview`）
+///
+/// 画板（白板）有两种形态，都靠这一条命令出图：
+/// - 文档内嵌 `<whiteboard token="…"/>` 块：token 来自 `docs +fetch` 的正文标签；
+/// - Wiki 里的独立画板节点：`obj_token` 就是 whiteboard token。
+///
+/// 命令自带「按实际 Content-Type 补扩展名」行为，所以 `output_path` 传不带扩展名的
+/// 基名、拿返回值里的真实路径用。
+pub fn whiteboard_export_controlled(
+    whiteboard_token: &str,
+    output_path: &str,
+    cancelled: Option<&AtomicBool>,
+) -> AppResult<String> {
+    let stdout = run_lark_in(
+        &[
+            "whiteboard",
+            "+export",
+            "--whiteboard-token",
+            whiteboard_token,
+            "--output-type",
+            "preview",
+            "--output",
+            output_path,
+            "--overwrite",
+            "--as",
+            "user",
+        ],
+        Duration::from_secs(120),
+        cancelled,
+        write_dir_of(output_path).as_deref(),
+    )?;
+    let resp: LarkResponse = serde_json::from_str(extract_json(&stdout))
+        .map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let data = resp
+        .data
+        .ok_or_else(|| AppError::LarkCliResponse("响应中缺少 data 字段".to_string()))?;
+    Ok(data
+        .get("preview_image_path")
+        .or_else(|| data.get("output_path"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(output_path)
+        .to_string())
+}
+
 /// `LOGIN_SCOPES` 的数组形式（常量字符串仍是唯一来源）
 pub fn required_scopes() -> Vec<String> {
     LOGIN_SCOPES
@@ -923,11 +1028,16 @@ pub fn config_init_stream(
 /// 取 `docs:document:export` 而非等价项，依据是本机实测：`lark-cli auth check` 显示
 /// 作者本机 token `granted: [docs:document:export]` 而缺 `drive:export:readonly`，
 /// 同一台机器上表格导出可用——它才是本项目已验证可行的那一项。
+///
+/// `board:whiteboard:node:read`（2026-11-13 补）：`whiteboard +export --output-type
+/// preview` 走 board 服务的 `download_as_image`，只读权限即可（本机 token 已授权该
+/// 权限点，但授权清单此前没有它——由「只多不少」原则补上）。
 pub const LOGIN_SCOPES: &str = "docx:document:readonly docs:document.content:read \
      docs:document.media:download docs:document:export \
      drive:file:download drive:drive.metadata:readonly \
-     wiki:node:read wiki:node:retrieve wiki:space:retrieve \
-     sheets:spreadsheet:read base:app:read base:table:read base:record:read base:field:read";
+            wiki:node:read wiki:node:retrieve wiki:space:retrieve \
+sheets:spreadsheet:read base:app:read base:table:read base:record:read base:field:read \
+board:whiteboard:node:read";
 
 /// 执行 `lark-cli auth login --scope <LOGIN_SCOPES>`（阻塞模式）
 pub fn auth_login_blocking() -> AppResult<String> {
@@ -1981,7 +2091,7 @@ mod sheets_fallback_tests {
 
 #[cfg(test)]
 mod scope_tests {
-    use super::{parse_scope_check, strip_ansi, LOGIN_SCOPES};
+    use super::{parse_scope_check, strip_ansi, whiteboard_source_extension, LOGIN_SCOPES};
     use crate::models::ScopeCheck;
 
     fn required() -> Vec<String> {
@@ -2087,6 +2197,17 @@ mod scope_tests {
         let skipped: ScopeCheck = ScopeCheck::skipped("未登录");
         assert_eq!(skipped.state, "skipped");
         assert!(skipped.missing.is_empty());
+    }
+
+    #[test]
+    fn whiteboard_source_extension_maps_syntax_types() {
+        // 源码文件扩展名按语法类型落盘：mermaid→mmd、plantuml→puml，未知退化 txt
+        assert_eq!(whiteboard_source_extension("mermaid"), "mmd");
+        assert_eq!(whiteboard_source_extension("Mermaid"), "mmd");
+        assert_eq!(whiteboard_source_extension("plantuml"), "puml");
+        assert_eq!(whiteboard_source_extension("puml"), "puml");
+        assert_eq!(whiteboard_source_extension(""), "txt");
+        assert_eq!(whiteboard_source_extension("svg"), "txt");
     }
 
     fn to_json(scopes: &[String]) -> String {

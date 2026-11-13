@@ -46,6 +46,7 @@ export const PHASE_FLOW: TaskPhase[] = [
   "exporting_sheet",
   "exporting_bitable",
   "exporting_file",
+  "exporting_board",
   "finalizing",
 ];
 
@@ -57,6 +58,7 @@ export const PHASE_LABEL: Record<TaskPhase, string> = {
   exporting_sheet: "导出表格",
   exporting_bitable: "导出多维表格",
   exporting_file: "下载附件",
+  exporting_board: "导出画板",
   finalizing: "收尾整理",
   finished: "已完成",
 };
@@ -133,6 +135,7 @@ export const useTaskStore = defineStore("task", () => {
     sheet: 0,
     bitable: 0,
     file: 0,
+    board: 0,
     other: 0,
   };
   let countTimer: ReturnType<typeof setTimeout> | null = null;

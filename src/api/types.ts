@@ -103,7 +103,7 @@ export interface ExtractResult {
 // Wiki 节点树
 // ---------------------------------------------------------------------------
 
-export type WikiNodeType = "doc" | "sheet" | "bitable" | "folder" | "file" | "other";
+export type WikiNodeType = "doc" | "sheet" | "bitable" | "folder" | "file" | "board" | "other";
 
 export interface WikiNode {
   node_token: string;
@@ -123,6 +123,7 @@ export interface ExportableCount {
   sheet: number;
   bitable: number;
   file: number;
+  board: number;
   other: number;
 }
 
@@ -198,6 +199,7 @@ export type TaskPhase =
   | "exporting_sheet"
   | "exporting_bitable"
   | "exporting_file"
+  | "exporting_board"
   | "finalizing"
   | "finished";
 

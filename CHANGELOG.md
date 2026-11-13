@@ -3,6 +3,29 @@
 本文件记录 LarkReader 的用户可感知变更。版本号语义遵循 [SemVer](https://semver.org/lang/zh-CN/)；
 每次发版由 `npm run release -- <版本>` 触发，详细发布流程见 [docs/release-and-update.md](docs/release-and-update.md)。
 
+## [0.4.0] - 2026-11-13
+
+### 新增
+
+- **画板导出（源码 + 预览图双保留）**：飞书画板本质是「源码 + 渲染」，导出不再只给一张图，三种形态都产出「预览图 + Markdown 内嵌源码块 + 独立源码文件」：
+  - **文档内嵌画板**：`docs +fetch --doc-format markdown` 会把 `<whiteboard>` 块渲染成
+    ```` ```mermaid ```` / ```` ```plantuml ```` 围栏（无 token 标签），按 type + 内容与
+    `<whiteboard token=...>` 块配对，导出预览图（`*_images/wb_tag_XX.jpg`），正文替换为
+    「图片 + 原始源码块」，并单独落一份 `.mmd`/`.puml` 源码文件；
+  - **markdown 正文残留 `<whiteboard token=...>` 标签**：同样取源码（`whiteboard +export --output-type source`）、
+    替换正文、落源码文件；
+  - **源码导出失败不静默**：预览图已保存时正文留可见提示并计入文档错误，整篇文档标为部分成功；
+  - **独立画板节点**（board / whiteboard）：作为特殊节点导出预览图 + 源码文件；
+    知识库里挂载的画板文件（obj_type=docx）按文档路径解析，同样完整产出；
+  - 前端配套：画板类型色与图标、勾选计数「画板」、任务阶段「导出画板」。
+
+### 测试与文档
+
+- E2E 用例归档第 10 个顶层节点（画板文档），全量统计更新为 **40 项成功 / 0 失败 / 0 跳过**、
+  52 文件 / 19 种扩展名；
+- 新增后端实测用例 `src-tauri/tests/z_tmp_board_e2e.rs`（内嵌 / 独立节点 / 挂载节点三种形态）；
+- README / BACKEND / 覆盖率统计图同步更新；`e2e_download_tmp_board` 纳入测试工作目录清理。
+
 ## [0.3.0] - 2026-10-16
 
 ### 新增

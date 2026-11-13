@@ -37,6 +37,7 @@ const TYPE_ICON: Record<WikiNodeType, string> = {
   bitable: "bitable",
   file: "paperclip",
   folder: "folder",
+  board: "board",
   other: "other",
 };
 
@@ -46,6 +47,7 @@ const TYPE_TEXT: Record<WikiNodeType, string> = {
   bitable: "多维表格",
   file: "附件",
   folder: "目录",
+  board: "画板",
   other: "其他",
 };
 

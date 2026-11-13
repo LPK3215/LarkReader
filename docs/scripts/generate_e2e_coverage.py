@@ -34,26 +34,28 @@ C = {
 }
 
 DATA = {
-    "snapshot": "2026-09-05",
+    "snapshot": "2026-11-13",
     "space_id": "7681927602327538869",
-    "top_nodes": 8,
-    "success": 38,
-    "total": 38,
+    "top_nodes": 10,
+    "success": 40,
+    "total": 40,
     "failed": 0,
     "skipped": 0,
-    "files": 42,
-    "extensions": 18,
-    "dirs": 10,
-    "size_kb": 1644,
+    "files": 52,
+    "extensions": 19,
+    "dirs": 13,
+    "size_kb": 1803,
     "attachments": 18,
 }
 
 BARS = [
-    (".md", 20, "18 篇 docx 正文 + 2 个 md 格式附件", C["green"]),
+    (".md", 22, "20 篇 docx 正文 + 2 个 md 格式附件", C["green"]),
     (".png", 4, "3 张正文图片 + 1 个图片附件", C["orange"]),
+    (".jpg", 5, "4 张画板预览图 + 1 个图片附件", C["orange"]),
     (".xlsx", 2, "Sheet 导出 1 + 表格附件 1", C["blue"]),
     (".json", 2, "附件 config.json + Bitable manifest", C["purple"]),
-    ("其他 14 种", 14, "csv / xml / log / txt / zip / pdf / docx … 各 1", C["orange"]),
+    (".mmd", 4, "画板源码（mermaid）", C["green"]),
+    ("其他 13 种", 13, "csv / xml / log / txt / zip / pdf / docx … 各 1", C["orange"]),
 ]
 
 
@@ -100,8 +102,8 @@ def build() -> str:
     # ---------- 统计卡 3 x 2 ----------
     cw, ch, gap = 360, 110, 30
     cards = [
-        (f'{DATA["top_nodes"]}', "", "顶层根节点", "一个 space 下 8 个互不相连的根，逐个递归导出", C["blue"]),
-        (f'{DATA["success"]}', f'/ {DATA["total"]}', "项成功 / 总数", "18 个 docx 正文 + 20 个特殊导出", C["green"]),
+        (f'{DATA["top_nodes"]}', "", "顶层根节点", "一个 space 下 10 个互不相连的根，逐个递归导出", C["blue"]),
+        (f'{DATA["success"]}', f'/ {DATA["total"]}', "项成功 / 总数", "20 个 docx 正文 + 20 个特殊导出", C["green"]),
         (f'{DATA["failed"]}', "", "失败 · 跳过", f'不支持节点 0 项，附件 {DATA["attachments"]} 个全部成功', C["green"]),
         (f'{DATA["files"]}', "", "产物文件", f'{DATA["dirs"]} 个子目录 · 约 {DATA["size_kb"] / 1024:.1f} MB', C["orange"]),
         (f'{DATA["extensions"]}', " 种", "扩展名覆盖", "覆盖当前支持的全部导出形态", C["purple"]),

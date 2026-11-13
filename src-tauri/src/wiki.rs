@@ -562,6 +562,7 @@ pub async fn extract_wiki_tree_controlled(
                 WikiNodeType::Sheet => TaskPhase::ExportingSheet,
                 WikiNodeType::Bitable => TaskPhase::ExportingBitable,
                 WikiNodeType::File => TaskPhase::ExportingFile,
+                WikiNodeType::Board => TaskPhase::ExportingBoard,
                 _ => TaskPhase::Finalizing,
             };
         }
@@ -594,6 +595,37 @@ pub async fn extract_wiki_tree_controlled(
                     cancelled.as_deref(),
                 )
                 .map(|saved| vec![saved])
+            }
+            WikiNodeType::Board => {
+                // 独立画板节点：obj_token 就是 whiteboard token。画板本质是
+                // "源码 + 渲染"，预览图（用户端看到的样子）与源码（可复用/再编辑的
+                // 结构）两者都要：预览图按服务端 Content-Type 自动补扩展名（jpg/png），
+                // 源码单独落一份 .mmd/.puml。若个别节点缺失 obj_token，退化用
+                // node_token 再试一次。
+                let wb_token = node.obj_token.as_deref().unwrap_or(&node.node_token);
+                let path = wiki_dir.join(&safe);
+                let image = lark::whiteboard_export_controlled(
+                    wb_token,
+                    &path.to_string_lossy(),
+                    cancelled.as_deref(),
+                )?;
+                let mut paths = vec![image];
+                match lark::whiteboard_export_source_controlled(wb_token, cancelled.as_deref()) {
+                    Ok(source) => {
+                        let ext = lark::whiteboard_source_extension(&source.syntax_type);
+                        let source_path = wiki_dir.join(format!("{}.{}", safe, ext));
+                        std::fs::write(&source_path, source.code.as_bytes())?;
+                        paths.push(source_path.to_string_lossy().to_string());
+                    }
+                    Err(error) => {
+                        // 源码没拿到就是"导出不完整"：预览图已保存，但用户要的
+                        // 结构源码缺失，明确报错让 UI 提示重试（重试时图会覆盖）。
+                        return Err(crate::error::AppError::Other(format!(
+                            "画板源码导出失败（预览图已保存）：{error}"
+                        )));
+                    }
+                }
+                Ok(paths)
             }
             other => {
                 let reason = format!("当前版本暂不支持该节点类型: {:?}", other);
@@ -806,7 +838,11 @@ fn collect_special_recursive<'a>(
     if selected
         && matches!(
             node.obj_type,
-            WikiNodeType::Sheet | WikiNodeType::Bitable | WikiNodeType::File | WikiNodeType::Other
+            WikiNodeType::Sheet
+                | WikiNodeType::Bitable
+                | WikiNodeType::File
+                | WikiNodeType::Board
+                | WikiNodeType::Other
         )
     {
         nodes.push(node);
@@ -861,6 +897,7 @@ pub fn count_exportable_breakdown(
         sheet: 0,
         bitable: 0,
         file: 0,
+        board: 0,
         other: 0,
     };
     for node in collect_special_nodes(tree, selected_tokens, relevant.as_ref()) {
@@ -868,10 +905,11 @@ pub fn count_exportable_breakdown(
             WikiNodeType::Sheet => count.sheet += 1,
             WikiNodeType::Bitable => count.bitable += 1,
             WikiNodeType::File => count.file += 1,
+            WikiNodeType::Board => count.board += 1,
             _ => count.other += 1,
         }
     }
-    count.total = count.doc + count.sheet + count.bitable + count.file + count.other;
+    count.total = count.doc + count.sheet + count.bitable + count.file + count.board + count.other;
     count
 }
 
@@ -882,6 +920,7 @@ fn node_type_label(node_type: &WikiNodeType) -> &'static str {
         WikiNodeType::Sheet => "表格",
         WikiNodeType::Bitable => "多维表格",
         WikiNodeType::File => "文件",
+        WikiNodeType::Board => "画板",
         WikiNodeType::Folder => "目录",
         WikiNodeType::Other => "其他",
     }

@@ -193,6 +193,8 @@ pub enum WikiNodeType {
     Folder,
     /// 上传的普通文件（zip/pdf 等），底层为 Drive file
     File,
+    /// 画板（白板）：整个节点就是一块画板，token 为 whiteboard token
+    Board,
     /// 其他类型
     Other,
 }
@@ -206,6 +208,8 @@ impl WikiNodeType {
             "bitable" => Self::Bitable,
             "folder" | "" => Self::Folder,
             "file" => Self::File,
+            // 画板/白板：飞书服务端对同一形态给过 board 与 whiteboard 两种写法
+            "board" | "whiteboard" => Self::Board,
             _ => Self::Other,
         }
     }
@@ -313,12 +317,14 @@ pub struct WikiExtractResult {
 /// 后代，这里的数字是展开后的真实条目数，与任务进度里的 `total` 口径一致。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportableCount {
-    /// 合计（doc + sheet + bitable + file + other）
+    /// 合计（doc + sheet + bitable + file + board + other）
     pub total: usize,
     pub doc: usize,
     pub sheet: usize,
     pub bitable: usize,
     pub file: usize,
+    /// 画板（board/whiteboard 节点）数
+    pub board: usize,
     /// 当前版本暂不支持、导出时会被跳过的节点数
     pub other: usize,
 }
@@ -435,6 +441,8 @@ pub enum TaskPhase {
     ExportingBitable,
     /// 下载文件类附件（file 节点）
     ExportingFile,
+    /// 导出画板为预览图片（board 节点）
+    ExportingBoard,
     Finalizing,
     Finished,
 }

@@ -281,6 +281,9 @@
 .lr-type--file {
   color: var(--lr-type-file);
 }
+.lr-type--board {
+  color: var(--lr-type-board);
+}
 .lr-type--folder {
   color: var(--lr-type-folder);
 }

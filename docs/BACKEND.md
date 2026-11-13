@@ -37,6 +37,18 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
   表格单元格图片下载落盘并本地化、`<html5-block>` 内容块（读 `reference_map` 按 `data-ref` 取回）、
   文档级原生 `<table>` 转 Markdown 管道表（含 `colspan` / `rowspan` 与行内样式）、深层标题
   `h7~h9` 保层级。
+- 内嵌画板：`docs +fetch --doc-format markdown` 会把 `<whiteboard>` 块渲染成
+```` ```mermaid ```` / ```` ```plantuml ```` 代码块（无 token 标签），此时 `find_rich_refs` 认不出；
+仅在检测到这类围栏时回取一次 `--doc-format xml`，按 type + 内容把围栏与
+`<whiteboard token=...>` 块配对，配对成功即导出预览图（`_images/wb_tag_XX.jpg`），
+并把围栏替换为「`![画板](...)` + 原始 ```mermaid 源码块」，同时把源码单独落一份
+`_images/wb_tag_XX.mmd`（plantuml 画板为 `.puml`）——图形离线可读、结构源码可复制、
+源码文件防丢失，三者都不丢（飞书画板本质是「源码 + 渲染」，与思维导图同理）；
+配对/导出失败保留围栏原文（mermaid 源码本身可读），并计入文档错误提示，不静默丢内容。
+- 内嵌画板标签形态（markdown 正文残留 `<whiteboard token=...>` 标签）：导出预览图的同时
+经 `whiteboard +export --output-type source` 取原始源码，正文替换为「图片 + 源码块」，
+并单独落 `.mmd`/`.puml` 源码文件。
+- 源码导出失败不静默：预览图已保存时正文留可见提示并计入文档错误，整篇文档标为部分成功。
 - 服务端标签处理：`bookmark` / `button` / `cite`（@用户 / @文档 / 文献）就地转 Markdown；
   其余离线还原不了的标签保持原文，并在正文文末统一提示（不静默丢内容）。
 - 标题兜底与文件名加固：正文无 `<title>` 时用首个 `# 一级标题` 兜底；控制字符换 `_`，
@@ -53,6 +65,8 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 - Doc 导出为 Markdown 和本地图片。
 - Sheet 导出为 XLSX。
 - Bitable 的每张数据表导出为 NDJSON，并随 lark-cli 生成同表名的 `.manifest.json` 元数据（base_token/table_id/rev/记录统计等）。
+- 画板节点（`board` / `whiteboard` 类型）导出为预览图（JPG/PNG）+ 源码文件（`.mmd`/`.puml`）
+并落入所属目录，任务阶段单独显示「导出画板」；源码导出失败时报错提示重试（预览图已保存）。
 - 挂载在 Wiki 页面上的普通文件（`file` 节点，如 zip/pdf/docx 等附件）按原始字节下载，文件名 = 位置前缀 + 原标题（保留原扩展名），字节数与上传一致。
 - 不支持的节点、文档失败、特殊资源失败分别报告。
 - 返回统一 `items` 列表，同时保留文档结果、特殊导出、失败和跳过分类。
@@ -61,7 +75,7 @@ LarkReader 是基于 Tauri 2 和 Rust 的飞书文档**导出与本地阅读**�
 
 - `start_extract_wiki` 创建任务后立即返回任务 ID，Wiki 扫描也在后台执行。
 - 状态：`pending`、`running`、`completed`、`failed`、`cancelled`。
-- 当前实际阶段：排队、检查输出目录、扫描知识库、导出文档、导出表格、导出多维表格、下载附件（file）、收尾整理（`finished` 是终态，不计入阶段流程条）。
+- 当前实际阶段：排队、检查输出目录、扫描知识库、导出文档、导出表格、导出多维表格、导出画板（board）、下载附件（file）、收尾整理（`finished` 是终态，不计入阶段流程条）。
 - 进度包含总数、完成数、当前标题、路径、项目类型、成功/失败数和错误列表。
 - 返回创建、开始、完成时间，已运行时间及有足够样本时的预计剩余时间。
 - 取消信号会进入文档、图片和特殊导出流程，并终止当前受控子进程。

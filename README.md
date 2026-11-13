@@ -26,7 +26,7 @@
 
 LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可直接阅读、离线可用的文件**。
 
-- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX（**只有只读权限的表格也能导出**：官方导出接口被拒时自动降级为读取单元格生成；工作台 / 设置里还可勾选「**表格导出为纯数据**」，让产物里全是算好的值，便于喂给脚本）、Bitable → NDJSON、file 附件 → 原样字节，整棵目录树按飞书层级与排序落盘；
+- **导出**：递归遍历知识库，Doc → Markdown（图片本地化）、Sheet → XLSX（**只有只读权限的表格也能导出**：官方导出接口被拒时自动降级为读取单元格生成；工作台 / 设置里还可勾选「**表格导出为纯数据**」，让产物里全是算好的值，便于喂给脚本）、Bitable → NDJSON、file 附件 → 原样字节、画板（内嵌 mermaid / PlantUML 与独立 board 节点）→ 预览图 JPG/PNG + 正文保留 ```` ```mermaid ```` 源码块 + 源码单独落 `.mmd`/`.puml` 文件，整棵目录树按飞书层级与排序落盘；
 - **阅读**：内置「本地阅读」页，直接浏览已导出的 Markdown 与图片，不依赖网络和飞书登录；
 - **边界**：纯本地工具，无自建服务端、无遥测。凭据由官方 `lark-cli` 在本机托管，LarkReader 不保存飞书密码或 token。
 
@@ -44,7 +44,7 @@ LarkReader 解决一个具体问题：**把飞书知识库变成你硬盘上可�
 |---|---|
 | 🔐 环境与认证 | 自动检测 Node.js / lark-cli / 应用配置 / 登录状态（并行检测，区分 5 种异常）；固定安装 `@larksuite/cli@1.0.93`，支持自动 / 手动双方式安装，自动失败重试 3 次并写入日志；设备码登录，设备码与授权链接可一键复制，配置向导自动弹浏览器；首次使用自动进入引导，设置页可重新运行引导 |
 | 📄 单文档导出 | 接受 Wiki URL 或节点 token；Markdown 正文 + 图片并发下载（1–32 并发）并本地化 URL；同名自动 `(2)(3)` 编号不覆盖；事务式落盘，失败不留半截文件 |
-| 🧩 内嵌内容还原 | 内嵌电子表格按子表渲染并另存 xlsx、单元格图片落盘、多维表格转 NDJSON、`<html5-block>` 内容块还原、文档级表格转 Markdown 管道表、深层标题 `h7~h9` 保留层级、可还原标签（书签 / 按钮 / @提及 / 文献）就地转 Markdown；离线还原不了的内容在文末如实提示，不静默丢内容 |
+| 🧩 内嵌内容还原 | 内嵌电子表格按子表渲染并另存 xlsx、单元格图片落盘、多维表格转 NDJSON、**内嵌画板（mermaid / PlantUML）出预览图 + 保留原始源码块 + 源码单独落 `.mmd`/`.puml` 文件**、`<html5-block>` 内容块还原、文档级表格转 Markdown 管道表、深层标题 `h7~h9` 保留层级、可还原标签（书签 / 按钮 / @提及 / 文献）就地转 Markdown；离线还原不了的内容在文末如实提示，不静默丢内容 |
 | 🌲 Wiki 递归导出 | 保留目录层级与飞书排序；选文件夹自动含全部后代；循环 / 深度 ≤ 64 层 / 节点 ≤ 10,000 三重保护；同名知识库原子建目录不互覆 |
 | 📊 表格与数据库 | Sheet → XLSX；Bitable 每张数据表 → NDJSON + `.manifest.json` 元数据（base_token / table_id / rev / 记录统计） |
 | 📎 文件附件 | Wiki 页面挂载的 `file` 节点（zip / pdf / docx 等）按原始字节下载，文件名 = 位置前缀 + 原标题，字节数与上传一致 |
@@ -95,7 +95,7 @@ LarkReader/
 ├── docs/
 │   ├── assets/                 # README 可视化资产（SVG，由脚本生成）
 │   ├── scripts/                # SVG 生成脚本（Python，见 docs/scripts/README.md）
-│   ├── e2e-download-case/      # E2E 测试库全量下载稳定快照（42 文件 / 18 种扩展名）
+│   ├── e2e-download-case/      # E2E 测试库全量下载稳定快照（52 文件 / 19 种扩展名）
 │   ├── e2e-fixtures/           # 测试库原始素材与生成脚本 gen_assets.py
 │   ├── BACKEND.md              # 后端功能与维护手册（唯一主文档）
 │   ├── USER_GUIDE.md           # 用户指南（面向最终用户：引导/下载/阅读/更新）
@@ -175,7 +175,7 @@ npm run build                              通过
 </div>
 
 - 实测大型知识库（A）：22 个顶层节点、143 篇文档、多级目录全量下载与分粒度下载；
-- E2E 测试库 8 个顶层节点：**38 项成功 / 0 失败 / 0 跳过**，产物 42 文件、18 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
+- E2E 测试库 10 个顶层节点：**40 项成功 / 0 失败 / 0 跳过**，产物 52 文件、19 种扩展名、18 个附件字节级一致（详见 [docs/e2e-download-case/README.md](docs/e2e-download-case/README.md)，[线上原地址](https://qcny2iztd1p8.feishu.cn/wiki/EqbwwXaBni7EPukHctdcEh8YnHe?from=from_copylink)）；
 - 扫描模式覆盖：[docs/scan-mode-comparison.md](docs/scan-mode-comparison.md) · Auto 模式（仅导出本节点，1 项）vs FullSpace 模式（展开整个知识库，38 项，前端默认）；
 - 父文档带子页面整棵导出、空文档 / 超长标题 / 特殊字符文件名清洗与还原、重复导出自动编号。
 
@@ -196,7 +196,7 @@ LarkReader 不保存、也不接触飞书密码或 token。凭据由官方 `lark
 <details>
 <summary><b>支持哪些内容类型？</b></summary>
 
-Doc（docx 正文 → Markdown + 图片本地化）、Sheet → XLSX、Bitable → NDJSON（含 manifest 元数据）、`file` 节点附件（zip / pdf / docx 等原样字节）。不支持或失败的节点会在结果中分类如实上报，不会伪装成功。
+Doc（docx 正文 → Markdown + 图片本地化）、Sheet → XLSX、Bitable → NDJSON（含 manifest 元数据）、`file` 节点附件（zip / pdf / docx 等原样字节）、画板（文档内嵌 mermaid / PlantUML → 预览图 JPG/PNG + 正文原始 mermaid 源码块 + 独立 `.mmd`/`.puml` 源码文件；知识库里独立的 board 节点 → 预览图 JPG/PNG + 独立 `.mmd`/`.puml` 源码文件）。不支持或失败的节点会在结果中分类如实上报，不会伪装成功。
 </details>
 
 <details>

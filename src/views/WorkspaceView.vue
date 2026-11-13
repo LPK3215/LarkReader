@@ -373,6 +373,10 @@ function openResultDir() {
                   <span class="lr-kv__k">附件</span>
                   <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.file : "—" }}</span>
                 </div>
+                <div class="lr-kv">
+                  <span class="lr-kv__k">画板</span>
+                  <span class="lr-kv__v">{{ task.exportableCount ? task.exportableCount.board : "—" }}</span>
+                </div>
                 <div class="lr-kv lr-work__totalrow">
                   <span class="lr-kv__k">合计</span>
                   <span class="lr-kv__v">

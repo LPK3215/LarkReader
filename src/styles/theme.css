@@ -56,11 +56,12 @@
   --lr-info-soft: #e6f1fb;
   --lr-info-border: rgba(55, 138, 221, 0.3);
 
-  /* ---- 节点类型色（对应 WikiNodeType 六个变体）---- */
+  /* ---- 节点类型色（对应 WikiNodeType 七个变体）---- */
   --lr-type-doc: #3370ff;
   --lr-type-sheet: #34a853;
   --lr-type-bitable: #7f77dd;
   --lr-type-file: #d9821b;
+  --lr-type-board: #14c9c9;
   --lr-type-folder: #8f959e;
   --lr-type-other: #bbbfc4;
 

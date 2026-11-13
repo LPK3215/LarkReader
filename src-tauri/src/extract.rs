@@ -391,6 +391,14 @@ fn extract_doc_with_title_controlled(
     // 原文，由 `extract_embedded_objects` 末尾的统一提示兜底。
     content = markdown::restore_inline_server_tags(&content);
 
+    // 4.4b 正文里的 ```mermaid / ```plantuml 代码块可能是内嵌画板的渲染形态：
+    // `docs +fetch --doc-format markdown` 不带 token 标签，find_rich_refs 认不出来。
+    // 回取一次 XML 把 fence 与 `<whiteboard token=...>` 块配对，导出预览图替换之
+    // （仅检测到 fence 时才多花一次 fetch）。普通代码块不受影响。
+    let fences_done = render_whiteboard_fences(&content, &embedded_ctx);
+    content = fences_done.content;
+    errors.extend(fences_done.errors);
+
     let embedded = extract_embedded_objects(&content, &embedded_ctx);
     let embedded_failed = embedded.failed;
     content = embedded.content;
@@ -663,6 +671,7 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
     let mut plan: Vec<(usize, usize, String)> = Vec::new();
     let mut table_seq = 0usize;
     let mut image_seq = 0usize;
+    let mut whiteboard_seq = 0usize;
     let mut failed = 0usize;
 
     for reference in &references {
@@ -720,6 +729,10 @@ fn extract_embedded_objects(content: &str, ctx: &EmbeddedContext<'_>) -> Embedde
             markdown::RichRefKind::Image => {
                 image_seq += 1;
                 index = image_seq;
+            }
+            markdown::RichRefKind::Whiteboard => {
+                whiteboard_seq += 1;
+                index = whiteboard_seq;
             }
             _ => {}
         }
@@ -861,16 +874,16 @@ fn render_embedded_ref(
             render_embedded_image(token, ctx, index, errors)
         }
         markdown::RichRefKind::Whiteboard => {
-            let note = format!(
-                "> 内嵌画板（token：{}）无法离线还原内容，请在飞书里查看",
-                reference.token.as_deref().unwrap_or("未知")
-            );
-            crate::logger::warn("文档内嵌画板：正文里只留引用片段，已改写为提示");
-            RefOutcome {
-                replacement: Some(note),
-                exported: false,
-                failed: false,
-            }
+            let Some(token) = reference.token.as_deref() else {
+                let note = "> 内嵌画板缺少 token，无法导出（已保持原文）".to_string();
+                crate::logger::warn("文档内嵌画板：标签里没有可用 token，已保持原文");
+                return RefOutcome {
+                    replacement: Some(note),
+                    exported: false,
+                    failed: false,
+                };
+            };
+            render_embedded_whiteboard(token, ctx, index, errors)
         }
         // 原生表格片段：整块转成 Markdown 管道表。
         //
@@ -1093,6 +1106,392 @@ fn render_embedded_image(
         exported: true,
         failed: false,
     }
+}
+
+/// 处理一个内嵌画板块：导出预览图 **与** 源码，正文替换为「图片 + 源码块」。
+///
+/// 画板本质是"源码 + 渲染"（与思维导图同理）：用户端看到的成品是预览图，
+/// 但可复用/再编辑的结构是源码。两者都落盘：预览图给 Markdown 引用，源码同时
+/// 单独存一份 `.mmd/.puml` 文件（防止 md 被渲染/转换后源码块样式丢失）。
+/// 导出失败时不得静默：正文里留可见提示，并把整篇文档标成"部分成功"。
+fn render_embedded_whiteboard(
+    token: &str,
+    ctx: &EmbeddedContext<'_>,
+    index: usize,
+    errors: &mut Vec<String>,
+) -> RefOutcome {
+    if !ctx.download_images {
+        return RefOutcome {
+            replacement: Some("> 内嵌画板（设置里已关闭图片下载）".to_string()),
+            exported: false,
+            failed: false,
+        };
+    }
+
+    if let Err(error) = fs::create_dir_all(ctx.img_dir) {
+        let message = format!("创建图片目录失败：{error}");
+        errors.push(message.clone());
+        return RefOutcome {
+            replacement: Some(format!("> {message}")),
+            exported: false,
+            failed: true,
+        };
+    }
+
+    let stem = format!("wb_tag_{:02}", index.max(1));
+    let output_base = ctx.img_dir.join(&stem);
+    let output_base_str = output_base.to_string_lossy().to_string();
+
+    let fail = |message: String, errors: &mut Vec<String>| {
+        crate::logger::warn(format!("文档内嵌画板：{message}"));
+        errors.push(message.clone());
+        RefOutcome {
+            replacement: Some(format!("> {message}")),
+            exported: false,
+            failed: true,
+        }
+    };
+
+    let saved = match lark::whiteboard_export_controlled(token, &output_base_str, ctx.cancelled) {
+        Ok(saved) => saved,
+        Err(error) => return fail(format!("内嵌画板 {token} 预览图导出失败：{error}"), errors),
+    };
+    let saved = PathBuf::from(&saved);
+    if !saved.is_file() {
+        return fail(format!("内嵌画板 {token} 预览图导出结果不存在"), errors);
+    }
+
+    // lark-cli 按服务端 Content-Type 补扩展名（jpg/png），这里取回真实路径再规范化文件名
+    let ext = saved
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_else(|| ".jpg".to_string());
+    let file_name = format!("{stem}{ext}");
+    let final_path = ctx.img_dir.join(&file_name);
+    if saved != final_path {
+        if final_path.exists() {
+            if let Err(error) = fs::remove_file(&final_path) {
+                return fail(format!("内嵌画板 {token} 无法替换旧文件：{error}"), errors);
+            }
+        }
+        if let Err(error) = fs::rename(&saved, &final_path) {
+            return fail(format!("内嵌画板 {token} 重命名失败：{error}"), errors);
+        }
+    }
+
+    // 源码：预览图是"用户端看到的样子"，源码是"可复用/再编辑的结构"——两者都要。
+    // 源码单独落一份 .mmd/.puml，md 里同时保留 ```mermaid 源码块（双保险）。
+    let source = match lark::whiteboard_export_source_controlled(token, ctx.cancelled) {
+        Ok(source) => source,
+        Err(error) => {
+            let message = format!("内嵌画板 {token} 源码导出失败（预览图已保存）：{error}");
+            crate::logger::warn(format!("文档内嵌画板：{message}"));
+            errors.push(message.clone());
+            return RefOutcome {
+                replacement: Some(format!(
+                    "![画板]({}/{})\n\n> {message}",
+                    ctx.img_dir_name, file_name
+                )),
+                exported: true,
+                failed: true,
+            };
+        }
+    };
+    let source_ext = lark::whiteboard_source_extension(&source.syntax_type);
+    let source_file_name = format!("{stem}.{source_ext}");
+    let source_path = ctx.img_dir.join(&source_file_name);
+    if let Err(error) = fs::write(&source_path, source.code.as_bytes()) {
+        let message = format!("内嵌画板 {token} 源码写入失败（预览图已保存）：{error}");
+        crate::logger::warn(format!("文档内嵌画板：{message}"));
+        errors.push(message.clone());
+        return RefOutcome {
+            replacement: Some(format!(
+                "![画板]({}/{})\n\n> {message}",
+                ctx.img_dir_name, file_name
+            )),
+            exported: true,
+            failed: true,
+        };
+    }
+
+    RefOutcome {
+        replacement: Some(format!(
+            "![画板]({}/{})\n\n```{}\n{}\n```",
+            ctx.img_dir_name,
+            file_name,
+            source.syntax_type,
+            source.code.trim(),
+        )),
+        exported: true,
+        failed: false,
+    }
+}
+
+/// markdown 里的 ```mermaid / ```plantuml 围栏代码块，可能是内嵌画板的渲染形态。
+///
+/// `docs +fetch --doc-format markdown` 把 whiteboard 块转成这种 fence 时**不带
+/// token 标签**，`find_rich_refs` 认不出来；但 `docs +fetch --doc-format xml`
+/// 里 `<whiteboard token="..." type="...">mermaid 源码</whiteboard>` 是齐的。
+/// 这里按 type + 内容把两者配对：配对成功就导出预览图并把 fence 替换为
+/// `![画板](...)` + ```mermaid 源码块（离线可读的图形 + 可复制的结构，两者都留）；
+/// 配对/导出失败时保留 fence 原文——mermaid 源码本身仍是有效内容，绝不静默丢弃。
+fn render_whiteboard_fences(content: &str, ctx: &EmbeddedContext<'_>) -> EmbeddedTables {
+    let mut result = EmbeddedTables {
+        content: content.to_string(),
+        found: 0,
+        exported: 0,
+        failed: 0,
+        errors: Vec::new(),
+    };
+    let fences = scan_code_fences(content, &["mermaid", "plantuml"]);
+    if fences.is_empty() {
+        return result; // 正文没有代码围栏（用户普通 Mermaid 代码块也不会触发额外 fetch）
+    }
+    result.found = fences.len();
+    if !ctx.download_images {
+        return result; // 设置关闭图片下载：fence 源码保留原文即可
+    }
+
+    let xml = match lark::docs_fetch_xml_controlled(ctx.wiki_url, ctx.cancelled) {
+        Ok(xml) => xml,
+        Err(error) => {
+            result.failed += 1;
+            result
+                .errors
+                .push(format!("画板代码块保留原文（XML 回取失败）：{error}"));
+            return result;
+        }
+    };
+    let blocks = parse_whiteboard_blocks(&xml);
+    if blocks.is_empty() {
+        return result; // 代码块是用户普通代码，不是画板
+    }
+
+    if let Err(error) = fs::create_dir_all(ctx.img_dir) {
+        result.failed += 1;
+        result.errors.push(format!("创建图片目录失败：{error}"));
+        return result;
+    }
+
+    let mut used = vec![false; fences.len()];
+    // 按从后往前的顺序应用替换，避免前面的替换让后面的偏移失效
+    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+    let mut seq = 0usize;
+    for block in blocks
+        .iter()
+        .filter(|b| b.kind == "mermaid" || b.kind == "plantuml")
+    {
+        let pick = fences
+            .iter()
+            .enumerate()
+            .find(|(i, f)| {
+                !used[*i]
+                    && f.kind == block.kind
+                    && unescape_xml(&block.body).trim() == f.body.trim()
+            })
+            .or_else(|| {
+                // 内容对不上（例如服务端转换时改了缩进/空白）时，退化为同类型第一个未用 fence
+                fences
+                    .iter()
+                    .enumerate()
+                    .find(|(i, f)| !used[*i] && f.kind == block.kind)
+            });
+        let Some((idx, fence)) = pick else {
+            result.failed += 1;
+            result.errors.push(format!(
+                "画板 token={} 在正文中找不到对应代码块，保留原文",
+                block.token
+            ));
+            continue;
+        };
+        used[idx] = true;
+        seq += 1;
+
+        let stem = format!("wb_tag_{:02}", seq);
+        let output_base = ctx.img_dir.join(&stem);
+        let saved = match lark::whiteboard_export_controlled(
+            &block.token,
+            &output_base.to_string_lossy(),
+            ctx.cancelled,
+        ) {
+            Ok(saved) => saved,
+            Err(error) => {
+                result.failed += 1;
+                result
+                    .errors
+                    .push(format!("画板预览图导出失败 token={}：{error}", block.token));
+                continue;
+            }
+        };
+        let saved = PathBuf::from(saved);
+        if !saved.is_file() {
+            result.failed += 1;
+            result
+                .errors
+                .push(format!("画板 {} 预览图导出结果不存在", block.token));
+            continue;
+        }
+        // lark-cli 按服务端 Content-Type 补扩展名（jpg/png），规范化文件名稳定可预期
+        let ext = saved
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_else(|| ".jpg".to_string());
+        let file_name = format!("{stem}{ext}");
+        let final_path = ctx.img_dir.join(&file_name);
+        if saved != final_path {
+            if final_path.exists() {
+                if let Err(error) = fs::remove_file(&final_path) {
+                    result.failed += 1;
+                    result
+                        .errors
+                        .push(format!("画板 {} 无法替换旧文件：{error}", block.token));
+                    continue;
+                }
+            }
+            if let Err(error) = fs::rename(&saved, &final_path) {
+                result.failed += 1;
+                result
+                    .errors
+                    .push(format!("画板 {} 重命名失败：{error}", block.token));
+                continue;
+            }
+        }
+        // 图 + 源码都保留：飞书画板本质是"源码 + 渲染"（与思维导图同理），
+        // 只存图丢掉结构。源码从 XML 回取时已拿到（body 反转义即原始 mermaid/plantuml）。
+        // 源码同时单独落一份 .mmd/.puml：md 里的代码块可能被渲染成图或转换丢失，
+        // 独立源码文件保证"结构"始终可取。
+        let source_code = unescape_xml(&block.body).trim().to_string();
+        let source_ext = lark::whiteboard_source_extension(&block.kind);
+        let source_file_name = format!("{stem}.{source_ext}");
+        let source_path = ctx.img_dir.join(&source_file_name);
+        if let Err(error) = fs::write(&source_path, source_code.as_bytes()) {
+            result.failed += 1;
+            result.errors.push(format!(
+                "画板 {} 源码写入失败（预览图已保存）：{error}",
+                block.token
+            ));
+            continue;
+        }
+        replacements.push((
+            fence.start,
+            fence.end,
+            format!(
+                "![画板]({}/{})\n\n```{}\n{}\n```",
+                ctx.img_dir_name, file_name, block.kind, source_code,
+            ),
+        ));
+        result.exported += 1;
+    }
+
+    if replacements.is_empty() {
+        return result;
+    }
+    replacements.sort_by_key(|a| std::cmp::Reverse(a.0));
+    let mut out = content.to_string();
+    for (start, end, text) in replacements {
+        out.replace_range(start..end, &text);
+    }
+    result.content = out;
+    result
+}
+
+/// 一个围栏代码块在正文中的位置与内容
+struct FenceBlock {
+    start: usize,
+    end: usize,
+    kind: String,
+    body: String,
+}
+
+/// 扫描正文中指定语言的围栏代码块（```lang ... ```），返回字节区间
+///
+/// 与 CommonMark 一样按"行首 ```（允许缩进）"识别围栏起止，块内容按行拼接，
+/// 不包含围栏行本身。
+fn scan_code_fences(content: &str, kinds: &[&str]) -> Vec<FenceBlock> {
+    let lines: Vec<&str> = content.split('\n').collect();
+    let mut offsets = Vec::with_capacity(lines.len());
+    let mut off = 0usize;
+    for line in &lines {
+        offsets.push(off);
+        off += line.len() + 1; // + '\n'（split 把它吃掉了，补回来）
+    }
+
+    let mut out = Vec::new();
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        let trimmed = lines[idx].trim_start();
+        let Some(info) = trimmed.strip_prefix("```") else {
+            idx += 1;
+            continue;
+        };
+        let info = info.trim();
+        if !kinds.contains(&info) || idx + 1 >= lines.len() {
+            idx += 1;
+            continue;
+        }
+        // 找下一个行首 ``` 作为围栏结束
+        let Some(close) =
+            (idx + 1..lines.len()).find(|&j| lines[j].trim_start().starts_with("```"))
+        else {
+            idx += 1;
+            continue;
+        };
+        out.push(FenceBlock {
+            start: offsets[idx],
+            end: offsets[close] + lines[close].len(),
+            kind: info.to_string(),
+            body: lines[idx + 1..close].join("\n"),
+        });
+        idx = close + 1;
+    }
+    out
+}
+
+/// 一个 `<whiteboard>` 块（来自 XML 正文）
+struct WhiteboardBlock {
+    token: String,
+    kind: String,
+    body: String,
+}
+
+/// 从 XML 正文抽出所有 `<whiteboard token=... type=...>源码</whiteboard>` 块
+fn parse_whiteboard_blocks(xml: &str) -> Vec<WhiteboardBlock> {
+    let re = regex::Regex::new(r"(?is)<whiteboard\b([^>]*)>(.*?)</whiteboard>").unwrap();
+    let attr_re = regex::Regex::new(r#"(?i)\b(token|type)\s*=\s*["']([^"']*)["']"#).unwrap();
+    let mut out = Vec::new();
+    for caps in re.captures_iter(xml) {
+        let mut token = String::new();
+        let mut kind = String::new();
+        for cap in attr_re.captures_iter(&caps[1]) {
+            let name = cap[1].to_ascii_lowercase();
+            let value = cap[2].to_string();
+            match name.as_str() {
+                "token" => token = value,
+                "type" => kind = value.to_ascii_lowercase(),
+                _ => {}
+            }
+        }
+        if token.is_empty() {
+            continue;
+        }
+        out.push(WhiteboardBlock {
+            token,
+            kind,
+            body: caps[2].to_string(),
+        });
+    }
+    out
+}
+
+/// XML 里正文属性/内容会被转义（`--&gt;` 之类），与 markdown fence 比对前还原。
+///
+/// 顺序敏感：先处理长实体，`&amp;` 最后处理，避免 `&amp;lt;` 被解码两次。
+fn unescape_xml(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 /// 拼装替换文本：首行标明来源与完整性，随后是内容/链接/失败原因
@@ -1385,4 +1784,61 @@ fn render_embedded_bitable(
     }
 
     compose_embedded_note(label, token, failed, exported, &parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_code_finds_mermaid_and_plantuml_fences() {
+        let md = "# T\n\n```mermaid\nflowchart TD\nA-->B\n```\n\ntext\n\n```plantuml\n@startuml\nA -> B\n@enduml\n```\n\n```rust\nfn main() {}\n```\n";
+        let fences = scan_code_fences(md, &["mermaid", "plantuml"]);
+        assert_eq!(fences.len(), 2, "rust 块不算");
+        assert_eq!(fences[0].kind, "mermaid");
+        assert!(fences[0].body.contains("flowchart TD"));
+        assert_eq!(fences[1].kind, "plantuml");
+        // 区间落在原文内且可回填
+        for f in &fences {
+            assert!(f.end <= md.len());
+            assert!(md[f.start..].starts_with("```"));
+            assert!(md[..f.end].ends_with("```"));
+        }
+    }
+
+    #[test]
+    fn test_scan_code_ignores_non_fence_and_case() {
+        let md = "```mermaid\nA\n```\n```\nplain\n```\n```Mermaid\nx\n```\n";
+        // 大写 Mermaid 不算（服务端输出固定小写）
+        let fences = scan_code_fences(md, &["mermaid", "plantuml"]);
+        assert_eq!(fences.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_whiteboard_blocks_reads_token_and_type() {
+        let xml =
+            "<title>t</title><whiteboard token=\"T1\" type=\"mermaid\">A --&gt; B</whiteboard>";
+        let blocks = parse_whiteboard_blocks(xml);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].token, "T1");
+        assert_eq!(blocks[0].kind, "mermaid");
+        assert_eq!(blocks[0].body, "A --&gt; B");
+    }
+
+    #[test]
+    fn test_unescape_xml_order_sensitive() {
+        assert_eq!(unescape_xml("A --&gt; B"), "A --> B");
+        // &amp;lt; 只解码一次，结果是字面 &lt;
+        assert_eq!(unescape_xml("&amp;lt;"), "&lt;");
+        assert_eq!(unescape_xml("&amp;"), "&");
+        assert_eq!(unescape_xml("&quot;x&apos;"), "\"x'");
+    }
+
+    #[test]
+    fn test_fence_body_matches_unescaped_xml_body() {
+        // xml 里的 --&gt; 反转义后应与 markdown fence 内容一致
+        let xml_body = "flowchart TD\n    A --&gt; B";
+        let md_body = "flowchart TD\n    A --> B";
+        assert_eq!(unescape_xml(xml_body).trim(), md_body.trim());
+    }
 }
