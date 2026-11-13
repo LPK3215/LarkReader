@@ -25,7 +25,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE1NkEyRDE4MDgxQzhERjgKUldUNGpSd0lHQzFxRmU0Z25LVEIwVFM0cTRBVXo3SHlxUmNKdVc1eXVETFZzODZDYVZKckR1ZkUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBOUU0NkJFODA2ODU3ODEKUldTQlYyaUF2a2FlaXVsbWZhRWVCU0EvSkdFc293YWZ6Rk1kRjZqeDVNc3R3M3BLRDlzNG44VmkK",
       "endpoints": [
         "https://github.com/LPK3215/LarkReader/releases/latest/download/latest.json"
       ],

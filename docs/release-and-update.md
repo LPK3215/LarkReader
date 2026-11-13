@@ -387,7 +387,21 @@ npx tauri signer generate -w (Join-Path $dir 'larkreader.key') --ci
 | **私钥** | GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY` + 本地私密备份 | **绝不能**提交进仓库 / 发给任何人 |
 | **公钥** | `tauri.conf.json` 的 `plugins.updater.pubkey` | 可以公开 |
 
-> ⚠️ 私钥丢失 = 无法再给老用户签发更新包（公钥固定）。请立即把 `larkreader.key` 备份到安全介质。生成时未设密码；若设了密码，CI 还需要 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret。
+> 私钥丢失后无法再用原私钥签发更新包，只能重新生成密钥对并轮换公钥，代价是已安装旧版本的用户需要手动更新一次。
+> 私钥生成后立即备份，至少两份，分别放在不同设备或网盘。生成时未设密码；若设了密码，CI 还需要 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret。
+
+### 8.1 公钥轮换记录
+
+| 版本 | 变更 | 用户影响 |
+|---|---|---|
+| v0.4.0 | v0.3.0 的私钥丢失，重新生成密钥对并替换 `tauri.conf.json` 的 `plugins.updater.pubkey` | v0.3.0 及更早版本的用户无法通过应用内更新升到 v0.4.0，需从 Releases 手动下载安装一次；v0.4.0 之后恢复正常 |
+
+### 8.2 轮换公钥的操作顺序
+
+1. 重新生成密钥对，私钥落盘到 `%USERPROFILE%\.larkreader-signing\larkreader.key`；
+2. 把 `larkreader.key.pub` 的内容写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`；
+3. 用新私钥构建并签名，生成 `.sig` 与 `latest.json`；
+4. 公钥随版本发布，老版本用户需手动安装新版本一次。
 
 ---
 
